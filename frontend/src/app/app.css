@@ -16,3 +16,15 @@
 @media(max-width:600px){.topbar h2{font-size:17px}.empty-state h1{font-size:25px}.empty-state p{font-size:14px}.prompt-ideas button{font-size:13px;min-height:46px;padding:11px 14px}.message-meta{font-size:12px}.message-text{font-size:14px}.composer textarea{font-size:16px;line-height:1.45;min-height:66px}.selectors label span{font-size:10px}.selectors select{font-size:13px;min-height:42px}.send,.stop{font-size:14px;min-height:45px}.section-intro h1{font-size:23px}.section-intro p,.add-card p,.helper{font-size:13px}.account-card h3{font-size:16px}.provider-sub,.account-stat,.account-foot{font-size:11px}.login-card h1{font-size:26px}.login-card p{font-size:14px}.login-card input{font-size:16px}.add-form input,.add-form select,.add-form .primary{font-size:14px}}
 /* Remote runners */
 .auth-switch{display:block;margin:17px auto 0;padding:9px 12px;border:0;background:transparent;color:#d9d9d9;font-size:12px;text-decoration:underline;text-underline-offset:3px}.runner-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}.runner-card,.pairing-panel{background:#2b2b2b;border:1px solid #454545;border-radius:16px;padding:20px}.runner-title{display:flex;align-items:flex-start;justify-content:space-between}.runner-card h3{font-size:16px;margin:18px 0 7px}.runner-card .provider-sub{overflow-wrap:anywhere}.badge.revoked{background:#513238;color:#ffc1cb}.revoke{border:1px solid #75454d;background:#39292d;color:#ffbec8;padding:10px 12px;border-radius:10px;margin-top:18px}.revoke:hover{background:#4c3037}.runner-setup{margin-top:18px}.pairing-panel{margin-top:16px;display:flex;align-items:flex-start;gap:13px;flex-direction:column}.pairing-panel>strong{font-size:14px}.pairing-panel>code{font-size:15px;font-weight:700;overflow-wrap:anywhere;color:#fff;background:#383838;border:1px solid #555;padding:12px;border-radius:9px;width:100%}.pairing-panel>p{font-size:12px;line-height:1.7;color:#b4b4b4;margin:2px 0}.pairing-panel .outline{margin-left:0}.pairing-panel .login-command{width:100%;font-size:12px}.assign-select{width:100%;margin:12px 0;padding:10px 12px;background:#383838;border:1px solid #555;border-radius:9px;color:#eee}.account-foot{margin-top:5px}@media(max-width:600px){.runner-grid{grid-template-columns:minmax(0,1fr)}.runner-card,.pairing-panel{padding:17px}.pairing-panel>code{font-size:13px}.auth-switch{font-size:12px}}
+
+@media(min-width:851px){
+  .sidebar{width:236px}
+  .brand strong{font-size:16px}
+  .sidebar-new{font-size:13px;padding:10px 12px;margin-bottom:18px}
+  .nav-item{padding:9px 12px}
+  .nav-item span{font-size:14px;line-height:1.35}
+  .topbar h2{font-size:17px}
+  .connections-content{padding:32px}
+  .section-intro h1{font-size:24px}
+  .section-intro p{font-size:13px}
+}
