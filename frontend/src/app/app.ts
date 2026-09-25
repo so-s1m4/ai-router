@@ -25,8 +25,18 @@ export class App implements OnInit,OnDestroy {
   socket?:Socket;
   models=computed(()=>{const id=this.selectedAccount; if(id==='auto')return [{id:'default',label:'По умолчанию выбранного CLI'}]; return this.accounts().find(a=>a.id===id)?.models||[{id:'default',label:'По умолчанию CLI'}];});
   ngOnInit(){this.restore();} ngOnDestroy(){this.socket?.disconnect();}
-  async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok)throw new Error(body.error||'Ошибка запроса');return body as T;}
-  async restore(){try{const me=await this.api<{username:string}>('/me');this.username=me.username;this.loggedIn.set(true);await this.load();this.connect();}catch{this.loggedIn.set(false);}}
+  async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
+  async restore(){
+    let me:{username:string};
+    try{me=await this.api<{username:string}>('/me');}
+    catch(e){
+      if((e as Error&{status?:number}).status===401)this.loggedIn.set(false);
+      else this.loginError='Не удалось проверить вход. Обновите страницу.';
+      return;
+    }
+    this.username=me.username;this.loggedIn.set(true);this.connect();
+    try{await this.load();}catch(e){this.error.set((e as Error).message);}
+  }
   async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
   async logout(){await this.api('/logout',{method:'POST'});this.socket?.disconnect();this.loggedIn.set(false);this.current.set(null);}
   async load(){const [accounts,runners,sessions]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<ChatSession[]>('/sessions')]);this.accounts.set(accounts);this.runners.set(runners);this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);if(sessions.length)await this.openSession(sessions[0].id);else await this.newSession();if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
