@@ -14,3 +14,5 @@ data/
 *.p12
 *.pfx
 device.json
+*.codexprofile.json
+auth.json

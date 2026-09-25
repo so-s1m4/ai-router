@@ -25,6 +25,9 @@ jobs:
         working-directory: ${{ matrix.package }}
       - run: npm run build
         working-directory: ${{ matrix.package }}
+      - if: matrix.package == 'runner'
+        run: npm test
+        working-directory: runner
 
   compose:
     runs-on: ubuntu-latest
