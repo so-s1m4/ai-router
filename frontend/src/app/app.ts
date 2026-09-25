@@ -6,7 +6,8 @@ import { LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCopy, LucideInfo, L
 
 type ProviderId = 'codex'|'antigravity';
 type Model = {id:string;label:string};
-type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{remaining:number;max:number;cooldownUntil:string|null;resetAt:string}};
+type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
+type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
 type Runner = {id:string;name:string;online:boolean;createdAt:string;revokedAt?:string};
 type Pairing = {code:string;expiresAt:string};
 type Message = {id:string;role:'user'|'assistant';text:string;at:string;provider?:ProviderId};
@@ -60,6 +61,8 @@ export class App implements OnInit,OnDestroy {
   async copy(text:string){await navigator.clipboard.writeText(text);this.notice.set('Команда скопирована');}
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
   providerLabel(id?:ProviderId){return id==='codex'?'Codex':id==='antigravity'?'Antigravity':'';}
+  limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
+  remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';}
 }

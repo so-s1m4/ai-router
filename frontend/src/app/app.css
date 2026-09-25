@@ -28,3 +28,5 @@
   .section-intro h1{font-size:24px}
   .section-intro p{font-size:13px}
 }
+.usage-windows{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 19px}.usage-windows div{display:flex;justify-content:space-between;align-items:center;background:#f6f7fb;border:1px solid #e9ecf3;border-radius:8px;padding:8px 9px;font-size:10px;color:#7d899d}.usage-windows strong{color:#384762;font-size:12px}.usage-unknown{margin:14px 0 19px;padding:9px 10px;background:#f6f7fb;border-radius:8px;color:#9ca7b7;font-size:10px}
+.usage-windows div{background:#222;border-color:#414141;color:#aaa}.usage-windows strong{color:#e7e7e7}.usage-unknown{background:#222;color:#999}
