@@ -42,7 +42,7 @@ app.delete('/api/runners/:id',requireAuth,async(req,res)=>res.status(await revok
 app.get('/api/sessions',requireAuth,async(req,res)=>res.json(await listSessions(req.session.userId!)));
 app.post('/api/sessions',requireAuth,async(req,res)=>res.status(201).json(await createSession(req.session.userId!)));
 app.get('/api/sessions/:id',requireAuth,async(req,res)=>{const s=await getSession(req.session.userId!,req.params.id);res.status(s?200:404).json(s||{error:'Чат не найден'});});
-app.get('/api/health',(_req,res)=>res.json({ok:true}));
+app.get('/api/health',(_req,res)=>res.json({ok:true,revision:process.env.APP_REVISION||'local'}));
 
 const http=createServer(app),io=new Server(http,{path:'/socket.io',cors:{origin:false}});io.engine.use(sessionMiddleware);
 const runnerNs=io.of('/runner');

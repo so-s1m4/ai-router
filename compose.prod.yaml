@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ai-router-backend:latest
+    image: ghcr.io/so-s1m4/ai-router-backend:latest
     environment:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in Portainer}
@@ -18,7 +18,7 @@ services:
     security_opt:
       - no-new-privileges:true
   frontend:
-    image: ai-router-frontend:latest
+    image: ghcr.io/so-s1m4/ai-router-frontend:latest
     ports:
       - "127.0.0.1:${APP_PORT:-18088}:80"
     depends_on:
