@@ -1,0 +1,18 @@
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { io } from 'socket.io-client';
+import { z } from 'zod';
+import { execute, RunnerError, type Job } from './cli.js';
+const url=process.env.ROUTER_SERVER_URL?.replace(/\/$/,'');if(!url)throw new Error('ROUTER_SERVER_URL is required');const parsed=new URL(url);if(parsed.protocol!=='https:'&&process.env.ROUTER_ALLOW_INSECURE!=='true')throw new Error('HTTPS required; set ROUTER_ALLOW_INSECURE=true only for local development');
+const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data'),file=path.join(root,'device.json');
+interface Device {id:string;secret:string;name:string}
+async function device():Promise<Device>{try{return JSON.parse(await readFile(file,'utf8')) as Device;}catch{}const code=process.env.ROUTER_PAIRING_CODE;if(!code)throw new Error('Set ROUTER_PAIRING_CODE once to enroll this runner');const response=await fetch(url+'/api/runner/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});if(!response.ok)throw new Error('Pairing failed: '+response.status);const d=await response.json() as Device;await mkdir(root,{recursive:true,mode:0o700});await writeFile(file,JSON.stringify(d),{mode:0o600});return d;}
+const jobSchema=z.object({jobId:z.string().uuid(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity']),sessionId:z.string().uuid(),prompt:z.string().min(1).max(40000),model:z.string().max(100),mode:z.enum(['chat','task'])});
+async function start(){const d=await device();const socket=io(url+'/runner',{path:'/socket.io',transports:['websocket'],auth:{runnerId:d.id,secret:d.secret},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000});const active=new Map<string,AbortController>();
+ socket.on('connect',()=>console.log(`Runner ${d.name} connected`));
+ socket.on('connect_error',(err)=>console.error('Connection failed:',err.message));
+ socket.on('disconnect',()=>{for(const controller of active.values())controller.abort();active.clear();console.log('Control plane disconnected; active jobs stopped');});
+ socket.on('job:start',async(raw:unknown,ack?:(r:unknown)=>void)=>{if(!socket.connected)return ack?.({ok:false,error:'Offline'});const parsed=jobSchema.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Invalid job'});const job=parsed.data as Job;if(active.has(job.jobId))return ack?.({ok:false,error:'Duplicate job'});const controller=new AbortController();active.set(job.jobId,controller);ack?.({ok:true});try{const text=await execute(job,controller.signal,e=>{if(socket.connected)socket.emit('job:event',{jobId:job.jobId,...e});});if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:true,text});}catch(e){if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:false,error:e instanceof Error?e.message:'Ошибка',code:e instanceof RunnerError?e.code:'failed'});}finally{active.delete(job.jobId);}});
+ socket.on('job:cancel',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid()}).safeParse(raw);if(p.success)active.get(p.data.jobId)?.abort();});
+}
+start().catch(err=>{console.error(err);process.exit(1);});

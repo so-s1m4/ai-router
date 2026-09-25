@@ -1,0 +1,38 @@
+services:
+  backend:
+    image: ai-router-backend:latest
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in Portainer}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in Portainer}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      COOKIE_SECURE: "true"
+      LOCAL_REQUESTS_PER_HOUR: ${LOCAL_REQUESTS_PER_HOUR:-30}
+      RATE_LIMIT_COOLDOWN_SECONDS: ${RATE_LIMIT_COOLDOWN_SECONDS:-300}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-180}
+      CODEX_MODELS: ${CODEX_MODELS:-}
+      AGY_MODELS: ${AGY_MODELS:-}
+    volumes:
+      - router_data:/srv/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  frontend:
+    image: ai-router-frontend:latest
+    ports:
+      - "127.0.0.1:${APP_PORT:-18088}:80"
+    depends_on:
+      - backend
+    networks:
+      default:
+      proxy:
+        aliases:
+          - ai-router-web
+    restart: unless-stopped
+
+volumes:
+  router_data:
+
+networks:
+  proxy:
+    external: true

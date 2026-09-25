@@ -1,0 +1,48 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      LOCAL_REQUESTS_PER_HOUR: ${LOCAL_REQUESTS_PER_HOUR:-30}
+      RATE_LIMIT_COOLDOWN_SECONDS: ${RATE_LIMIT_COOLDOWN_SECONDS:-300}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-180}
+      CODEX_MODELS: ${CODEX_MODELS:-}
+      AGY_MODELS: ${AGY_MODELS:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - router_data:/srv/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  runner:
+    profiles: ["local-runner"]
+    build:
+      context: ./runner
+      args:
+        INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+    environment:
+      ROUTER_SERVER_URL: http://frontend
+      ROUTER_PAIRING_CODE: ${ROUTER_PAIRING_CODE:-}
+      ROUTER_ALLOW_INSECURE: "true"
+      MOCK_MODE: ${MOCK_MODE:-true}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-180}
+    volumes:
+      - local_runner_data:/runner-data
+    depends_on:
+      - frontend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+volumes:
+  router_data:
+  local_runner_data:

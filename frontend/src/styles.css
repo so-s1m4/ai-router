@@ -1,0 +1,9 @@
+@import '@fontsource/jetbrains-mono/cyrillic-400.css';
+@import '@fontsource/jetbrains-mono/cyrillic-500.css';
+@import '@fontsource/jetbrains-mono/cyrillic-600.css';
+@import '@fontsource/jetbrains-mono/cyrillic-700.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-600.css';
+@import '@fontsource/jetbrains-mono/latin-700.css';
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:'JetBrains Mono',monospace;background:#212121;color:#ececec;color-scheme:dark}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#4a4a4a;border-radius:10px}::-webkit-scrollbar-track{background:#212121}

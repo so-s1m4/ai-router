@@ -1,0 +1,19 @@
+services:
+  runner:
+    build:
+      context: .
+      args:
+        INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+    environment:
+      ROUTER_SERVER_URL: ${ROUTER_SERVER_URL:?Set ROUTER_SERVER_URL}
+      ROUTER_PAIRING_CODE: ${ROUTER_PAIRING_CODE:-}
+      ROUTER_ALLOW_INSECURE: ${ROUTER_ALLOW_INSECURE:-false}
+      MOCK_MODE: ${MOCK_MODE:-true}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-180}
+    volumes:
+      - runner_data:/runner-data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  runner_data:
