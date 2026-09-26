@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { access, constants, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { runCodexAppServer } from './app-server.js';
+import { readAgyUsage } from './agy-usage.js';
 export type ProviderId='codex'|'antigravity';
 export type Job={jobId:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;originalPrompt?:string;handoffContext?:string;previousThreadId?:string;model:string;reasoning?:string;mode:'chat'|'task'};
 export type Event={type:'status'|'delta'|'tool'|'usage'|'checkpoint';text?:string;message?:string;data?:Record<string,unknown>};
@@ -56,7 +57,11 @@ async function appServerRequest(home:string,requests:{id:number;method:string;pa
   });
 }
 export async function accountStatus(provider:ProviderId,home:string,signal:AbortSignal):Promise<AccountStatus>{
-  if(provider!=='codex')return {models:[{id:'default',label:'По умолчанию аккаунта'},...(process.env.AGY_MODELS||'').split(',').map(x=>x.trim()).filter(Boolean).map(id=>({id,label:id}))]};
+  if(provider!=='codex'){
+    const models=[{id:'default',label:'По умолчанию аккаунта'},...(process.env.AGY_MODELS||'').split(',').map(x=>x.trim()).filter(Boolean).map(id=>({id,label:id}))];
+    try { const limits=await readAgyUsage(bin.antigravity,home,envFor(home,provider),signal); return {models,...(limits?{limits}:{})}; }
+    catch(error) { console.error('Antigravity usage unavailable:',error instanceof Error?error.message:error); return {models}; }
+  }
   const responses=await appServerRequest(home,[{id:1,method:'account/read',params:{refreshToken:true}},{id:2,method:'account/rateLimits/read'},{id:3,method:'model/list',params:{limit:100,includeHidden:false}}],signal);
   if(responses[2]?.error)throw new RunnerError(String(responses[2].error.message||'Не удалось получить лимит аккаунта'),'unavailable');
   const rate=responses[2]?.result?.rateLimits||responses[2]?.result?.rate_limits;
