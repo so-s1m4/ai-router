@@ -10,6 +10,7 @@ import { addAccount, addImportedCodexAccount, assignAccount, createProject, crea
 import { ensureAdmin, findUserById, findUserByName, registerUser, verifyPassword } from './auth.js';
 import { createPairing, enroll, listRunners, ownsRunner, revokeRunner, runnerSocket, setConnected, verifyRunner } from './runners.js';
 import { attachJobHandlers, dispatch, JobError } from './jobs.js';
+import { uploadProjectFile } from './files.js';
 import { AccountUsageManager } from './usage.js';
 import { modelCatalog, type AIEvent, type AIEventType, type Model, type ProviderId } from './types.js';
 
@@ -46,6 +47,7 @@ app.post('/api/runner/accounts/import',async(req,res)=>{const id=req.get('X-Runn
 app.delete('/api/runners/:id',requireAuth,async(req,res)=>res.status(await revokeRunner(req.session.userId!,req.params.id)?200:404).json({ok:true}));
 app.get('/api/projects',requireAuth,async(req,res)=>res.json(await listProjects(req.session.userId!)));
 app.post('/api/projects',requireAuth,async(req,res)=>{const p=z.object({name:z.string().trim().min(1).max(80),runnerId:z.string().uuid()}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Укажите название проекта и исполнитель'});const userId=req.session.userId!;if(!await ownsRunner(userId,p.data.runnerId))return res.status(403).json({error:'Исполнитель не принадлежит вам'});res.status(201).json(await createProject(userId,p.data.name,p.data.runnerId));});
+app.post('/api/projects/:id/files',requireAuth,express.raw({type:'application/octet-stream',limit:'20mb'}),async(req,res)=>{const userId=req.session.userId!,project=await getProject(userId,req.params.id);if(!project)return res.status(404).json({error:'Проект не найден'});if(!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({error:'Файл пустой'});let name=req.get('X-File-Name')||'file';try{name=decodeURIComponent(name);}catch{}if(!name||name.length>180||name==='.'||name==='..'||/[\\/\0]/.test(name))return res.status(400).json({error:'Недопустимое имя файла'});try{res.status(201).json(await uploadProjectFile(project.runnerId,project.id,name,req.body));}catch(error){res.status(502).json({error:error instanceof Error?error.message:'Не удалось загрузить файл'});}});
 app.get('/api/sessions',requireAuth,async(req,res)=>res.json(await listSessions(req.session.userId!)));
 app.post('/api/sessions',requireAuth,async(req,res)=>{const p=z.object({projectId:z.string().uuid().optional()}).safeParse(req.body||{});if(!p.success)return res.status(400).json({error:'Неверный проект'});if(p.data.projectId&&!await getProject(req.session.userId!,p.data.projectId))return res.status(404).json({error:'Проект не найден'});res.status(201).json(await createSession(req.session.userId!,p.data.projectId));});
 app.get('/api/sessions/:id',requireAuth,async(req,res)=>{const s=await getSession(req.session.userId!,req.params.id);res.status(s?200:404).json(s||{error:'Чат не найден'});});

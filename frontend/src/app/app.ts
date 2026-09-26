@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
-import { LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCopy, LucideFolder, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, LucideServer, LucideSparkles, LucideSquare, LucideX } from '@lucide/angular';
+import { LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCopy, LucideFolder, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, LucideServer, LucideSparkles, LucideSquare, LucideX } from '@lucide/angular';
 
 type ProviderId = 'codex'|'antigravity';
 type Model = {id:string;label:string};
@@ -15,7 +15,7 @@ type Message = {id:string;role:'user'|'assistant';text:string;at:string;provider
 type ChatSession = {id:string;title:string;updatedAt:string;messages:Message[];projectId?:string};
 type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:ProviderId;message?:string;text?:string;data?:{accountId?:string}};
 
-@Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule,LucideArrowUp,LucideArrowUpRight,LucideBot,LucideCopy,LucideFolder,LucideInfo,LucideLogOut,LucideMenu,LucideMessageSquare,LucidePencilLine,LucidePlugZap,LucidePlus,LucideRefreshCw,LucideServer,LucideSparkles,LucideSquare,LucideX],templateUrl:'./app.html',styleUrl:'./app.css'})
+@Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule,LucideArrowUp,LucideArrowUpRight,LucideBot,LucideCopy,LucideFolder,LucideInfo,LucideLogOut,LucideMenu,LucideMessageSquare,LucidePaperclip,LucidePencilLine,LucidePlugZap,LucidePlus,LucideRefreshCw,LucideServer,LucideSparkles,LucideSquare,LucideX],templateUrl:'./app.html',styleUrl:'./app.css'})
 export class App implements OnInit,OnDestroy {
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
   loggedIn=signal(false); page=signal<'chat'|'projects'|'connections'|'runners'>('chat');
@@ -23,7 +23,7 @@ export class App implements OnInit,OnDestroy {
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
   draft=''; selectedAccount='auto'; selectedModel='default'; runMode:'chat'|'task'='chat';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
-  running=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal('');
+  running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal('');
   socket?:Socket;
   models=computed(()=>{const id=this.selectedAccount; if(id==='auto')return [{id:'default',label:'По умолчанию выбранного CLI'}]; return this.accounts().find(a=>a.id===id)?.models||[{id:'default',label:'По умолчанию CLI'}];});
   ngOnInit(){this.restore();} ngOnDestroy(){this.socket?.disconnect();}
@@ -51,6 +51,7 @@ export class App implements OnInit,OnDestroy {
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
+  async uploadFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0],projectId=this.current()?.projectId;if(input)input.value='';if(!file)return;if(!projectId){this.error.set('Сначала откройте чат внутри проекта');return;}if(file.size>20*1024*1024){this.error.set('Файл больше 20 МБ');return;}this.uploading.set(true);this.error.set('');try{const response=await fetch(`/api/projects/${projectId}/files`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file,credentials:'same-origin'});const body=await response.json() as {name?:string;size?:number;error?:string};if(!response.ok)throw new Error(body.error||'Не удалось загрузить файл');this.notice.set(`Файл «${body.name||file.name}» добавлен в папку проекта`);}catch(error){this.error.set(error instanceof Error?error.message:'Не удалось загрузить файл');}finally{this.uploading.set(false);}}
   showPage(page:'chat'|'projects'|'connections'|'runners'){this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();}
   connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const selected=this.accounts().find(x=>x.id===this.selectedAccount);if(selected&&this.selectedModel!=='default'&&!selected.models.some(m=>m.id===this.selectedModel))this.selectedModel='default';});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='status'||e.type==='fallback'){this.notice.set(e.message||'');this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.running.set(false);this.runId.set('');this.stream.set('');this.reloadCurrent();}else if(e.type==='completed'){this.running.set(false);this.runId.set('');this.stream.set('');this.notice.set(e.message||'Готово');this.reloadCurrent();}}
