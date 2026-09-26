@@ -12,7 +12,7 @@ test('Antigravity approves headless tools only for task runs', async () => {
     await writeFile(cli, `#!/usr/bin/env node
 const fs = require('fs');
 fs.writeFileSync(process.env.ARGV_CAPTURE, JSON.stringify({args:process.argv.slice(2),nodeEnv:process.env.NODE_ENV||null}));
-process.stdout.write(JSON.stringify({event:'result',result:{response:'ok',status:'SUCCESS'}})+'\\n');
+setTimeout(() => process.stdout.write(JSON.stringify({event:'result',result:{response:'ok',status:'SUCCESS'}})+'\\n'), Number(process.env.FAKE_DELAY_MS||0));
 `, { mode: 0o700 });
     process.env.RUNNER_DATA_DIR = root;
     process.env.AGY_BIN = cli;
@@ -33,8 +33,14 @@ process.stdout.write(JSON.stringify({event:'result',result:{response:'ok',status
     const chatArgs = JSON.parse(await readFile(capture, 'utf8')).args;
     assert.ok(!chatArgs.includes('--dangerously-skip-permissions'));
     assert.equal(chatArgs[chatArgs.indexOf('--mode') + 1], 'plan');
+
+    process.env.FAKE_DELAY_MS = '400';
+    process.env.CLI_TIMEOUT_SECONDS = '0.1';
+    process.env.CLI_TASK_TIMEOUT_SECONDS = '3';
+    assert.equal(await execute(job, new AbortController().signal, () => {}), 'ok');
+    await assert.rejects(execute({ ...job, mode:'chat' }, new AbortController().signal, () => {}), { code:'timeout' });
   } finally {
-    for (const key of ['RUNNER_DATA_DIR','AGY_BIN','ARGV_CAPTURE','MOCK_MODE','NODE_ENV']) delete process.env[key];
+    for (const key of ['RUNNER_DATA_DIR','AGY_BIN','ARGV_CAPTURE','MOCK_MODE','NODE_ENV','FAKE_DELAY_MS','CLI_TIMEOUT_SECONDS','CLI_TASK_TIMEOUT_SECONDS']) delete process.env[key];
     await rm(root, { recursive:true, force:true });
   }
 });

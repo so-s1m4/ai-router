@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { access, constants } from 'node:fs/promises';
 import type { Job, Event } from './cli.js';
 import { RunnerError } from './cli.js';
+import { cliTimeoutSeconds } from './timeouts.js';
 
 type Json = Record<string, any>;
 type Pending = { resolve: (value: Json) => void; reject: (error: Error) => void };
@@ -158,7 +159,7 @@ class AppServerConnection {
     const timer = setTimeout(() => {
       if (turnId) void this.request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
       finish(new RunnerError('Время ожидания App Server истекло', 'timeout'));
-    }, Number(process.env.CLI_TIMEOUT_SECONDS || 180) * 1000);
+    }, cliTimeoutSeconds(job.mode) * 1000);
     try {
       if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
       const turn = await this.request('turn/start', {
