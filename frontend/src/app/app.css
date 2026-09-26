@@ -3034,4 +3034,19 @@
     padding: 10px 10px;
   }
 }
-
+.task-files-panel {
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, .12));
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface, rgba(20, 25, 35, .6));
+}
+.task-files-heading, .task-file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.task-files-heading { margin-bottom: 12px; }
+.task-files-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.task-files-heading span, .task-files-empty, .task-file-size { font-size: 12px; opacity: .7; }
+.task-files-list { display: flex; flex-direction: column; gap: 6px; }
+.task-file-row { padding: 8px 10px; border: 1px solid var(--border-color, rgba(255, 255, 255, .12)); border-radius: 10px; }
+.task-file-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.task-file-size { white-space: nowrap; }
+.task-file-row .btn { display: inline-flex; align-items: center; gap: 5px; }

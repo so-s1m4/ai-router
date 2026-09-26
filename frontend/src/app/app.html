@@ -183,6 +183,10 @@
             </div>
           </div>
           <div class="topbar-right">
+            <button class="btn btn-outline btn-sm" (click)="toggleTaskFiles()" [attr.aria-expanded]="filesOpen()" title="Файлы задачи">
+              <svg lucideDownload [size]="15"></svg>
+              <span>Файлы{{taskFiles().length ? ' (' + taskFiles().length + ')' : ''}}</span>
+            </button>
             <div class="status-indicator" title="Сервер подключен">
               <span class="pulse-dot"></span>
               <span class="status-label">В сети</span>
@@ -196,6 +200,33 @@
             </button>
           </div>
         </header>
+
+        @if(filesOpen()){
+          <section class="task-files-panel" aria-label="Файлы задачи">
+            <div class="task-files-heading">
+              <div><strong>Файлы задачи</strong><span>Ссылка на скачивание действует 7 дней</span></div>
+              <button class="btn btn-outline btn-sm" (click)="refreshTaskFiles()" [disabled]="filesLoading()" title="Обновить список"><svg lucideRefreshCw [size]="15"></svg></button>
+            </div>
+            @if(filesLoading()){<p class="task-files-empty">Загрузка файлов…</p>}
+            @else if(!taskFiles().length){<p class="task-files-empty">Файлов пока нет. Попросите ИИ сохранить результат в рабочую папку задачи.</p>}
+            @else {
+              <div class="task-files-list">
+                @for(file of taskFiles(); track file.name){
+                  <div class="task-file-row">
+                    <span class="task-file-name" [title]="file.name">{{file.name}}</span>
+                    <span class="task-file-size">{{(file.size / 1024 / 1024) | number:'1.0-2'}} МБ</span>
+                    @if(sharedFileLinks()[file.name]){
+                      <a class="btn btn-outline btn-sm" [href]="sharedFileLinks()[file.name]" target="_blank" rel="noopener noreferrer"><svg lucideDownload [size]="14"></svg><span>Скачать</span></a>
+                      <button class="btn btn-outline btn-sm" (click)="copy(sharedFileLinks()[file.name], 'share-'+file.name)" title="Скопировать ссылку"><svg lucideCopy [size]="14"></svg></button>
+                    } @else {
+                      <button class="btn btn-outline btn-sm" (click)="shareTaskFile(file.name)"><svg lucideCopy [size]="14"></svg><span>Ссылка</span></button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </section>
+        }
 
         <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()">
           @if(!current()?.messages?.length){

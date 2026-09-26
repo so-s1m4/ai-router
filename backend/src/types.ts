@@ -5,7 +5,7 @@ export type Model = { id: string; label: string; reasoning?: ReasoningEffort[]; 
 export type AIEventType = 'started' | 'status' | 'delta' | 'tool' | 'fallback' | 'checkpoint' | 'handoff_started' | 'handoff_ready' | 'usage' | 'completed' | 'error';
 export interface AIEvent { id: string; sessionId: string; runId: string; at: string; type: AIEventType; provider?: ProviderId; message?: string; text?: string; data?: Record<string, unknown>; }
 export interface Message { id: string; role: 'user' | 'assistant'; text: string; at: string; provider?: ProviderId; }
-export interface ChatSession { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[]; projectId?: string; }
+export interface ChatSession { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[]; projectId?: string; runnerId?: string; }
 
 export const DEFAULT_CODEX_MODELS: Model[] = [
   { id: 'default', label: 'По умолчанию Codex' },
