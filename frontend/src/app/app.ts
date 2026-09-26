@@ -4,7 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import { 
   LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, LucideChevronDown, 
-  LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideCopy, LucideCpu, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideMic, LucideMicOff,
   LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
   LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX, LucideZap 
 } from '@lucide/angular';
@@ -59,8 +60,8 @@ type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:strin
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, 
-    LucideChevronDown, LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
-    LucideMessageSquare, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
+    LucideChevronDown, LucideCopy, LucideCpu, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
+    LucideMessageSquare, LucideMic, LucideMicOff, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
     LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX, 
     LucideZap, ManagerPanel, MarkdownPipe
   ],
@@ -69,9 +70,10 @@ type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:strin
 })
 export class App implements OnInit,OnDestroy {
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
-  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'connections'|'runners'>('chat');
+  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'>('chat');
   mobileMenu=signal(false);
   managedRunner=signal<Runner|null>(null);
+  modelBlacklist=signal<string[]>([]);
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); previews=signal<Preview[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
   draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default'; runMode:'chat'|'task'='chat';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
@@ -80,33 +82,21 @@ export class App implements OnInit,OnDestroy {
   private clock?:ReturnType<typeof setInterval>;
   copiedId=signal<string>('');
 
+  isRecording = signal(false);
+  speechSupported = signal(false);
+  voiceLang = signal<'ru-RU' | 'en-US'>('ru-RU');
+  private recognition: any = null;
+  private recordingBaseText = '';
+  @ViewChild('composerTextarea') composerTextareaRef?: ElementRef<HTMLTextAreaElement>;
+
   userScrolledUp = signal(false);
   showScrollBottom = signal(false);
   private chatScrollArea?: ElementRef<HTMLDivElement>;
   private scrollRaf?: number;
-  private touchStartY = 0;
-
   @ViewChild('chatScrollArea') set chatScrollAreaRef(ref: ElementRef<HTMLDivElement> | undefined) {
     this.chatScrollArea = ref;
     if (ref) {
       this.scrollToBottom(true, 'auto');
-    }
-  }
-
-  onTouchStart(event: TouchEvent) {
-    if (event.touches.length === 1) {
-      this.touchStartY = event.touches[0].clientY;
-    }
-  }
-
-  onTouchMove(event: TouchEvent) {
-    if (event.touches.length === 1) {
-      const currentY = event.touches[0].clientY;
-      // Dragging finger downwards (currentY > touchStartY) scrolls the view UP
-      if (currentY - this.touchStartY > 8) {
-        this.userScrolledUp.set(true);
-        this.showScrollBottom.set(true);
-      }
     }
   }
 
@@ -169,6 +159,7 @@ export class App implements OnInit,OnDestroy {
     const pId=this.current()?.projectId;
     const project=pId?this.projects().find(p=>p.id===pId):null;
     const scoped=project?allAccounts.filter(a=>a.runnerId===project.runnerId):allAccounts;
+    const blacklist=new Set(this.modelBlacklist());
 
     if(service==='gemini'){
       const accModels=scoped.filter(a=>a.provider==='antigravity').flatMap(a=>a.models||[]);
@@ -176,7 +167,7 @@ export class App implements OnInit,OnDestroy {
       for(const m of DEFAULT_GEMINI_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
       map.set('default',{id:'default',label:'По умолчанию Gemini'});
-      return [...map.values()];
+      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
     }
 
     if(service==='codex'){
@@ -185,7 +176,7 @@ export class App implements OnInit,OnDestroy {
       for(const m of DEFAULT_CODEX_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
       map.set('default',{id:'default',label:'По умолчанию Codex'});
-      return [...map.values()];
+      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
     }
 
     const map=new Map<string,Model>();
@@ -198,8 +189,104 @@ export class App implements OnInit,OnDestroy {
     for(const a of scoped.filter(x=>x.provider==='codex')){
       for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · Codex`});
     }
+    return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+  });
+
+  allGeminiModels=computed(()=>{
+    const accModels=this.accounts().filter(a=>a.provider==='antigravity').flatMap(a=>a.models||[]);
+    const map=new Map<string,Model>();
+    for(const m of DEFAULT_GEMINI_MODELS)if(m.id!=='default')map.set(m.id,{...m});
+    for(const m of accModels)if(m.id!=='default'&&!map.has(m.id))map.set(m.id,m);
     return [...map.values()];
   });
+
+  allCodexModels=computed(()=>{
+    const accModels=this.accounts().filter(a=>a.provider==='codex').flatMap(a=>a.models||[]);
+    const map=new Map<string,Model>();
+    for(const m of DEFAULT_CODEX_MODELS)if(m.id!=='default')map.set(m.id,{...m});
+    for(const m of accModels)if(m.id!=='default'&&!map.has(m.id))map.set(m.id,m);
+    return [...map.values()];
+  });
+
+  disabledModelsCount=computed(()=>this.modelBlacklist().length);
+
+  geminiEnabledCount=computed(()=>{
+    const blacklist=new Set(this.modelBlacklist());
+    return this.allGeminiModels().filter(m=>!blacklist.has(m.id)).length;
+  });
+
+  codexEnabledCount=computed(()=>{
+    const blacklist=new Set(this.modelBlacklist());
+    return this.allCodexModels().filter(m=>!blacklist.has(m.id)).length;
+  });
+
+  isModelEnabled(id:string):boolean{
+    return !this.modelBlacklist().includes(id);
+  }
+
+  async toggleModel(id:string,enable?:boolean){
+    const current=this.modelBlacklist();
+    const isCurrentlyEnabled=!current.includes(id);
+    const shouldEnable=enable!==undefined?enable:!isCurrentlyEnabled;
+    let updated:string[];
+    if(shouldEnable){
+      updated=current.filter(mId=>mId!==id);
+    }else{
+      updated=current.includes(id)?current:[...current,id];
+    }
+    await this.saveBlacklist(updated);
+  }
+
+  async enableAllForProvider(provider:ProviderId){
+    const models=provider==='antigravity'?this.allGeminiModels():this.allCodexModels();
+    const idsToRemove=new Set(models.map(m=>m.id));
+    const updated=this.modelBlacklist().filter(id=>!idsToRemove.has(id));
+    await this.saveBlacklist(updated);
+  }
+
+  async disableAllForProvider(provider:ProviderId){
+    const models=provider==='antigravity'?this.allGeminiModels():this.allCodexModels();
+    const idsToAdd=models.map(m=>m.id);
+    const updated=Array.from(new Set([...this.modelBlacklist(),...idsToAdd]));
+    await this.saveBlacklist(updated);
+  }
+
+  async saveBlacklist(list:string[]){
+    const previous=this.modelBlacklist();
+    this.modelBlacklist.set(list);
+    if(list.includes(this.selectedModel)){
+      this.selectedModel='default';
+      this.validateReasoning();
+    }
+    try{
+      const res=await this.api<{ok:boolean;blacklist:string[]}>('/user/model-blacklist',{
+        method:'PUT',
+        body:JSON.stringify({blacklist:list})
+      });
+      if(res?.blacklist){
+        this.modelBlacklist.set(res.blacklist);
+      }
+    }catch(e){
+      this.modelBlacklist.set(previous);
+      this.error.set((e as Error).message);
+    }
+  }
+
+  async refreshProviders(){
+    try{
+      const [res]=await Promise.all([
+        this.api<{blacklist:string[]}>('/user/model-blacklist'),
+        this.refreshAccounts()
+      ]);
+      if(res?.blacklist){
+        this.modelBlacklist.set(res.blacklist);
+      }
+      this.notice.set('Список моделей обновлен');
+    }catch(e){
+      if(this.page()==='providers')this.error.set((e as Error).message);
+    }
+  }
+
   reasoningOptions=computed(()=>{
     const currentModel=this.models().find(m=>m.id===this.selectedModel);
     const options=currentModel?.reasoning||[];
@@ -207,9 +294,17 @@ export class App implements OnInit,OnDestroy {
   });
   ngOnInit(){
     this.clock=setInterval(()=>this.now.set(Date.now()),1000);
+    if(typeof window !== 'undefined'){
+      const hasSpeech = Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+      this.speechSupported.set(hasSpeech);
+      if(typeof navigator !== 'undefined' && navigator.language){
+        this.voiceLang.set(navigator.language.toLowerCase().startsWith('en') ? 'en-US' : 'ru-RU');
+      }
+    }
     this.restore();
   }
   ngOnDestroy(){
+    this.stopVoiceInput();
     this.socket?.disconnect();
     if(this.clock)clearInterval(this.clock);
     if(this.scrollRaf)cancelAnimationFrame(this.scrollRaf);
@@ -227,19 +322,19 @@ export class App implements OnInit,OnDestroy {
     try{await this.load();}catch(e){this.error.set((e as Error).message);}
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){await this.api('/logout',{method:'POST'});this.socket?.disconnect();this.managedRunner.set(null);this.loggedIn.set(false);this.current.set(null);}
+  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'});this.socket?.disconnect();this.managedRunner.set(null);this.loggedIn.set(false);this.current.set(null);}
   async load(){const [accounts,runners,projects,sessions]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions')]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
-  async newSession(){this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
-  async openSession(id:string){this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
+  async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
+  async openSession(id:string){this.stopVoiceInput();this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
   chatsFor(projectId?:string){return this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId);}
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
   async uploadFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0],projectId=this.current()?.projectId;if(input)input.value='';if(!file)return;if(!projectId){this.error.set('Сначала откройте чат внутри проекта');return;}if(file.size>20*1024*1024){this.error.set('Файл больше 20 МБ');return;}this.uploading.set(true);this.error.set('');try{const response=await fetch(`/api/projects/${projectId}/files`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file,credentials:'same-origin'});const body=await response.json() as {name?:string;size?:number;error?:string};if(!response.ok)throw new Error(body.error||'Не удалось загрузить файл');this.notice.set(`Файл «${body.name||file.name}» добавлен в папку проекта`);}catch(error){this.error.set(error instanceof Error?error.message:'Не удалось загрузить файл');}finally{this.uploading.set(false);}}
-  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')setTimeout(()=>this.scrollToBottom(true,'auto'),50);}
+  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')setTimeout(()=>this.scrollToBottom(true,'auto'),50);}
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
@@ -248,7 +343,7 @@ export class App implements OnInit,OnDestroy {
   syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){if(this.runId())this.resetRun();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();}}
   async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);this.requestScrollToBottom();}
-  send(){const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
+  send(){if(this.isRecording())this.stopVoiceInput();const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
     this.scrollToBottom(true,'smooth');
     this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
   }
@@ -308,5 +403,128 @@ export class App implements OnInit,OnDestroy {
     }).catch(() => {
       this.notice.set('Не удалось скопировать код');
     });
+  }
+
+  adjustTextareaHeight() {
+    const el = this.composerTextareaRef?.nativeElement;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+
+  toggleVoiceLang() {
+    const nextLang = this.voiceLang() === 'ru-RU' ? 'en-US' : 'ru-RU';
+    this.voiceLang.set(nextLang);
+    if (this.isRecording()) {
+      this.stopVoiceInput();
+      setTimeout(() => this.startVoiceInput(), 100);
+    }
+  }
+
+  toggleVoiceInput() {
+    if (this.isRecording()) {
+      this.stopVoiceInput();
+    } else {
+      this.startVoiceInput();
+    }
+  }
+
+  startVoiceInput() {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      this.error.set('Голосовой ввод не поддерживается вашим браузером. Рекомендуется Chrome, Edge или Safari.');
+      return;
+    }
+
+    try {
+      if (this.recognition) {
+        try { this.recognition.abort(); } catch {}
+        this.recognition = null;
+      }
+
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = this.voiceLang();
+      rec.maxAlternatives = 1;
+
+      this.recordingBaseText = this.draft;
+      this.error.set('');
+
+      rec.onstart = () => {
+        this.isRecording.set(true);
+      };
+
+      rec.onresult = (event: any) => {
+        let interim = '';
+        let accumulatedFinal = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          const result = event.results[i];
+          const text = result[0]?.transcript || '';
+          if (result.isFinal) {
+            accumulatedFinal += text;
+          } else {
+            interim += text;
+          }
+        }
+
+        const combinedSpeech = (accumulatedFinal + interim).trimStart();
+        if (this.recordingBaseText) {
+          const needsSpace = !this.recordingBaseText.endsWith(' ') && !this.recordingBaseText.endsWith('\n');
+          this.draft = this.recordingBaseText + (needsSpace ? ' ' : '') + combinedSpeech;
+        } else {
+          this.draft = combinedSpeech;
+        }
+        this.adjustTextareaHeight();
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn('SpeechRecognition error:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          this.error.set('Доступ к микрофону запрещен. Разрешите доступ к микрофону в настройках браузера.');
+          this.stopVoiceInput();
+        } else if (event.error === 'no-speech') {
+          // No speech detected, quietly ignore
+        } else if (event.error === 'audio-capture') {
+          this.error.set('Микрофон не обнаружен. Проверьте подключение аудиоустройств.');
+          this.stopVoiceInput();
+        } else if (event.error === 'network') {
+          this.error.set('Сетевая ошибка службы распознавания речи.');
+          this.stopVoiceInput();
+        } else if (event.error !== 'aborted') {
+          this.error.set(`Ошибка голосового ввода: ${event.error}`);
+          this.stopVoiceInput();
+        }
+      };
+
+      rec.onend = () => {
+        this.isRecording.set(false);
+        this.recordingBaseText = '';
+        this.draft = this.draft.trim();
+        this.adjustTextareaHeight();
+      };
+
+      this.recognition = rec;
+      rec.start();
+    } catch (err: any) {
+      console.error('Failed to start speech recognition:', err);
+      this.isRecording.set(false);
+      this.error.set('Не удалось активировать микрофон: ' + (err?.message || err));
+    }
+  }
+
+  stopVoiceInput() {
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch {}
+      this.recognition = null;
+    }
+    this.isRecording.set(false);
+    this.recordingBaseText = '';
+    this.draft = this.draft.trim();
+    this.adjustTextareaHeight();
   }
 }

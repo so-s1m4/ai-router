@@ -38,3 +38,22 @@ export async function createSession(userId: string,projectId?:string): Promise<C
 }
 export async function getSession(userId: string, id: string): Promise<ChatSession | null> { try { return JSON.parse(await readFile(sessionFile(userId,id),'utf8')) as ChatSession; } catch { return null; } }
 export async function saveSession(userId: string, session: ChatSession) { const file=sessionFile(userId,session.id); await mkdir(path.dirname(file),{recursive:true,mode:0o700}); await writeFile(file+'.tmp',JSON.stringify(session,null,2),{mode:0o600}); await rename(file+'.tmp',file); }
+const blacklistFile = (userId: string) => path.join(userDir(userId), 'model-blacklist.json');
+export async function getUserModelBlacklist(userId: string): Promise<string[]> {
+  await prepareUser(userId);
+  try {
+    const raw = await readFile(blacklistFile(userId), 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+export async function setUserModelBlacklist(userId: string, blacklist: string[]): Promise<string[]> {
+  await prepareUser(userId);
+  const clean = Array.from(new Set(blacklist.filter((id): id is string => typeof id === 'string' && id.trim().length > 0 && id.length <= 100)));
+  const file = blacklistFile(userId);
+  await writeFile(file + '.tmp', JSON.stringify(clean, null, 2), { mode: 0o600 });
+  await rename(file + '.tmp', file);
+  return clean;
+}

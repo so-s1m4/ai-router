@@ -175,7 +175,7 @@
           </div>
         </header>
 
-        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onWheel($event)" (touchstart)="onTouchStart($event)" (touchmove)="onTouchMove($event)">
+        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onWheel($event)">
           @if(!current()?.messages?.length){
             <div class="welcome-screen">
               <div class="welcome-badge">
@@ -297,6 +297,29 @@
           }
 
           <div class="composer-card">
+            @if(isRecording()){
+              <div class="voice-status-bar" role="status" aria-live="polite">
+                <div class="voice-status-info">
+                  <span class="voice-live-dot" aria-hidden="true"></span>
+                  <span class="voice-status-text">Идет голосовой ввод... Говорите</span>
+                  <div class="voice-soundwaves" aria-hidden="true">
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                    <span class="wave-bar"></span>
+                  </div>
+                </div>
+                <div class="voice-status-actions">
+                  <button type="button" class="voice-lang-pill" (click)="toggleVoiceLang()" [title]="'Сменить язык: ' + (voiceLang() === 'ru-RU' ? 'Русский' : 'English')">
+                    {{ voiceLang() === 'ru-RU' ? 'RU' : 'EN' }}
+                  </button>
+                  <button type="button" class="voice-stop-btn" (click)="stopVoiceInput()" title="Завершить голосовой ввод">
+                    Готово
+                  </button>
+                </div>
+              </div>
+            }
+
             <!-- CHIPS / CONFIG BAR -->
             <div class="composer-chips-bar">
               <!-- SERVICE PILL -->
@@ -364,12 +387,29 @@
               </button>
 
               <textarea 
+                #composerTextarea
                 class="composer-textarea"
                 [(ngModel)]="draft" 
-                placeholder="Сообщение или задача..."
+                (input)="adjustTextareaHeight()"
+                [placeholder]="isRecording() ? 'Слушаю... Говорите в микрофон' : 'Сообщение или задача...'"
                 rows="1"
                 (keydown.control.enter)="send()" 
                 (keydown.meta.enter)="send()"></textarea>
+
+              <button 
+                type="button" 
+                class="btn-mic-icon" 
+                [class.recording]="isRecording()" 
+                (click)="toggleVoiceInput()" 
+                [attr.aria-label]="isRecording() ? 'Остановить голосовой ввод' : 'Включить голосовой ввод'"
+                [title]="isRecording() ? 'Остановить голосовой ввод (кликните для завершения)' : 'Голосовой ввод'">
+                @if(isRecording()){
+                  <span class="mic-pulse-ring" aria-hidden="true"></span>
+                  <svg lucideMicOff [size]="18"></svg>
+                } @else {
+                  <svg lucideMic [size]="18"></svg>
+                }
+              </button>
 
               <div class="composer-action-btn">
                 @if(running()){
