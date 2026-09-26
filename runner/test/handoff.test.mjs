@@ -46,6 +46,10 @@ process.stdin.on('data', chunk => {
       turns++;
       const turnId = 'turn_' + turns;
       send({ id: message.id, result: { turn: { id: turnId } } });
+      if (message.params.input[0].text === 'LIMIT') {
+        send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'failed', error: { message: 'usage limit reached', codexErrorInfo: { type: 'UsageLimitExceeded' } } } } });
+        continue;
+      }
       send({ method: 'item/agentMessage/delta', params: { threadId: 'thr_test', turnId, delta: 'answer ' + turns } });
       send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'completed' } } });
     }
@@ -70,6 +74,7 @@ process.stdin.on('data', chunk => {
       assert.equal(first.text, 'answer 1');
       assert.equal(second.text, 'answer 2');
       assert.equal(events.filter(event => event.type === 'checkpoint').length, 2);
+      await assert.rejects(runCodexAppServer({ ...job, prompt: 'LIMIT' }, home, cwd, new AbortController().signal, () => {}, first.threadId), error => error.code === 'rate_limit');
     } finally { closeCodexAppServers(); }
   } finally {
     if (prior === undefined) delete process.env.CODEX_BIN; else process.env.CODEX_BIN = prior;
