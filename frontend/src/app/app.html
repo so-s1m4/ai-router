@@ -175,7 +175,7 @@
           </div>
         </header>
 
-        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()">
+        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onUserScrollInteraction()" (touchstart)="onUserScrollInteraction()">
           @if(!current()?.messages?.length){
             <div class="welcome-screen">
               <div class="welcome-badge">

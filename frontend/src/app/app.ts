@@ -87,7 +87,6 @@ export class App implements OnInit,OnDestroy {
   private autoScrollTimeout?: ReturnType<typeof setTimeout>;
   private scrollRaf?: number;
   private resizeObserver?: ResizeObserver;
-  private mutationObserver?: MutationObserver;
   private onViewportResize = () => {
     if (!this.userScrolledUp()) this.requestScrollToBottom();
   };
@@ -102,13 +101,23 @@ export class App implements OnInit,OnDestroy {
     }
   }
 
+  onUserScrollInteraction() {
+    if (this.isAutoScrolling) {
+      this.isAutoScrolling = false;
+      if (this.autoScrollTimeout) {
+        clearTimeout(this.autoScrollTimeout);
+        this.autoScrollTimeout = undefined;
+      }
+    }
+  }
+
   onChatScroll() {
     if (this.isAutoScrolling) return;
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
 
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isUp = distanceFromBottom > 100;
+    const distanceFromBottom = Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+    const isUp = distanceFromBottom > 30;
     this.userScrolledUp.set(isUp);
     this.showScrollBottom.set(isUp);
   }
@@ -121,7 +130,7 @@ export class App implements OnInit,OnDestroy {
       if (this.autoScrollTimeout) clearTimeout(this.autoScrollTimeout);
       this.autoScrollTimeout = setTimeout(() => {
         this.isAutoScrolling = false;
-      }, behavior === 'smooth' ? 600 : 80);
+      }, behavior === 'smooth' ? 300 : 50);
     }
     if (!force && this.userScrolledUp()) {
       return;
@@ -157,24 +166,10 @@ export class App implements OnInit,OnDestroy {
           this.requestScrollToBottom();
         }
       });
-      this.resizeObserver.observe(el);
       const feed = el.querySelector('.message-feed');
       if (feed) {
         this.resizeObserver.observe(feed);
       }
-    }
-
-    if (typeof MutationObserver !== 'undefined') {
-      this.mutationObserver = new MutationObserver(() => {
-        if (!this.userScrolledUp()) {
-          this.requestScrollToBottom();
-        }
-      });
-      this.mutationObserver.observe(el, {
-        childList: true,
-        subtree: true,
-        characterData: true
-      });
     }
   }
 
@@ -182,10 +177,6 @@ export class App implements OnInit,OnDestroy {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = undefined;
-    }
-    if (this.mutationObserver) {
-      this.mutationObserver.disconnect();
-      this.mutationObserver = undefined;
     }
     if (this.scrollRaf) {
       cancelAnimationFrame(this.scrollRaf);
