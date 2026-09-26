@@ -840,14 +840,293 @@
                 <code>{{pairing()!.code}}</code>
               </div>
 
+              <div class="pairing-actions">
+                <button class="btn btn-primary btn-sm" (click)="copy(quickStartCommand(), 'pairing-quick-cmd')">
+                  @if(copiedId() === 'pairing-quick-cmd'){
+                    <svg lucideCheck [size]="15"></svg>
+                    <span>Команда скопирована!</span>
+                  } @else {
+                    <svg lucideZap [size]="15"></svg>
+                    <span>Скопировать команду быстрого старта</span>
+                  }
+                </button>
+              </div>
+
               <div class="pairing-steps">
-                <p>1. В папке проекта <code>runner/</code> скопируйте <code>.env.example</code> в <code>.env</code></p>
-                <p>2. Укажите URL веб-сервера и вставьте этот код привязки в <code>RUNNER_PAIRING_CODE</code></p>
-                <p>3. Запустите стек runner командой:</p>
-                <code class="code-snippet">docker compose -f runner/compose.yaml up --build -d</code>
+                <p>Выполните готовую команду быстрого запуска в терминале или настройте вручную по инструкции ниже.</p>
+                <code class="code-snippet">{{quickStartCommand()}}</code>
               </div>
             </div>
           }
+
+          <!-- INSTRUCTIONS CARD -->
+          <div class="card instruction-card">
+            <div class="instruction-header">
+              <div>
+                <span class="section-tag">РУКОВОДСТВО ПО ЗАПУСКУ</span>
+                <h3>Как запустить исполнитель (Runner)</h3>
+                <p>Выберите удобный способ запуска: быстрый старт в одну команду или подробная пошаговая инструкция через .env</p>
+              </div>
+
+              <div class="instruction-tabs">
+                <button type="button" class="instruction-tab-btn" [class.active]="runnerInstructionTab() === 'quick'" (click)="runnerInstructionTab.set('quick')">
+                  <svg lucideZap [size]="15"></svg>
+                  <span>Быстрый старт (1 команда)</span>
+                </button>
+                <button type="button" class="instruction-tab-btn" [class.active]="runnerInstructionTab() === 'detailed'" (click)="runnerInstructionTab.set('detailed')">
+                  <svg lucideBookOpen [size]="15"></svg>
+                  <span>Подробная инструкция</span>
+                </button>
+              </div>
+            </div>
+
+            @if(runnerInstructionTab() === 'quick'){
+              <!-- QUICK START -->
+              <div class="instruction-body">
+                <div class="instruction-lead">
+                  Выполните одну команду в терминале на вашем сервере или компьютере с установленным <strong>Docker</strong>.
+                  Команда автоматически загрузит файлы runner, передаст параметры подключения, соберёт контейнер и запустит его в фоне.
+                </div>
+
+                @if(pairing()){
+                  <div class="instruction-callout instruction-callout-success">
+                    <svg lucideCheck [size]="16"></svg>
+                    <span>Код привязки <code>{{pairing()!.code}}</code> и адрес сервера автоматически добавлены в команду ниже!</span>
+                  </div>
+                } @else {
+                  <div class="instruction-callout instruction-callout-info">
+                    <svg lucideInfo [size]="16"></svg>
+                    <span>Сгенерируйте код привязки в форме выше, чтобы он подставился в команду автоматически, или замените <code>&lt;ВАШ_КОД_ПРИВЯЗКИ&gt;</code> вручную.</span>
+                  </div>
+                }
+
+                <div class="command-box">
+                  <div class="command-box-header">
+                    <div class="command-box-title">
+                      <svg lucideTerminal [size]="15"></svg>
+                      <span>1. Запуск с нуля (скачать и запустить)</span>
+                    </div>
+                    <button class="btn btn-primary btn-sm" (click)="copy(quickStartCommand(), 'quick-cmd')">
+                      @if(copiedId() === 'quick-cmd'){
+                        <svg lucideCheck [size]="14"></svg>
+                        <span>Скопировано!</span>
+                      } @else {
+                        <svg lucideCopy [size]="14"></svg>
+                        <span>Скопировать команду</span>
+                      }
+                    </button>
+                  </div>
+                  <pre class="command-code"><code>{{quickStartCommand()}}</code></pre>
+                </div>
+
+                <div class="command-box">
+                  <div class="command-box-header">
+                    <div class="command-box-title">
+                      <svg lucideTerminal [size]="15"></svg>
+                      <span>2. Если репозиторий уже склонирован на устройстве</span>
+                    </div>
+                    <button class="btn btn-outline btn-sm" (click)="copy(quickStartExistingCommand(), 'quick-exist-cmd')">
+                      @if(copiedId() === 'quick-exist-cmd'){
+                        <svg lucideCheck [size]="14"></svg>
+                        <span>Скопировано!</span>
+                      } @else {
+                        <svg lucideCopy [size]="14"></svg>
+                        <span>Скопировать команду</span>
+                      }
+                    </button>
+                  </div>
+                  <pre class="command-code"><code>{{quickStartExistingCommand()}}</code></pre>
+                </div>
+
+                <div class="instruction-tips">
+                  <div class="tip-item">
+                    <strong>Проверка логов и статуса:</strong>
+                    <code>docker compose -f ai-router/runner/compose.yaml logs -f runner</code>
+                    <p>Дождитесь строки <code>Runner connected</code>. После этого статус на сайте сменится на «В сети».</p>
+                  </div>
+                  <div class="tip-item">
+                    <strong>Включение CLI провайдеров сразу:</strong>
+                    <p>Чтобы сразу установить CLI моделей при сборке, добавьте перед <code>docker compose</code>: <code>INSTALL_CODEX_CLI=true INSTALL_AGY_CLI=true</code>.</p>
+                  </div>
+                </div>
+              </div>
+            } @else {
+              <!-- DETAILED STEP-BY-STEP -->
+              <div class="instruction-body">
+                <div class="instruction-lead">
+                  Подробное пошаговое руководство по ручному развёртыванию runner через Docker Compose с настройкой файла переменных окружения.
+                </div>
+
+                <div class="steps-list">
+                  <div class="step-card">
+                    <div class="step-badge">1</div>
+                    <div class="step-content">
+                      <h4>Сгенерируйте одноразовый код привязки</h4>
+                      <p>В блоке «Добавить нового исполнителя» выше укажите имя (например, <em>Сервер-1</em> или <em>Домашний ПК</em>) и нажмите <strong>«Получить код привязки»</strong>. Код действует 10 минут и нужен один раз при первом старте.</p>
+                      @if(pairing()){
+                        <div class="active-code-inline">
+                          Текущий код: <code>{{pairing()!.code}}</code> (действителен до {{pairing()!.expiresAt | date:'HH:mm'}})
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="step-card">
+                    <div class="step-badge">2</div>
+                    <div class="step-content">
+                      <h4>Склонируйте репозиторий и перейдите в папку runner</h4>
+                      <p>На компьютере или сервере с Docker откройте терминал и выполните:</p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>git clone https://github.com/so-s1m4/ai-router.git
+cd ai-router/runner</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('git clone https://github.com/so-s1m4/ai-router.git\ncd ai-router/runner', 'step2-code')">
+                          @if(copiedId() === 'step2-code'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="step-card">
+                    <div class="step-badge">3</div>
+                    <div class="step-content">
+                      <h4>Создайте и настройте файл .env</h4>
+                      <p>Скопируйте шаблон переменных окружения:</p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>cp .env.example .env</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('cp .env.example .env', 'step3-code')">
+                          @if(copiedId() === 'step3-code'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                      <p>Укажите следующие параметры в <code>runner/.env</code>:</p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code># URL вашего сервера AI Router
+ROUTER_SERVER_URL={{serverOrigin()}}
+
+# Код привязки из шага 1 (требуется один раз)
+ROUTER_PAIRING_CODE={{pairingCodePlaceholder()}}
+
+# Установка официальных CLI провайдеров (опционально)
+INSTALL_CODEX_CLI=true
+INSTALL_AGY_CLI=true</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('ROUTER_SERVER_URL=' + serverOrigin() + '\nROUTER_PAIRING_CODE=' + pairingCodePlaceholder() + '\nINSTALL_CODEX_CLI=true\nINSTALL_AGY_CLI=true', 'step3-env')">
+                          @if(copiedId() === 'step3-env'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                      <p class="step-hint">💡 При работе в локальной тестовой сети без HTTPS укажите дополнительно: <code>ROUTER_ALLOW_INSECURE=true</code>.</p>
+                    </div>
+                  </div>
+
+                  <div class="step-card">
+                    <div class="step-badge">4</div>
+                    <div class="step-content">
+                      <h4>Соберите и запустите контейнер</h4>
+                      <p>Запустите сборку и фоновый запуск контейнера runner:</p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>docker compose up --build -d</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose up --build -d', 'step4-code')">
+                          @if(copiedId() === 'step4-code'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                      <p>Проверьте логи контейнера:</p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>docker compose logs -f runner</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose logs -f runner', 'step4-logs')">
+                          @if(copiedId() === 'step4-logs'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                      <p>Когда появится запись <code>Runner connected</code>, контейнер успешно привязан. На этой вкладке статус переключится на <strong style="color:var(--success)">«В сети»</strong>. Секретный токен сохранён в локальном Docker volume <code>runner_data</code>, значение кода в <code>.env</code> можно очистить.</p>
+                    </div>
+                  </div>
+
+                  <div class="step-card">
+                    <div class="step-badge">5</div>
+                    <div class="step-content">
+                      <h4>Авторизуйте аккаунты провайдеров</h4>
+                      <p>Перейдите на вкладку <strong>«Подключения»</strong>, добавьте нужный аккаунт и назначьте ему запущенный исполнитель. Затем выполните команду входа на вашем устройстве:</p>
+                      <p><strong>Для OpenAI Codex:</strong></p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>docker compose exec runner /app/scripts/provider-login.sh codex &lt;ID_АККАУНТА&gt;</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose exec runner /app/scripts/provider-login.sh codex <ID_АККАУНТА>', 'step5-codex')">
+                          @if(copiedId() === 'step5-codex'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                      <p class="step-hint">Откроется ссылка для входа через браузер по одноразовому коду (Device Auth).</p>
+
+                      <p><strong>Для Google Antigravity:</strong></p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>docker compose exec runner /app/scripts/provider-login.sh antigravity &lt;ID_АККАУНТА&gt;</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose exec runner /app/scripts/provider-login.sh antigravity <ID_АККАУНТА>', 'step5-agy')">
+                          @if(copiedId() === 'step5-agy'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="step-card">
+                    <div class="step-badge">6</div>
+                    <div class="step-content">
+                      <h4>(Опционально) Веб-панель управления Runner Manager</h4>
+                      <p>Для управления контейнерами Docker, ключами SSH для GitHub и MCP-серверами прямо из веб-интерфейса сайта запустите сервис управления:</p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>docker compose --profile management up --build -d</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose --profile management up --build -d', 'step6-mgr')">
+                          @if(copiedId() === 'step6-mgr'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
 
           <div class="helper-box">
             <svg lucideInfo [size]="20" class="helper-icon"></svg>

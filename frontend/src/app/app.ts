@@ -3,11 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import { 
-  LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, LucideChevronDown, 
+  LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, LucideChevronDown, 
   LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff,
   LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
-  LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideUploadCloud, LucideX, LucideZap 
+  LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, LucideZap 
 } from '@lucide/angular';
 import { ManagerPanel } from './manager-panel';
 import { MarkdownPipe } from './markdown.pipe';
@@ -59,10 +59,10 @@ type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:strin
   selector:'app-root',
   standalone:true,
   imports:[
-    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, 
+    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, 
     LucideChevronDown, LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideMic, LucideMicOff, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
-    LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideUploadCloud, LucideX, 
+    LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, 
     LucideZap, ManagerPanel, MarkdownPipe
   ],
   templateUrl:'./app.html',
@@ -696,6 +696,27 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
   async addAccount(){this.error.set('');try{await this.api('/accounts',{method:'POST',body:JSON.stringify({provider:this.accountProvider,name:this.accountName,runnerId:this.selectedRunner})});this.accountName='';await this.refreshAccounts();this.notice.set('Аккаунт добавлен. Выполните команду входа на своём контейнере.');}catch(e){this.error.set((e as Error).message);}}
   async assignAccount(a:Account,runnerId:string){try{await this.api('/accounts/'+a.id,{method:'PATCH',body:JSON.stringify({runnerId})});await this.refreshAccounts();}catch(e){this.error.set((e as Error).message);}}
+  runnerInstructionTab = signal<'quick' | 'detailed'>('quick');
+  serverOrigin(): string {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return 'https://ai.s1m4.com';
+  }
+  pairingCodePlaceholder(): string {
+    return this.pairing()?.code || '<ВАШ_КОД_ПРИВЯЗКИ>';
+  }
+  quickStartCommand(): string {
+    const url = this.serverOrigin();
+    const code = this.pairingCodePlaceholder();
+    return `git clone https://github.com/so-s1m4/ai-router.git && cd ai-router/runner && ROUTER_SERVER_URL="${url}" ROUTER_PAIRING_CODE="${code}" docker compose up --build -d`;
+  }
+  quickStartExistingCommand(): string {
+    const url = this.serverOrigin();
+    const code = this.pairingCodePlaceholder();
+    return `cd ai-router/runner && ROUTER_SERVER_URL="${url}" ROUTER_PAIRING_CODE="${code}" docker compose up --build -d`;
+  }
+
   async createPairing(){this.error.set('');try{this.pairing.set(await this.api<Pairing>('/runners/pairing',{method:'POST',body:JSON.stringify({name:this.runnerName})}));}catch(e){this.error.set((e as Error).message);}}
   async revokeRunner(r:Runner){if(!confirm(`Отключить ${r.name}? Его задачи остановятся.`))return;try{await this.api('/runners/'+r.id,{method:'DELETE'});await this.refreshRunners();}catch(e){this.error.set((e as Error).message);}}
   loginCommand(a:Account){return `docker compose -f runner/compose.yaml exec runner /app/scripts/provider-login.sh ${a.provider} ${a.id}`;}
