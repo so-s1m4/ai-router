@@ -83,60 +83,67 @@ export class App implements OnInit,OnDestroy {
   userScrolledUp = signal(false);
   showScrollBottom = signal(false);
   private chatScrollArea?: ElementRef<HTMLDivElement>;
-  private isAutoScrolling = false;
-  private autoScrollTimeout?: ReturnType<typeof setTimeout>;
   private scrollRaf?: number;
-  private resizeObserver?: ResizeObserver;
-  private onViewportResize = () => {
-    if (!this.userScrolledUp()) this.requestScrollToBottom();
-  };
+  private touchStartY = 0;
 
   @ViewChild('chatScrollArea') set chatScrollAreaRef(ref: ElementRef<HTMLDivElement> | undefined) {
     this.chatScrollArea = ref;
     if (ref) {
-      this.setupScrollObserver();
       this.scrollToBottom(true, 'auto');
-    } else {
-      this.cleanupScrollObserver();
     }
   }
 
-  onUserScrollInteraction() {
-    if (this.isAutoScrolling) {
-      this.isAutoScrolling = false;
-      if (this.autoScrollTimeout) {
-        clearTimeout(this.autoScrollTimeout);
-        this.autoScrollTimeout = undefined;
+  onTouchStart(event: TouchEvent) {
+    if (event.touches.length === 1) {
+      this.touchStartY = event.touches[0].clientY;
+    }
+  }
+
+  onTouchMove(event: TouchEvent) {
+    if (event.touches.length === 1) {
+      const currentY = event.touches[0].clientY;
+      // Dragging finger downwards (currentY > touchStartY) scrolls the view UP
+      if (currentY - this.touchStartY > 8) {
+        this.userScrolledUp.set(true);
+        this.showScrollBottom.set(true);
       }
     }
   }
 
+  onWheel(event: WheelEvent) {
+    if (event.deltaY < 0) {
+      // Scrolling UP with wheel or trackpad
+      this.userScrolledUp.set(true);
+      this.showScrollBottom.set(true);
+    }
+  }
+
   onChatScroll() {
-    if (this.isAutoScrolling) return;
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
 
-    const distanceFromBottom = Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
-    const isUp = distanceFromBottom > 30;
-    this.userScrolledUp.set(isUp);
-    this.showScrollBottom.set(isUp);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isAtBottom = distanceFromBottom <= 25;
+    if (isAtBottom) {
+      this.userScrolledUp.set(false);
+      this.showScrollBottom.set(false);
+    } else {
+      this.userScrolledUp.set(true);
+      this.showScrollBottom.set(true);
+    }
   }
 
   scrollToBottom(force = false, behavior: ScrollBehavior = 'auto') {
-    if (force) {
-      this.userScrolledUp.set(false);
-      this.showScrollBottom.set(false);
-      this.isAutoScrolling = true;
-      if (this.autoScrollTimeout) clearTimeout(this.autoScrollTimeout);
-      this.autoScrollTimeout = setTimeout(() => {
-        this.isAutoScrolling = false;
-      }, behavior === 'smooth' ? 300 : 50);
-    }
     if (!force && this.userScrolledUp()) {
       return;
     }
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
+
+    if (force) {
+      this.userScrolledUp.set(false);
+      this.showScrollBottom.set(false);
+    }
 
     if (behavior === 'smooth') {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
@@ -153,35 +160,6 @@ export class App implements OnInit,OnDestroy {
     this.scrollRaf = requestAnimationFrame(() => {
       this.scrollToBottom(force, behavior);
     });
-  }
-
-  private setupScrollObserver() {
-    this.cleanupScrollObserver();
-    const el = this.chatScrollArea?.nativeElement;
-    if (!el) return;
-
-    if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver(() => {
-        if (!this.userScrolledUp()) {
-          this.requestScrollToBottom();
-        }
-      });
-      const feed = el.querySelector('.message-feed');
-      if (feed) {
-        this.resizeObserver.observe(feed);
-      }
-    }
-  }
-
-  private cleanupScrollObserver() {
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect();
-      this.resizeObserver = undefined;
-    }
-    if (this.scrollRaf) {
-      cancelAnimationFrame(this.scrollRaf);
-      this.scrollRaf = undefined;
-    }
   }
 
   currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
@@ -229,19 +207,12 @@ export class App implements OnInit,OnDestroy {
   });
   ngOnInit(){
     this.clock=setInterval(()=>this.now.set(Date.now()),1000);
-    if(typeof window!=='undefined'&&window.visualViewport){
-      window.visualViewport.addEventListener('resize',this.onViewportResize);
-    }
     this.restore();
   }
   ngOnDestroy(){
     this.socket?.disconnect();
     if(this.clock)clearInterval(this.clock);
-    if(typeof window!=='undefined'&&window.visualViewport){
-      window.visualViewport.removeEventListener('resize',this.onViewportResize);
-    }
-    this.cleanupScrollObserver();
-    if(this.autoScrollTimeout)clearTimeout(this.autoScrollTimeout);
+    if(this.scrollRaf)cancelAnimationFrame(this.scrollRaf);
   }
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
   async restore(){
