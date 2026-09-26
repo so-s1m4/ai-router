@@ -68,6 +68,7 @@ export class App implements OnInit,OnDestroy {
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
   providerLabel(id?:ProviderId){return id==='codex'?'Codex':id==='antigravity'?'Antigravity':'';}
   limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
+  windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 ч';if(minutes===10080)return 'Неделя';if(minutes===43200)return 'Месяц';if(minutes&&minutes%60===0)return `${minutes/60} ч`;return 'Окно';}
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';}
