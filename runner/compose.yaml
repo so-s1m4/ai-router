@@ -4,6 +4,7 @@ services:
       context: .
       args:
         INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+        INSTALL_AGY_CLI: ${INSTALL_AGY_CLI:-false}
     environment:
       ROUTER_SERVER_URL: ${ROUTER_SERVER_URL:?Set ROUTER_SERVER_URL}
       ROUTER_PAIRING_CODE: ${ROUTER_PAIRING_CODE:-}

@@ -10,6 +10,14 @@ export HOME="$home"
 if [ "$provider" = codex ]; then
   export CODEX_HOME="$home/.codex"
   mkdir -p "$CODEX_HOME"
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "Codex CLI is not installed in this runner. Rebuild with INSTALL_CODEX_CLI=true." >&2
+    exit 127
+  fi
   exec codex login --device-auth
+fi
+if ! command -v agy >/dev/null 2>&1; then
+  echo "Antigravity CLI is not installed in this runner. Rebuild with INSTALL_AGY_CLI=true." >&2
+  exit 127
 fi
 exec agy

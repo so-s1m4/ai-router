@@ -49,7 +49,7 @@ docker compose --profile local-runner up --build -d
 docker compose exec runner /app/scripts/provider-login.sh codex <account-id>
 ```
 
-Скрипт запускает официальный `codex login --device-auth` с отдельным `CODEX_HOME`. Для каждого аккаунта повторите вход с его ID. Для Antigravity установите официальный `agy` в собственный образ исполнителя и выполните аналогичную команду с `antigravity`. В некоторых средах Antigravity для хранения входа нужен системный keyring; его настройка зависит от устройства. Проверка авторизации происходит при запуске задачи.
+Скрипт запускает официальный `codex login --device-auth` с отдельным `CODEX_HOME`. Для каждого аккаунта повторите вход с его ID. Для Antigravity задайте `INSTALL_AGY_CLI=true` в `runner/.env`, пересоберите **тот же** runner и выполните `/app/scripts/provider-login.sh antigravity <account-id>`. Команда запускает официальный `agy` с отдельным `HOME`. В headless Linux окружении Antigravity может потребовать работающий D-Bus и системный keyring для сохранения входа; это отдельное требование CLI, которое нужно проверить на вашем хосте. Проверка авторизации происходит при запуске задачи.
 
 ### Импорт сохранённых профилей Codex
 
