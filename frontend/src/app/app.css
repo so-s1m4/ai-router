@@ -1067,32 +1067,6 @@
   color: #a855f7;
 }
 
-.mode-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 11px;
-  border-radius: var(--radius-pill);
-  font-size: 11.5px;
-  font-weight: 600;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
-  transition: all 0.15s ease;
-  flex: none;
-}
-
-.mode-toggle-btn:hover {
-  border-color: var(--border-hover);
-  color: var(--text-main);
-}
-
-.mode-toggle-btn.mode-task {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: var(--primary);
-  color: var(--primary-text);
-}
-
 .composer-action-btn {
   flex: none;
   margin-bottom: 2px;
@@ -2080,11 +2054,6 @@
     transform-origin: left center;
     width: 138%;
     margin-right: -28%;
-  }
-
-  .mode-toggle-btn {
-    padding: 3px 9px;
-    font-size: 11px;
   }
 
   .composer-input-row {

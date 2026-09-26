@@ -75,7 +75,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   managedRunner=signal<Runner|null>(null);
   modelBlacklist=signal<string[]>([]);
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); previews=signal<Preview[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
-  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default'; runMode:'chat'|'task'='chat';
+  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default'; runMode:'task'='task';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
@@ -690,7 +690,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   send(){if(this.isRecording())this.stopVoiceInput();const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
     this.scrollToBottom(true,'auto');
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
@@ -720,7 +720,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   selectModel(id:string){this.selectedModel=id;this.validateReasoning();}
   validateReasoning(){const currentModel=this.models().find(m=>m.id===this.selectedModel);const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning);if(this.selectedReasoning!=='default'&&!reasoningExists)this.selectedReasoning='default';}
   currentRunnerLabel():string{const name=this.accountLabel(this.activeAccount());if(name)return name;const prov=this.activeProvider();if(prov)return this.providerLabel(prov);const s=this.selectedService();return s==='gemini'?'Gemini':s==='codex'?'Codex':'AI Router';}
-  toggleRunMode(){this.runMode=this.runMode==='chat'?'task':'chat';}
 
   handleChatClick(event: MouseEvent) {
     const target = event.target as HTMLElement | null;

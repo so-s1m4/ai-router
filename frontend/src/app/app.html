@@ -378,16 +378,6 @@
                 </div>
               }
 
-              <!-- RUN MODE TOGGLE -->
-              <button class="mode-toggle-btn" [class.mode-task]="runMode==='task'" (click)="toggleRunMode()" title="Переключить режим Чат / Задача">
-                @if(runMode==='task'){
-                  <svg lucideZap [size]="13"></svg>
-                  <span>Задача</span>
-                } @else {
-                  <span>Чат</span>
-                }
-              </button>
-
               @if(currentProject()){
                 <span class="composer-project-pill desktop-only" title="Активный проект">
                   <svg lucideFolder [size]="12"></svg>
@@ -419,7 +409,7 @@
                 [(ngModel)]="draft" 
                 (input)="adjustTextareaHeight()"
                 (paste)="onPaste($event)"
-                [placeholder]="isRecording() ? 'Слушаю... Говорите в микрофон' : 'Сообщение или задача...'"
+                [placeholder]="isRecording() ? 'Слушаю... Говорите в микрофон' : 'Опишите задачу...'"
                 rows="1"
                 (keydown.control.enter)="send()" 
                 (keydown.meta.enter)="send()"></textarea>
