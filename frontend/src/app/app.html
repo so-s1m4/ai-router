@@ -236,7 +236,7 @@
                 </div>
                 <div class="message-bubble">
                   <div class="message-meta">
-                    <span class="sender-name">{{accountLabel(activeAccount()) || 'AI Router'}}</span>
+                    <span class="sender-name">{{currentRunnerLabel()}}</span>
                     <span class="streaming-status">печатает...</span>
                   </div>
                   <div class="message-text markdown-body streaming-wrapper">
@@ -255,7 +255,7 @@
             <div class="run-progress" role="status" aria-live="polite">
               <div class="run-progress-head">
                 <span class="run-pulse" aria-hidden="true"></span>
-                <strong>{{accountLabel(activeAccount()) || 'AI Router'}} работает</strong>
+                <strong>{{currentRunnerLabel()}} работает</strong>
                 <time>{{elapsed()}}</time>
               </div>
               <div class="run-progress-current">{{notice() || 'Ожидаем обновления от исполнителя…'}}</div>
@@ -304,18 +304,19 @@
 
             <div class="composer-toolbar">
               <div class="toolbar-controls">
-                <!-- ACCOUNT PILL -->
-                <div class="select-pill" title="Подключение">
-                  @if(selectedAccount==='auto'){
+                <!-- SERVICE PILL -->
+                <div class="select-pill" title="Выбор сервиса">
+                  @if(selectedService() === 'auto'){
                     <svg lucideSparkles [size]="14"></svg>
+                  } @else if(selectedService() === 'gemini'){
+                    <svg lucideBot [size]="14" class="icon-gemini"></svg>
                   } @else {
-                    <svg lucideBot [size]="14"></svg>
+                    <svg lucideZap [size]="14" class="icon-codex"></svg>
                   }
-                  <select [ngModel]="selectedAccount" (ngModelChange)="selectAccount($event)" aria-label="Подключение">
-                    <option value="auto">Auto · Все аккаунты</option>
-                    @for(a of accounts(); track a.id){
-                      <option [value]="a.id">{{a.name}} ({{providerLabel(a.provider)}})</option>
-                    }
+                  <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" aria-label="Сервис ИИ">
+                    <option value="auto">Auto · Автовыбор</option>
+                    <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (нет подкл.)'}}</option>
+                    <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (нет подкл.)'}}</option>
                   </select>
                   <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
                 </div>

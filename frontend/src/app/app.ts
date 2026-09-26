@@ -12,8 +12,29 @@ import { ManagerPanel } from './manager-panel';
 import { MarkdownPipe } from './markdown.pipe';
 
 type ProviderId = 'codex'|'antigravity';
+export type ServiceId = 'auto' | 'gemini' | 'codex';
 type ReasoningEffort = {id:string;label:string};
 type Model = {id:string;label:string;reasoning?:ReasoningEffort[];defaultReasoning?:string};
+
+export const DEFAULT_CODEX_MODELS: Model[] = [
+  { id: 'default', label: 'По умолчанию Codex' },
+  { id: 'gpt-5', label: 'GPT-5' },
+  { id: 'gpt-4.1', label: 'GPT-4.1' },
+  { id: 'gpt-4o', label: 'GPT-4o' },
+  { id: 'o3', label: 'o3', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] }
+];
+
+export const DEFAULT_GEMINI_MODELS: Model[] = [
+  { id: 'default', label: 'По умолчанию Gemini' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }, { id: 'max', label: 'Максимальное' }] },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { id: 'gemini-2.5-flash-thinking', label: 'Gemini 2.5 Flash Thinking', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
+];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
 type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
 type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;createdAt:string;revokedAt?:string};
@@ -44,15 +65,55 @@ export class App implements OnInit,OnDestroy {
   mobileMenu=signal(false);
   managedRunner=signal<Runner|null>(null);
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
-  draft=''; selectedAccount='auto'; selectedModel='default'; selectedReasoning='default'; runMode:'chat'|'task'='chat';
+  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default'; runMode:'chat'|'task'='chat';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
-  running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
+  running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
   copiedId=signal<string>('');
   currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
-  models=computed(()=>{const selected=this.selectedAccount==='auto'?this.accounts().flatMap(a=>a.models):(this.accounts().find(a=>a.id===this.selectedAccount)?.models||[]);const unique=new Map<string,Model>();for(const model of selected)if(!unique.has(model.id))unique.set(model.id,model);if(!unique.has('default'))unique.set('default',{id:'default',label:this.selectedAccount==='auto'?'По умолчанию выбранного CLI':'По умолчанию аккаунта'});return [...unique.values()];});
-  reasoningOptions=computed(()=>{const selected=this.models().filter(m=>m.id===this.selectedModel).flatMap(m=>m.reasoning||[]),unique=new Map<string,ReasoningEffort>();for(const option of selected)if(!unique.has(option.id))unique.set(option.id,option);return [{id:'default',label:'По умолчанию'},...Array.from(unique.values()).filter((x:ReasoningEffort)=>x.id!=='default')];});
+  models=computed(()=>{
+    const service=this.selectedService();
+    const allAccounts=this.accounts();
+    const pId=this.current()?.projectId;
+    const project=pId?this.projects().find(p=>p.id===pId):null;
+    const scoped=project?allAccounts.filter(a=>a.runnerId===project.runnerId):allAccounts;
+
+    if(service==='gemini'){
+      const accModels=scoped.filter(a=>a.provider==='antigravity').flatMap(a=>a.models||[]);
+      const map=new Map<string,Model>();
+      for(const m of DEFAULT_GEMINI_MODELS)map.set(m.id,{...m});
+      for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
+      map.set('default',{id:'default',label:'По умолчанию Gemini'});
+      return [...map.values()];
+    }
+
+    if(service==='codex'){
+      const accModels=scoped.filter(a=>a.provider==='codex').flatMap(a=>a.models||[]);
+      const map=new Map<string,Model>();
+      for(const m of DEFAULT_CODEX_MODELS)map.set(m.id,{...m});
+      for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
+      map.set('default',{id:'default',label:'По умолчанию Codex'});
+      return [...map.values()];
+    }
+
+    const map=new Map<string,Model>();
+    map.set('default',{id:'default',label:'По умолчанию (Auto)'});
+    for(const m of DEFAULT_GEMINI_MODELS)if(m.id!=='default')map.set(m.id,{...m,label:`${m.label} · Gemini`});
+    for(const a of scoped.filter(x=>x.provider==='antigravity')){
+      for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · Gemini`});
+    }
+    for(const m of DEFAULT_CODEX_MODELS)if(m.id!=='default')map.set(m.id,{...m,label:`${m.label} · Codex`});
+    for(const a of scoped.filter(x=>x.provider==='codex')){
+      for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · Codex`});
+    }
+    return [...map.values()];
+  });
+  reasoningOptions=computed(()=>{
+    const currentModel=this.models().find(m=>m.id===this.selectedModel);
+    const options=currentModel?.reasoning||[];
+    return [{id:'default',label:'По умолчанию'},...options.filter(r=>r.id!=='default')];
+  });
   ngOnInit(){this.clock=setInterval(()=>this.now.set(Date.now()),1000);this.restore();} ngOnDestroy(){this.socket?.disconnect();if(this.clock)clearInterval(this.clock);}
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
   async restore(){
@@ -80,13 +141,13 @@ export class App implements OnInit,OnDestroy {
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
   async uploadFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0],projectId=this.current()?.projectId;if(input)input.value='';if(!file)return;if(!projectId){this.error.set('Сначала откройте чат внутри проекта');return;}if(file.size>20*1024*1024){this.error.set('Файл больше 20 МБ');return;}this.uploading.set(true);this.error.set('');try{const response=await fetch(`/api/projects/${projectId}/files`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file,credentials:'same-origin'});const body=await response.json() as {name?:string;size?:number;error?:string};if(!response.ok)throw new Error(body.error||'Не удалось загрузить файл');this.notice.set(`Файл «${body.name||file.name}» добавлен в папку проекта`);}catch(error){this.error.set(error instanceof Error?error.message:'Не удалось загрузить файл');}finally{this.uploading.set(false);}}
   showPage(page:'chat'|'projects'|'connections'|'runners'){this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);}
-  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const selected=this.models().some(m=>m.id===this.selectedModel);if(!selected)this.selectedModel='default';if(!this.reasoningOptions().some(r=>r.id===this.selectedReasoning))this.selectedReasoning='default';});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
-  resetRun(){this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activity.set([]);this.runStartedAt.set('');}
-  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){if(this.runId())this.resetRun();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');});}
-  onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();}}
+  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
+  resetRun(){this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
+  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){if(this.runId())this.resetRun();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');});}
+  onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();}}
   async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);}
   send(){const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
-    this.socket?.emit('run',{sessionId:s.id,prompt,accountId:this.selectedAccount,model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok)this.runId.set(ack.runId||'');else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok)this.runId.set(ack.runId||'');else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
@@ -104,14 +165,18 @@ export class App implements OnInit,OnDestroy {
     this.notice.set('Скопировано в буфер обмена');
   }
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
-  providerLabel(id?:ProviderId){return id==='codex'?'Codex':id==='antigravity'?'Antigravity':'';}
+  providerLabel(id?:ProviderId|string){return id==='codex'?'Codex':(id==='antigravity'||id==='gemini')?'Gemini':'';}
   limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
   windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 ч';if(minutes===10080)return 'Неделя';if(minutes===43200)return 'Месяц';if(minutes&&minutes%60===0)return `${minutes/60} ч`;return 'Окно';}
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Сброс ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
+  hasAccountsFor(service:ServiceId):boolean{if(service==='auto')return this.accounts().length>0;const provider:ProviderId=service==='gemini'?'antigravity':'codex';const pId=this.current()?.projectId;const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?this.accounts().filter(a=>a.runnerId===project.runnerId):this.accounts();return list.some(a=>a.provider===provider);}
+  selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';this.selectedReasoning='default';}
-  selectModel(id:string){this.selectedModel=id;this.selectedReasoning='default';}
+  selectModel(id:string){this.selectedModel=id;this.validateReasoning();}
+  validateReasoning(){const currentModel=this.models().find(m=>m.id===this.selectedModel);const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning);if(this.selectedReasoning!=='default'&&!reasoningExists)this.selectedReasoning='default';}
+  currentRunnerLabel():string{const name=this.accountLabel(this.activeAccount());if(name)return name;const prov=this.activeProvider();if(prov)return this.providerLabel(prov);const s=this.selectedService();return s==='gemini'?'Gemini':s==='codex'?'Codex':'AI Router';}
   toggleRunMode(){this.runMode=this.runMode==='chat'?'task':'chat';}
 
   handleChatClick(event: MouseEvent) {

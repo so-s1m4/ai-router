@@ -721,6 +721,14 @@
   color: var(--text-muted);
 }
 
+.icon-gemini {
+  color: #38bdf8;
+}
+
+.icon-codex {
+  color: #a855f7;
+}
+
 .mode-toggle-btn {
   display: inline-flex;
   align-items: center;
