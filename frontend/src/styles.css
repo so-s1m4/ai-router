@@ -83,7 +83,7 @@ html, body {
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -91,7 +91,7 @@ html, body {
 app-root {
   display: block;
   min-height: 100%;
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
 }
 
 button, input, select, textarea {

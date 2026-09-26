@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, signal, computed, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
@@ -68,7 +68,7 @@ type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:strin
   templateUrl:'./app.html',
   styleUrl:'./app.css'
 })
-export class App implements OnInit,OnDestroy {
+export class App implements OnInit,AfterViewInit,OnDestroy {
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
   loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'>('chat');
   mobileMenu=signal(false);
@@ -93,17 +93,16 @@ export class App implements OnInit,OnDestroy {
 
   userScrolledUp = signal(false);
   showScrollBottom = signal(false);
-  private chatScrollArea?: ElementRef<HTMLDivElement>;
+  @ViewChild('chatScrollArea') chatScrollArea?: ElementRef<HTMLDivElement>;
   private scrollRaf?: number;
-  private lastScrollTop = 0;
   private touchStartY = 0;
   private isProgrammaticScroll = false;
+  private onViewportResize = () => {
+    if (!this.userScrolledUp()) this.requestScrollToBottom();
+  };
 
-  @ViewChild('chatScrollArea') set chatScrollAreaRef(ref: ElementRef<HTMLDivElement> | undefined) {
-    this.chatScrollArea = ref;
-    if (ref) {
-      this.scrollToBottom(true, 'auto');
-    }
+  ngAfterViewInit() {
+    setTimeout(() => this.scrollToBottom(true, 'auto'), 50);
   }
 
   onTouchStart(event: TouchEvent) {
@@ -116,7 +115,8 @@ export class App implements OnInit,OnDestroy {
   onTouchMove(event: TouchEvent) {
     if (event.touches.length === 1) {
       const currentY = event.touches[0].clientY;
-      if (currentY - this.touchStartY > 6) {
+      // Moving finger down (currentY > touchStartY) scrolls view UP
+      if (currentY - this.touchStartY > 8) {
         this.userScrolledUp.set(true);
         this.showScrollBottom.set(true);
       }
@@ -132,39 +132,25 @@ export class App implements OnInit,OnDestroy {
   }
 
   onChatScroll() {
+    if (this.isProgrammaticScroll) return;
+
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
 
     const currentScrollTop = el.scrollTop;
     const scrollHeight = el.scrollHeight;
     const clientHeight = el.clientHeight;
-    const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
     const distanceFromBottom = Math.max(0, scrollHeight - currentScrollTop - clientHeight);
 
-    if (this.isProgrammaticScroll) {
-      this.lastScrollTop = currentScrollTop;
-      return;
-    }
+    const isAtBottom = distanceFromBottom <= 40;
 
-    if (currentScrollTop < this.lastScrollTop - 1) {
-      // User scrolled UP
+    if (isAtBottom) {
+      this.userScrolledUp.set(false);
+      this.showScrollBottom.set(false);
+    } else {
       this.userScrolledUp.set(true);
       this.showScrollBottom.set(true);
-    } else {
-      // User scrolled down or is near bottom
-      const atBottomThreshold = maxScrollTop > 0 ? Math.min(20, Math.max(6, maxScrollTop * 0.2)) : 0;
-      const isAtBottom = maxScrollTop > 0 && distanceFromBottom <= atBottomThreshold;
-
-      if (isAtBottom) {
-        this.userScrolledUp.set(false);
-        this.showScrollBottom.set(false);
-      } else if (distanceFromBottom > atBottomThreshold + 25) {
-        this.userScrolledUp.set(true);
-        this.showScrollBottom.set(true);
-      }
     }
-
-    this.lastScrollTop = currentScrollTop;
   }
 
   scrollToBottom(force = false, behavior: ScrollBehavior = 'auto') {
@@ -184,11 +170,9 @@ export class App implements OnInit,OnDestroy {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
       setTimeout(() => {
         this.isProgrammaticScroll = false;
-        if (el) this.lastScrollTop = el.scrollTop;
       }, 400);
     } else {
       el.scrollTop = el.scrollHeight;
-      this.lastScrollTop = el.scrollTop;
     }
   }
 
@@ -357,6 +341,9 @@ export class App implements OnInit,OnDestroy {
       }
       window.addEventListener('dragover', this.preventWindowDrop);
       window.addEventListener('drop', this.preventWindowDrop);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', this.onViewportResize);
+      }
     }
     this.restore();
   }
@@ -368,6 +355,9 @@ export class App implements OnInit,OnDestroy {
     if(typeof window !== 'undefined'){
       window.removeEventListener('dragover', this.preventWindowDrop);
       window.removeEventListener('drop', this.preventWindowDrop);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', this.onViewportResize);
+      }
     }
   }
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
