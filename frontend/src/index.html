@@ -4,8 +4,71 @@
   <meta charset="utf-8">
   <title>AI Router</title>
   <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AI Router">
   <link rel="icon" type="image/x-icon" href="favicon.svg">
+  <script>
+    // Complete zoom disable across iOS Safari, Android, and Desktop
+    document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
+
+    document.addEventListener('touchstart', function(e) {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    var lastTouchTime = 0;
+    document.addEventListener('touchend', function(e) {
+      var now = Date.now();
+      if (now - lastTouchTime <= 300) {
+        var target = e.target;
+        var isInteractive = target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable ||
+          target.tagName === 'BUTTON' ||
+          target.closest('button') ||
+          target.tagName === 'A' ||
+          target.closest('a')
+        );
+        if (!isInteractive) {
+          e.preventDefault();
+        }
+      }
+      lastTouchTime = now;
+    }, { passive: false });
+
+    window.addEventListener('wheel', function(e) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    window.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && (
+        e.key === '+' ||
+        e.key === '-' ||
+        e.key === '=' ||
+        e.key === '0' ||
+        e.code === 'NumpadAdd' ||
+        e.code === 'NumpadSubtract'
+      )) {
+        e.preventDefault();
+      }
+    });
+  </script>
 </head>
 <body>
   <app-root></app-root>

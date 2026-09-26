@@ -169,10 +169,13 @@
               <svg lucidePlus [size]="15"></svg>
               <span>Новый чат</span>
             </button>
+            <button class="btn-icon mobile-new-chat-btn mobile-only" (click)="newSession()" aria-label="Новый чат" title="Новый чат">
+              <svg lucidePencilLine [size]="17"></svg>
+            </button>
           </div>
         </header>
 
-        <div class="chat-scroll-area">
+        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()">
           @if(!current()?.messages?.length){
             <div class="welcome-screen">
               <div class="welcome-badge">
@@ -256,6 +259,14 @@
 
         <!-- COMPOSER SECTION -->
         <div class="composer-container">
+          @if(showScrollBottom()){
+            <button type="button" class="scroll-bottom-btn" (click)="scrollToBottom(true, 'smooth')" aria-label="Прокрутить вниз" title="Вниз">
+              <svg lucideChevronDown [size]="18"></svg>
+              @if(running()){
+                <span class="scroll-bottom-pulse"></span>
+              }
+            </button>
+          }
           @if(running()){
             <div class="run-progress" role="status" aria-live="polite">
               <div class="run-progress-head">
@@ -286,95 +297,94 @@
           }
 
           <div class="composer-card">
-            <div class="composer-attachment-bar">
-              <input #filePicker type="file" hidden (change)="uploadFile($event)">
-              <button class="btn-attach" type="button" [disabled]="uploading() || !current()?.projectId" (click)="filePicker.click()">
-                <svg lucidePaperclip [size]="15"></svg>
-                <span>{{uploading() ? 'Загрузка...' : 'Прикрепить файл'}}</span>
+            <!-- CHIPS / CONFIG BAR -->
+            <div class="composer-chips-bar">
+              <!-- SERVICE PILL -->
+              <div class="select-pill" title="Выбор сервиса">
+                @if(selectedService() === 'auto'){
+                  <svg lucideSparkles [size]="13"></svg>
+                } @else if(selectedService() === 'gemini'){
+                  <svg lucideBot [size]="13" class="icon-gemini"></svg>
+                } @else {
+                  <svg lucideZap [size]="13" class="icon-codex"></svg>
+                }
+                <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" aria-label="Сервис ИИ">
+                  <option value="auto">Auto</option>
+                  <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
+                  <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
+                </select>
+                <svg lucideChevronDown [size]="12" class="select-arrow"></svg>
+              </div>
+
+              <!-- MODEL PILL -->
+              <div class="select-pill" title="Модель">
+                <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" aria-label="Модель">
+                  @for(m of models(); track m.id){
+                    <option [value]="m.id">{{m.label}}</option>
+                  }
+                </select>
+                <svg lucideChevronDown [size]="12" class="select-arrow"></svg>
+              </div>
+
+              <!-- REASONING PILL -->
+              @if(reasoningOptions().length > 1){
+                <div class="select-pill" title="Рассуждение">
+                  <select [(ngModel)]="selectedReasoning" aria-label="Рассуждение">
+                    @for(r of reasoningOptions(); track r.id){
+                      <option [value]="r.id">{{r.label}}</option>
+                    }
+                  </select>
+                  <svg lucideChevronDown [size]="12" class="select-arrow"></svg>
+                </div>
+              }
+
+              <!-- RUN MODE TOGGLE -->
+              <button class="mode-toggle-btn" [class.mode-task]="runMode==='task'" (click)="toggleRunMode()" title="Переключить режим Чат / Задача">
+                @if(runMode==='task'){
+                  <svg lucideZap [size]="13"></svg>
+                  <span>Задача</span>
+                } @else {
+                  <span>Чат</span>
+                }
               </button>
+
               @if(currentProject()){
-                <span class="attachment-hint">Папка «{{currentProject()!.name}}» (до 20 МБ)</span>
-              } @else {
-                <span class="attachment-hint">Для передачи файлов в runner откройте чат в проекте</span>
+                <span class="composer-project-pill desktop-only" title="Активный проект">
+                  <svg lucideFolder [size]="12"></svg>
+                  <span class="truncate">{{currentProject()!.name}}</span>
+                </span>
               }
             </div>
 
-            <textarea 
-              class="composer-textarea"
-              [(ngModel)]="draft" 
-              placeholder="Задайте вопрос или опишите задачу..."
-              rows="3"
-              (keydown.control.enter)="send()" 
-              (keydown.meta.enter)="send()"></textarea>
+            <!-- INPUT ROW -->
+            <div class="composer-input-row">
+              <input #filePicker type="file" hidden (change)="uploadFile($event)">
+              <button class="btn-attach-icon" type="button" [disabled]="uploading() || !current()?.projectId" (click)="filePicker.click()" [title]="current()?.projectId ? 'Прикрепить файл в папку проекта' : 'Откройте чат в проекте для загрузки файлов'">
+                <svg lucidePaperclip [size]="18"></svg>
+              </button>
 
-            <div class="composer-toolbar">
-              <div class="toolbar-controls">
-                <!-- SERVICE PILL -->
-                <div class="select-pill" title="Выбор сервиса">
-                  @if(selectedService() === 'auto'){
-                    <svg lucideSparkles [size]="14"></svg>
-                  } @else if(selectedService() === 'gemini'){
-                    <svg lucideBot [size]="14" class="icon-gemini"></svg>
-                  } @else {
-                    <svg lucideZap [size]="14" class="icon-codex"></svg>
-                  }
-                  <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" aria-label="Сервис ИИ">
-                    <option value="auto">Auto · Автовыбор</option>
-                    <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (нет подкл.)'}}</option>
-                    <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (нет подкл.)'}}</option>
-                  </select>
-                  <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
-                </div>
+              <textarea 
+                class="composer-textarea"
+                [(ngModel)]="draft" 
+                placeholder="Сообщение или задача..."
+                rows="1"
+                (keydown.control.enter)="send()" 
+                (keydown.meta.enter)="send()"></textarea>
 
-                <!-- MODEL PILL -->
-                <div class="select-pill" title="Модель">
-                  <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" aria-label="Модель">
-                    @for(m of models(); track m.id){
-                      <option [value]="m.id">{{m.label}}</option>
-                    }
-                  </select>
-                  <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
-                </div>
-
-                <!-- REASONING PILL -->
-                @if(reasoningOptions().length > 1){
-                  <div class="select-pill" title="Рассуждение">
-                    <select [(ngModel)]="selectedReasoning" aria-label="Рассуждение">
-                      @for(r of reasoningOptions(); track r.id){
-                        <option [value]="r.id">{{r.label}}</option>
-                      }
-                    </select>
-                    <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
-                  </div>
-                }
-
-                <!-- RUN MODE TOGGLE -->
-                <button class="mode-toggle-btn" [class.mode-task]="runMode==='task'" (click)="toggleRunMode()" title="Переключить режим Чат / Задача">
-                  @if(runMode==='task'){
-                    <svg lucideZap [size]="14"></svg>
-                    <span>Задача</span>
-                  } @else {
-                    <span>Чат</span>
-                  }
-                </button>
-              </div>
-
-              <div class="toolbar-actions">
+              <div class="composer-action-btn">
                 @if(running()){
-                  <button class="btn btn-stop" (click)="cancel()">
+                  <button class="btn-circle-action btn-circle-stop" (click)="cancel()" aria-label="Остановить" title="Остановить">
                     <svg lucideSquare [size]="14"></svg>
-                    <span>Стоп</span>
                   </button>
                 } @else {
-                  <button class="btn btn-send" [disabled]="!draft.trim() || !accounts().length" (click)="send()">
-                    <span>Отправить</span>
-                    <svg lucideArrowUp [size]="17"></svg>
+                  <button class="btn-circle-action btn-circle-send" [disabled]="!draft.trim() || !accounts().length" (click)="send()" aria-label="Отправить" title="Отправить">
+                    <svg lucideArrowUp [size]="18"></svg>
                   </button>
                 }
               </div>
             </div>
           </div>
-          <div class="composer-footnote">
+          <div class="composer-footnote desktop-only">
             <span>Ctrl / ⌘ + Enter для быстрой отправки</span>
           </div>
         </div>

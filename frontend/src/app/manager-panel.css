@@ -392,17 +392,72 @@
 }
 
 @media (max-width: 600px) {
+  /* Prevent iOS zoom */
+  .manager-card input:not([type=checkbox]),
+  .manager-card select,
+  .manager-card textarea {
+    font-size: 16px !important;
+  }
+
   .manager-panel {
     padding: 0 0 24px;
   }
+
   .manager-card {
-    padding: 16px;
+    padding: 14px;
+    border-radius: var(--radius-sm);
   }
+
+  .manager-tabs {
+    margin: 0 -12px 14px;
+    padding: 0 12px 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .manager-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
   .inline-form {
     flex-direction: column;
     align-items: stretch;
   }
+
   .inline-form input, .inline-form .action {
     width: 100%;
+  }
+
+  .edit-row, .mount-row {
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--bg-canvas);
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    gap: 8px;
+  }
+
+  .edit-row .icon-button, .mount-row .icon-button {
+    align-self: flex-end;
+  }
+
+  .container-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .container-actions {
+    width: 100%;
+  }
+
+  .container-actions button {
+    flex: 1;
+    min-height: 36px;
+  }
+
+  .key-row code {
+    font-size: 10px;
   }
 }

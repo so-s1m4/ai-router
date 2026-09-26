@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
@@ -79,6 +79,120 @@ export class App implements OnInit,OnDestroy {
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
   copiedId=signal<string>('');
+
+  userScrolledUp = signal(false);
+  showScrollBottom = signal(false);
+  private chatScrollArea?: ElementRef<HTMLDivElement>;
+  private isAutoScrolling = false;
+  private autoScrollTimeout?: ReturnType<typeof setTimeout>;
+  private scrollRaf?: number;
+  private resizeObserver?: ResizeObserver;
+  private mutationObserver?: MutationObserver;
+  private onViewportResize = () => {
+    if (!this.userScrolledUp()) this.requestScrollToBottom();
+  };
+
+  @ViewChild('chatScrollArea') set chatScrollAreaRef(ref: ElementRef<HTMLDivElement> | undefined) {
+    this.chatScrollArea = ref;
+    if (ref) {
+      this.setupScrollObserver();
+      this.scrollToBottom(true, 'auto');
+    } else {
+      this.cleanupScrollObserver();
+    }
+  }
+
+  onChatScroll() {
+    if (this.isAutoScrolling) return;
+    const el = this.chatScrollArea?.nativeElement;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isUp = distanceFromBottom > 100;
+    this.userScrolledUp.set(isUp);
+    this.showScrollBottom.set(isUp);
+  }
+
+  scrollToBottom(force = false, behavior: ScrollBehavior = 'auto') {
+    if (force) {
+      this.userScrolledUp.set(false);
+      this.showScrollBottom.set(false);
+      this.isAutoScrolling = true;
+      if (this.autoScrollTimeout) clearTimeout(this.autoScrollTimeout);
+      this.autoScrollTimeout = setTimeout(() => {
+        this.isAutoScrolling = false;
+      }, behavior === 'smooth' ? 600 : 80);
+    }
+    if (!force && this.userScrolledUp()) {
+      return;
+    }
+    const el = this.chatScrollArea?.nativeElement;
+    if (!el) return;
+
+    if (behavior === 'smooth') {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+
+  requestScrollToBottom(force = false, behavior: ScrollBehavior = 'auto') {
+    if (!force && this.userScrolledUp()) return;
+    if (this.scrollRaf) {
+      cancelAnimationFrame(this.scrollRaf);
+    }
+    this.scrollRaf = requestAnimationFrame(() => {
+      this.scrollToBottom(force, behavior);
+    });
+  }
+
+  private setupScrollObserver() {
+    this.cleanupScrollObserver();
+    const el = this.chatScrollArea?.nativeElement;
+    if (!el) return;
+
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => {
+        if (!this.userScrolledUp()) {
+          this.requestScrollToBottom();
+        }
+      });
+      this.resizeObserver.observe(el);
+      const feed = el.querySelector('.message-feed');
+      if (feed) {
+        this.resizeObserver.observe(feed);
+      }
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+      this.mutationObserver = new MutationObserver(() => {
+        if (!this.userScrolledUp()) {
+          this.requestScrollToBottom();
+        }
+      });
+      this.mutationObserver.observe(el, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+    }
+  }
+
+  private cleanupScrollObserver() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = undefined;
+    }
+    if (this.mutationObserver) {
+      this.mutationObserver.disconnect();
+      this.mutationObserver = undefined;
+    }
+    if (this.scrollRaf) {
+      cancelAnimationFrame(this.scrollRaf);
+      this.scrollRaf = undefined;
+    }
+  }
+
   currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
   models=computed(()=>{
     const service=this.selectedService();
@@ -122,7 +236,22 @@ export class App implements OnInit,OnDestroy {
     const options=currentModel?.reasoning||[];
     return [{id:'default',label:'По умолчанию'},...options.filter(r=>r.id!=='default')];
   });
-  ngOnInit(){this.clock=setInterval(()=>this.now.set(Date.now()),1000);this.restore();} ngOnDestroy(){this.socket?.disconnect();if(this.clock)clearInterval(this.clock);}
+  ngOnInit(){
+    this.clock=setInterval(()=>this.now.set(Date.now()),1000);
+    if(typeof window!=='undefined'&&window.visualViewport){
+      window.visualViewport.addEventListener('resize',this.onViewportResize);
+    }
+    this.restore();
+  }
+  ngOnDestroy(){
+    this.socket?.disconnect();
+    if(this.clock)clearInterval(this.clock);
+    if(typeof window!=='undefined'&&window.visualViewport){
+      window.visualViewport.removeEventListener('resize',this.onViewportResize);
+    }
+    this.cleanupScrollObserver();
+    if(this.autoScrollTimeout)clearTimeout(this.autoScrollTimeout);
+  }
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
   async restore(){
     let me:{username:string};
@@ -140,25 +269,26 @@ export class App implements OnInit,OnDestroy {
   async load(){const [accounts,runners,projects,sessions]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions')]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
-  async newSession(){this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);}catch(e){this.error.set((e as Error).message);}}
-  async openSession(id:string){this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);}catch(e){this.error.set((e as Error).message);}}
+  async newSession(){this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
+  async openSession(id:string){this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
   chatsFor(projectId?:string){return this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId);}
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
   async uploadFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0],projectId=this.current()?.projectId;if(input)input.value='';if(!file)return;if(!projectId){this.error.set('Сначала откройте чат внутри проекта');return;}if(file.size>20*1024*1024){this.error.set('Файл больше 20 МБ');return;}this.uploading.set(true);this.error.set('');try{const response=await fetch(`/api/projects/${projectId}/files`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file,credentials:'same-origin'});const body=await response.json() as {name?:string;size?:number;error?:string};if(!response.ok)throw new Error(body.error||'Не удалось загрузить файл');this.notice.set(`Файл «${body.name||file.name}» добавлен в папку проекта`);}catch(error){this.error.set(error instanceof Error?error.message:'Не удалось загрузить файл');}finally{this.uploading.set(false);}}
-  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();}
+  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')setTimeout(()=>this.scrollToBottom(true,'auto'),50);}
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
   connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
   resetRun(){this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
-  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){if(this.runId())this.resetRun();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');});}
-  onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();}}
-  async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);}
+  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){if(this.runId())this.resetRun();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
+  onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();}}
+  async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);this.requestScrollToBottom();}
   send(){const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok)this.runId.set(ack.runId||'');else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
+    this.scrollToBottom(true,'smooth');
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
