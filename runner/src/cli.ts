@@ -56,6 +56,7 @@ async function appServerRequest(home:string,requests:{id:number;method:string;pa
 export async function accountStatus(provider:ProviderId,home:string,signal:AbortSignal):Promise<AccountStatus>{
   if(provider!=='codex')return {models:(process.env.AGY_MODELS||'').split(',').map(x=>x.trim()).filter(Boolean).map(id=>({id,label:id}))};
   const responses=await appServerRequest(home,[{id:1,method:'account/read',params:{refreshToken:true}},{id:2,method:'account/rateLimits/read'},{id:3,method:'model/list',params:{limit:100,includeHidden:false}}],signal);
+  if(responses[2]?.error)throw new RunnerError(String(responses[2].error.message||'Не удалось получить лимит аккаунта'),'unavailable');
   const rate=responses[2]?.result?.rateLimits||responses[2]?.result?.rate_limits;
   const models=Array.isArray(responses[3]?.result?.data)?responses[3].result.data.filter((m:any)=>typeof (m?.model||m?.id)==='string').map((m:any)=>({id:String(m.model||m.id),label:String(m.displayName||m.model||m.id)})):[];
   return {models,limits:{primary:appServerWindow(rate?.primary),secondary:appServerWindow(rate?.secondary)}};
