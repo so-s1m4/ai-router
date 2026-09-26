@@ -204,24 +204,122 @@
         @if(filesOpen()){
           <section class="task-files-panel" aria-label="Файлы задачи">
             <div class="task-files-heading">
-              <div><strong>Файлы задачи</strong><span>Ссылка на скачивание действует 7 дней</span></div>
-              <button class="btn btn-outline btn-sm" (click)="refreshTaskFiles()" [disabled]="filesLoading()" title="Обновить список"><svg lucideRefreshCw [size]="15"></svg></button>
+              <div class="task-files-title-group">
+                <div class="task-files-title-row">
+                  <strong>Файлы задачи</strong>
+                  @if(taskFiles().length){
+                    <span class="task-files-counter-badge">{{taskFiles().length}} {{pluralizeFiles(taskFiles().length)}} &bull; {{totalFilesSize()}}</span>
+                  }
+                </div>
+                <span class="task-files-subtitle">Ссылка на скачивание действует 7 дней</span>
+              </div>
+              <div class="task-files-actions">
+                @if(hasDirectories()){
+                  <button class="btn btn-outline btn-sm tree-ctrl-btn" (click)="expandAllFolders()" title="Развернуть все папки">
+                    <span>Развернуть всё</span>
+                  </button>
+                  <button class="btn btn-outline btn-sm tree-ctrl-btn" (click)="collapseAllFolders()" title="Свернуть все папки">
+                    <span>Свернуть всё</span>
+                  </button>
+                }
+                <button class="btn btn-outline btn-sm refresh-btn" (click)="refreshTaskFiles()" [disabled]="filesLoading()" title="Обновить список">
+                  <svg lucideRefreshCw [size]="14" [class.spin]="filesLoading()"></svg>
+                  <span>Обновить</span>
+                </button>
+              </div>
             </div>
-            @if(filesLoading()){<p class="task-files-empty">Загрузка файлов…</p>}
-            @else if(!taskFiles().length){<p class="task-files-empty">Файлов пока нет. Попросите ИИ сохранить результат в рабочую папку задачи.</p>}
-            @else {
-              <div class="task-files-list">
-                @for(file of taskFiles(); track file.name){
-                  <div class="task-file-row">
-                    <span class="task-file-name" [title]="file.name">{{file.name}}</span>
-                    <span class="task-file-size">{{(file.size / 1024 / 1024) | number:'1.0-2'}} МБ</span>
-                    @if(sharedFileLinks()[file.name]){
-                      <a class="btn btn-outline btn-sm" [href]="sharedFileLinks()[file.name]" target="_blank" rel="noopener noreferrer"><svg lucideDownload [size]="14"></svg><span>Скачать</span></a>
-                      <button class="btn btn-outline btn-sm" (click)="copy(sharedFileLinks()[file.name], 'share-'+file.name)" title="Скопировать ссылку"><svg lucideCopy [size]="14"></svg></button>
-                    } @else {
-                      <button class="btn btn-outline btn-sm" (click)="shareTaskFile(file.name)"><svg lucideCopy [size]="14"></svg><span>Ссылка</span></button>
-                    }
-                  </div>
+
+            @if(taskFiles().length > 3){
+              <div class="task-files-filter-bar">
+                <div class="task-files-filter-input-wrap">
+                  <svg lucideSearch [size]="14" class="task-files-filter-icon"></svg>
+                  <input type="text"
+                         class="task-files-filter-input"
+                         placeholder="Поиск по файлам…"
+                         [value]="filesFilter()"
+                         (input)="filesFilter.set($any($event.target).value)" />
+                  @if(filesFilter()){
+                    <button class="task-files-filter-clear" (click)="filesFilter.set('')" title="Очистить поиск" aria-label="Очистить поиск">
+                      <svg lucideX [size]="13"></svg>
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+
+            @if(filesLoading()){
+              <p class="task-files-empty">Загрузка файлов…</p>
+            } @else if(!taskFiles().length){
+              <p class="task-files-empty">Файлов пока нет. Попросите ИИ сохранить результат в рабочую папку задачи.</p>
+            } @else if(!visibleFileTree().length && filesFilter()){
+              <p class="task-files-empty">Ничего не найдено по запросу «{{filesFilter()}}»</p>
+            } @else {
+              <div class="task-files-tree" role="tree" aria-label="Дерево файлов">
+                @for(node of visibleFileTree(); track node.path){
+                  @if(node.isDir){
+                    <div class="task-tree-row task-tree-dir"
+                         role="treeitem"
+                         [attr.aria-expanded]="node.isExpanded"
+                         [style.padding-left.px]="10 + node.depth * 20"
+                         (click)="toggleFolder(node.path)">
+                      <div class="task-tree-main">
+                        <span class="task-tree-chevron" aria-hidden="true">
+                          @if(node.isExpanded){
+                            <svg lucideChevronDown [size]="14"></svg>
+                          } @else {
+                            <svg lucideChevronRight [size]="14"></svg>
+                          }
+                        </span>
+                        <span class="task-tree-icon task-folder-icon" aria-hidden="true">
+                          @if(node.isExpanded){
+                            <svg lucideFolderOpen [size]="16"></svg>
+                          } @else {
+                            <svg lucideFolder [size]="16"></svg>
+                          }
+                        </span>
+                        <span class="task-tree-label task-dir-name" [title]="node.path">{{node.name}}/</span>
+                        <span class="task-tree-badge">{{node.fileCount}} {{pluralizeFiles(node.fileCount || 0)}}</span>
+                      </div>
+                      <div class="task-tree-meta">
+                        <span class="task-tree-size">{{formatFileSize(node.size)}}</span>
+                      </div>
+                    </div>
+                  } @else {
+                    <div class="task-tree-row task-tree-file"
+                         role="treeitem"
+                         [style.padding-left.px]="10 + node.depth * 20">
+                      <div class="task-tree-main">
+                        <span class="task-tree-indent-spacer" aria-hidden="true"></span>
+                        <span class="task-tree-icon task-file-icon" aria-hidden="true">
+                          <svg lucideFile [size]="15"></svg>
+                        </span>
+                        <span class="task-tree-label task-file-name" [title]="node.path">{{node.name}}</span>
+                      </div>
+                      <div class="task-tree-meta">
+                        <span class="task-tree-size">{{formatFileSize(node.size)}}</span>
+                        <div class="task-tree-actions">
+                          @if(sharedFileLinks()[node.path]){
+                            <a class="btn btn-outline btn-sm download-btn" [href]="sharedFileLinks()[node.path]" target="_blank" rel="noopener noreferrer" title="Скачать">
+                              <svg lucideDownload [size]="14"></svg>
+                              <span>Скачать</span>
+                            </a>
+                            <button class="btn btn-outline btn-sm icon-only-btn" (click)="copy(sharedFileLinks()[node.path], 'share-'+node.path)" title="Скопировать ссылку">
+                              <svg lucideCopy [size]="14"></svg>
+                            </button>
+                          } @else {
+                            <button class="btn btn-outline btn-sm download-btn" (click)="shareTaskFile(node.path, true)" title="Скачать">
+                              <svg lucideDownload [size]="14"></svg>
+                              <span>Скачать</span>
+                            </button>
+                            <button class="btn btn-outline btn-sm link-btn" (click)="shareTaskFile(node.path)" title="Создать и скопировать ссылку">
+                              <svg lucideCopy [size]="14"></svg>
+                              <span>Ссылка</span>
+                            </button>
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  }
                 }
               </div>
             }

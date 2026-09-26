@@ -11,10 +11,16 @@ const MAX_SIZE=100*1024*1024;
 const CHUNK=256*1024;
 function allowed(name:string){return name!=='.'&&name!=='..'&&!name.startsWith('.')&&!forbidden.has(name)&&!name.includes('\\')&&!name.includes('\0');}
 function base(input:z.infer<typeof request>){return path.join(root,input.projectId?'projects':'workspaces',input.projectId||input.sessionId);}
+async function checkedBase(input:z.infer<typeof request>){
+ const directory=base(input);
+ const expected=path.join(await realpath(root),input.projectId?'projects':'workspaces',input.projectId||input.sessionId);
+ if(await realpath(directory)!==expected)throw new Error('Рабочий каталог является ссылкой');
+ return directory;
+}
 async function checked(input:z.infer<typeof fileRequest>){
  const parts=input.name.split('/');
  if(!parts.length||parts.some(part=>!allowed(part)))throw new Error('Недопустимый путь');
- const directory=base(input),target=path.resolve(directory,...parts);
+ const directory=await checkedBase(input),target=path.resolve(directory,...parts);
  if(!target.startsWith(directory+path.sep))throw new Error('Недопустимый путь');
  const actual=await realpath(target),actualRoot=await realpath(directory);
  if(!actual.startsWith(actualRoot+path.sep))throw new Error('Файл вне рабочего каталога');
@@ -26,7 +32,7 @@ async function checked(input:z.infer<typeof fileRequest>){
 export function attachSharedFiles(socket:Socket){
  socket.on('file:list',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверная задача'});
-  const directory=base(parsed.data),files:{name:string;size:number;modified:string}[]=[];
+  const files:{name:string;size:number;modified:string}[]=[];
   const walk=async(dir:string,prefix:string,depth:number):Promise<void>=>{
    if(depth>5||files.length>=500)return;
    for(const entry of await readdir(dir,{withFileTypes:true})){
@@ -37,7 +43,7 @@ export function attachSharedFiles(socket:Socket){
     if(files.length>=500)break;
    }
   };
-  try{await walk(directory,'',0);ack?.({ok:true,files});}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')ack?.({ok:true,files:[]});else ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось получить файлы'});}
+  try{await walk(await checkedBase(parsed.data),'',0);ack?.({ok:true,files});}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')ack?.({ok:true,files:[]});else ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось получить файлы'});}
  });
  socket.on('file:info',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=fileRequest.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверный файл'});

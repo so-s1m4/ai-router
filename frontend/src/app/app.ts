@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import { 
-  LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, LucideChevronDown, 
-  LucideCopy, LucideCpu, LucideDownload, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, LucideChevronDown, LucideChevronRight,
+  LucideCopy, LucideCpu, LucideDownload, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff,
   LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
   LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, LucideZap 
@@ -55,12 +55,33 @@ type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:Pr
 type RunActivity = {type:string;message:string;at:string;provider?:ProviderId;accountId?:string};
 type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[]} | {runId:string;sessionId:string;type:'completed'|'error';message:string;finishedAt:number};
 
+export interface FlatFileNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  depth: number;
+  size: number;
+  modified?: string;
+  fileCount?: number;
+  isExpanded?: boolean;
+}
+
+interface FileNodeInternal {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  modified?: string;
+  fileCount: number;
+  children: Map<string, FileNodeInternal>;
+}
+
 @Component({
   selector:'app-root',
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, 
-    LucideChevronDown, LucideCopy, LucideCpu, LucideDownload, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
+    LucideChevronDown, LucideChevronRight, LucideCopy, LucideCpu, LucideDownload, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideMic, LucideMicOff, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
     LucideRefreshCw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, 
     LucideZap, ManagerPanel, MarkdownPipe
@@ -84,6 +105,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   taskFiles=signal<{name:string;size:number;modified:string}[]>([]);
   sharedFileLinks=signal<Record<string,string>>({});
   filesOpen=signal(false); filesLoading=signal(false);
+  collapsedDirs=signal<Set<string>>(new Set());
+  filesFilter=signal<string>('');
   isDraggingOver = signal(false);
   private dragCounter = 0;
 
@@ -478,11 +501,157 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
-  async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.taskFiles.set([]);this.sharedFileLinks.set({});this.filesOpen.set(false);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
-  async openSession(id:string){this.stopVoiceInput();this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.taskFiles.set([]);this.sharedFileLinks.set({});this.filesOpen.set(false);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
+  async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.taskFiles.set([]);this.sharedFileLinks.set({});this.collapsedDirs.set(new Set());this.filesFilter.set('');this.filesOpen.set(false);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
+  async openSession(id:string){this.stopVoiceInput();this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.taskFiles.set([]);this.sharedFileLinks.set({});this.collapsedDirs.set(new Set());this.filesFilter.set('');this.filesOpen.set(false);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
   async refreshTaskFiles(){const id=this.current()?.id;if(!id)return;this.filesLoading.set(true);try{const result=await this.api<{files:{name:string;size:number;modified:string}[]}>(`/sessions/${id}/files`);if(this.current()?.id===id)this.taskFiles.set(result.files);}catch(e){if(this.filesOpen())this.error.set((e as Error).message);}finally{this.filesLoading.set(false);}}
   toggleTaskFiles(){this.filesOpen.update(open=>!open);if(this.filesOpen())void this.refreshTaskFiles();}
-  async shareTaskFile(name:string){const id=this.current()?.id;if(!id)return;try{const result=await this.api<{url:string;expiresAt:string}>(`/sessions/${id}/files/share`,{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,window.location.origin).href;if(this.current()?.id!==id)return;this.sharedFileLinks.update(links=>({...links,[name]:url}));try{await this.copy(url,'share-'+name);this.notice.set('Ссылка скопирована. Действует 7 дней.');}catch{this.notice.set('Ссылка готова. Скопируйте её из списка файлов.');}}catch(e){this.error.set((e as Error).message);}}
+  async shareTaskFile(name:string,download=false){const id=this.current()?.id;if(!id)return;try{const result=await this.api<{url:string;expiresAt:string}>(`/sessions/${id}/files/share`,{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,window.location.origin).href;if(this.current()?.id!==id)return;this.sharedFileLinks.update(links=>({...links,[name]:url}));if(download){window.location.assign(url);return;}try{await this.copy(url,'share-'+name);this.notice.set('Ссылка скопирована. Действует 7 дней.');}catch{this.notice.set('Ссылка готова. Скопируйте её из списка файлов.');}}catch(e){this.error.set((e as Error).message);}}
+  formatFileSize(bytes?: number): string {
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 Б';
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' МБ';
+  }
+  pluralizeFiles(count: number): string {
+    const n = Math.abs(count) % 100;
+    const n1 = n % 10;
+    if (n > 10 && n < 20) return 'файлов';
+    if (n1 > 1 && n1 < 5) return 'файла';
+    if (n1 === 1) return 'файл';
+    return 'файлов';
+  }
+  hasDirectories = computed(() => this.taskFiles().some(f => f.name.includes('/')));
+  totalFilesSize = computed(() => {
+    const total = this.taskFiles().reduce((acc, f) => acc + (f.size || 0), 0);
+    return this.formatFileSize(total);
+  });
+  allDirPaths = computed(() => {
+    const dirs = new Set<string>();
+    for (const file of this.taskFiles()) {
+      const parts = file.name.split('/').filter(Boolean);
+      let cur = '';
+      for (let i = 0; i < parts.length - 1; i++) {
+        cur = cur ? `${cur}/${parts[i]}` : parts[i];
+        dirs.add(cur);
+      }
+    }
+    return Array.from(dirs);
+  });
+  visibleFileTree = computed<FlatFileNode[]>(() => {
+    const files = this.taskFiles();
+    const filter = this.filesFilter().trim().toLowerCase();
+    const collapsed = this.collapsedDirs();
+    const root: FileNodeInternal = {
+      name: '',
+      path: '',
+      isDir: true,
+      size: 0,
+      fileCount: 0,
+      children: new Map()
+    };
+    for (const file of files) {
+      if (filter && !file.name.toLowerCase().includes(filter)) {
+        continue;
+      }
+      const parts = file.name.split('/').filter(Boolean);
+      if (!parts.length) continue;
+      let current = root;
+      let currentPath = '';
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const isFile = i === parts.length - 1;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        if (isFile) {
+          current.children.set(part, {
+            name: part,
+            path: file.name,
+            isDir: false,
+            size: file.size,
+            modified: file.modified,
+            fileCount: 1,
+            children: new Map()
+          });
+        } else {
+          let dirNode = current.children.get(part);
+          if (!dirNode) {
+            dirNode = {
+              name: part,
+              path: currentPath,
+              isDir: true,
+              size: 0,
+              fileCount: 0,
+              children: new Map()
+            };
+            current.children.set(part, dirNode);
+          }
+          current = dirNode;
+        }
+      }
+    }
+    function rollup(node: FileNodeInternal): { size: number; count: number } {
+      if (!node.isDir) return { size: node.size, count: 1 };
+      let totalSize = 0;
+      let totalCount = 0;
+      for (const child of node.children.values()) {
+        const res = rollup(child);
+        totalSize += res.size;
+        totalCount += res.count;
+      }
+      node.size = totalSize;
+      node.fileCount = totalCount;
+      return { size: totalSize, count: totalCount };
+    }
+    rollup(root);
+    const result: FlatFileNode[] = [];
+    function flatten(node: FileNodeInternal, depth: number) {
+      const sortedChildren = Array.from(node.children.values()).sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+      for (const child of sortedChildren) {
+        if (child.isDir) {
+          const isExpanded = filter ? true : !collapsed.has(child.path);
+          result.push({
+            name: child.name,
+            path: child.path,
+            isDir: true,
+            depth,
+            size: child.size,
+            fileCount: child.fileCount,
+            isExpanded
+          });
+          if (isExpanded) {
+            flatten(child, depth + 1);
+          }
+        } else {
+          result.push({
+            name: child.name,
+            path: child.path,
+            isDir: false,
+            depth,
+            size: child.size,
+            modified: child.modified
+          });
+        }
+      }
+    }
+    flatten(root, 0);
+    return result;
+  });
+  toggleFolder(path: string) {
+    this.collapsedDirs.update(set => {
+      const next = new Set(set);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+  collapseAllFolders() {
+    this.collapsedDirs.set(new Set(this.allDirPaths()));
+  }
+  expandAllFolders() {
+    this.collapsedDirs.set(new Set());
+  }
   chatsFor(projectId?:string){return this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId);}
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}

@@ -16,3 +16,4 @@ data/
 device.json
 *.codexprofile.json
 auth.json
+download-test.txt

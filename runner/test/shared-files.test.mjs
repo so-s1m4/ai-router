@@ -26,8 +26,12 @@ test('file exchange lists workspace output and rejects private paths and symlink
   assert.equal(info.size,5);
   const chunk=await ask('file:chunk',{sessionId,name:'output/result.txt',offset:0,modified:info.modified});
   assert.equal(Buffer.from(chunk.data).toString(),'hello');
-  for(const name of ['../.env','.env','.ai-router/checkpoint.json','output/shortcut']){
+ for(const name of ['../.env','.env','.ai-router/checkpoint.json','output/shortcut']){
    assert.equal((await ask('file:info',{sessionId,name})).ok,false,name);
   }
+  const linkedSession='a533536e-b824-4ddc-8bbc-5b2a5cc37671';
+  await symlink(workspace,path.join(root,'workspaces',linkedSession));
+  assert.equal((await ask('file:list',{sessionId:linkedSession})).ok,false);
+  assert.equal((await ask('file:info',{sessionId:linkedSession,name:'output/result.txt'})).ok,false);
  }finally{await rm(root,{recursive:true,force:true});}
 });
