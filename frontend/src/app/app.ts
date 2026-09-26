@@ -5,7 +5,8 @@ import { io, Socket } from 'socket.io-client';
 import { LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCopy, LucideFolder, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, LucideServer, LucideSparkles, LucideSquare, LucideX } from '@lucide/angular';
 
 type ProviderId = 'codex'|'antigravity';
-type Model = {id:string;label:string};
+type ReasoningEffort = {id:string;label:string};
+type Model = {id:string;label:string;reasoning?:ReasoningEffort[];defaultReasoning?:string};
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
 type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
 type Runner = {id:string;name:string;online:boolean;createdAt:string;revokedAt?:string};
@@ -21,11 +22,12 @@ export class App implements OnInit,OnDestroy {
   loggedIn=signal(false); page=signal<'chat'|'projects'|'connections'|'runners'>('chat');
   mobileMenu=signal(false);
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
-  draft=''; selectedAccount='auto'; selectedModel='default'; runMode:'chat'|'task'='chat';
+  draft=''; selectedAccount='auto'; selectedModel='default'; selectedReasoning='default'; runMode:'chat'|'task'='chat';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal('');
   socket?:Socket;
-  models=computed(()=>{const id=this.selectedAccount; if(id==='auto')return [{id:'default',label:'По умолчанию выбранного CLI'}]; return this.accounts().find(a=>a.id===id)?.models||[{id:'default',label:'По умолчанию CLI'}];});
+  models=computed(()=>{const selected=this.selectedAccount==='auto'?this.accounts().flatMap(a=>a.models):(this.accounts().find(a=>a.id===this.selectedAccount)?.models||[]);const unique=new Map<string,Model>();for(const model of selected)if(!unique.has(model.id))unique.set(model.id,model);if(!unique.has('default'))unique.set('default',{id:'default',label:this.selectedAccount==='auto'?'По умолчанию выбранного CLI':'По умолчанию аккаунта'});return [...unique.values()];});
+  reasoningOptions=computed(()=>{const selected=this.models().filter(m=>m.id===this.selectedModel).flatMap(m=>m.reasoning||[]),unique=new Map<string,ReasoningEffort>();for(const option of selected)if(!unique.has(option.id))unique.set(option.id,option);return [{id:'default',label:'По умолчанию'},...Array.from(unique.values()).filter((x:ReasoningEffort)=>x.id!=='default')];});
   ngOnInit(){this.restore();} ngOnDestroy(){this.socket?.disconnect();}
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
   async restore(){
@@ -53,11 +55,11 @@ export class App implements OnInit,OnDestroy {
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
   async uploadFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0],projectId=this.current()?.projectId;if(input)input.value='';if(!file)return;if(!projectId){this.error.set('Сначала откройте чат внутри проекта');return;}if(file.size>20*1024*1024){this.error.set('Файл больше 20 МБ');return;}this.uploading.set(true);this.error.set('');try{const response=await fetch(`/api/projects/${projectId}/files`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file,credentials:'same-origin'});const body=await response.json() as {name?:string;size?:number;error?:string};if(!response.ok)throw new Error(body.error||'Не удалось загрузить файл');this.notice.set(`Файл «${body.name||file.name}» добавлен в папку проекта`);}catch(error){this.error.set(error instanceof Error?error.message:'Не удалось загрузить файл');}finally{this.uploading.set(false);}}
   showPage(page:'chat'|'projects'|'connections'|'runners'){this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();}
-  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const selected=this.accounts().find(x=>x.id===this.selectedAccount);if(selected&&this.selectedModel!=='default'&&!selected.models.some(m=>m.id===this.selectedModel))this.selectedModel='default';});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
+  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const selected=this.models().some(m=>m.id===this.selectedModel);if(!selected)this.selectedModel='default';if(!this.reasoningOptions().some(r=>r.id===this.selectedReasoning))this.selectedReasoning='default';});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='status'||e.type==='fallback'){this.notice.set(e.message||'');this.activeAccount.set(e.data?.accountId||'');}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.running.set(false);this.runId.set('');this.stream.set('');this.reloadCurrent();}else if(e.type==='completed'){this.running.set(false);this.runId.set('');this.stream.set('');this.notice.set(e.message||'Готово');this.reloadCurrent();}}
   async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);}
   send(){const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;this.error.set('');this.notice.set('');this.stream.set('');this.running.set(true);this.draft='';this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
-    this.socket?.emit('run',{sessionId:s.id,prompt,accountId:this.selectedAccount,model:this.selectedModel,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok)this.runId.set(ack.runId||'');else{this.running.set(false);this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,accountId:this.selectedAccount,model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok)this.runId.set(ack.runId||'');else{this.running.set(false);this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();}});
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
   async addAccount(){this.error.set('');try{await this.api('/accounts',{method:'POST',body:JSON.stringify({provider:this.accountProvider,name:this.accountName,runnerId:this.selectedRunner})});this.accountName='';await this.refreshAccounts();this.notice.set('Аккаунт добавлен. Выполните команду входа на своём контейнере.');}catch(e){this.error.set((e as Error).message);}}
@@ -72,5 +74,6 @@ export class App implements OnInit,OnDestroy {
   windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 ч';if(minutes===10080)return 'Неделя';if(minutes===43200)return 'Месяц';if(minutes&&minutes%60===0)return `${minutes/60} ч`;return 'Окно';}
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
-  selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';}
+  selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';this.selectedReasoning='default';}
+  selectModel(id:string){this.selectedModel=id;this.selectedReasoning='default';}
 }
