@@ -14,7 +14,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix backend
+      - run: npm ci --prefix runner
+      - run: npm run build --prefix backend
+      - run: npm run build --prefix runner
+      - run: node --test tests/preview.integration.mjs
   images:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

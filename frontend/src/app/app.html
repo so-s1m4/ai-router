@@ -90,6 +90,11 @@
           <span>Проекты</span>
           @if(projects().length){<span class="nav-badge">{{projects().length}}</span>}
         </button>
+        <button class="nav-btn" [class.active]="page()==='sites'" (click)="showPage('sites')">
+          <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg>
+          <span>Сайты</span>
+          @if(previews().length){<span class="nav-badge">{{previews().length}}</span>}
+        </button>
         <button class="nav-btn" [class.active]="page()==='connections'" (click)="showPage('connections')">
           <svg lucidePlugZap [size]="18" aria-hidden="true"></svg>
           <span>Подключения</span>
@@ -453,6 +458,30 @@
                   </div>
                 }
               </div>
+            }
+          </div>
+        </div>
+      } @else if(page()==='sites') {
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню"><svg lucideMenu [size]="20"></svg></button>
+            <div class="topbar-info"><h1 class="chat-title">Сайты</h1></div>
+          </div>
+          <button class="btn btn-outline btn-sm" (click)="refreshPreviews()"><svg lucideRefreshCw [size]="16"></svg><span>Обновить</span></button>
+        </header>
+        <div class="page-content">
+          <div class="section-hero"><div><span class="section-tag">ПРЕВЬЮ НА ВАШИХ RUNNER</span><h2>Опубликованные сайты</h2><p>Файлы остаются на runner. Здесь можно скрыть сайт или снова открыть его публичный адрес.</p></div></div>
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+          @if(!previews().length){<div class="empty-card"><div class="empty-icon"><svg lucideGlobe2 [size]="32"></svg></div><h3>Сайтов пока нет</h3><p>На runner выполните <code>deploy-preview &lt;папка-сайта&gt;</code>. Готовый адрес появится здесь.</p></div>}
+          <div class="cards-grid">
+            @for(site of previews();track site.subdomain){
+              <article class="card site-card">
+                <div class="project-header"><div class="project-avatar"><svg lucideGlobe2 [size]="22"></svg></div><span class="badge" [class.badge-ready]="site.visible && site.online && !site.expired">{{site.expired?'Истёк':!site.visible?'Скрыт':site.online?'Опубликован':'Runner не в сети'}}</span></div>
+                <h3>{{site.subdomain}}.s1m4.com</h3>
+                <div class="project-meta"><svg lucideServer [size]="14"></svg><span>{{previewRunner(site)}} · До {{site.expiresAt | date:'d MMM, HH:mm'}}</span></div>
+                <div class="card-actions"><a class="btn btn-outline btn-sm" [href]="site.url" target="_blank" rel="noopener noreferrer">Открыть</a><button class="btn btn-primary btn-sm" (click)="setPreviewVisible(site,!site.visible)" [disabled]="site.expired">{{site.visible?'Скрыть':'Показывать'}}</button></div>
+              </article>
             }
           </div>
         </div>

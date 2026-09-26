@@ -23,7 +23,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY scripts ./scripts
-RUN chmod +x scripts/*.sh && mkdir -p /runner-data && chown -R node:node /runner-data
+RUN chmod +x scripts/*.sh scripts/deploy-preview && ln -s /app/scripts/deploy-preview /usr/local/bin/deploy-preview && mkdir -p /runner-data && chown -R node:node /runner-data
 USER node
 ENV NODE_ENV=production RUNNER_DATA_DIR=/runner-data SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt AGY_CLI_DISABLE_AUTO_UPDATE=true
 CMD ["node","dist/main.js"]

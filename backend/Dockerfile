@@ -14,5 +14,5 @@ COPY --from=build /app/dist ./dist
 RUN mkdir -p /srv/data && chown -R node:node /srv/data
 USER node
 ENV NODE_ENV=production DATA_DIR=/srv/data PORT=3000 APP_REVISION=$SOURCE_REVISION
-EXPOSE 3000
+EXPOSE 3000 3001
 CMD ["node","dist/server.js"]

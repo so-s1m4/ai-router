@@ -101,6 +101,38 @@ docker compose exec runner /app/scripts/provider-login.sh codex <account-id>
 
 Чаты и бизнес-логика хранятся на сайте. Учётные данные CLI и файлы работы остаются в volume исполнителя. Сайт получает текст запроса, события выполнения и ответ. Исполнитель получает текст текущей задачи и короткую историю беседы для контекста.
 
+## Превью сайтов на runner
+
+Собранный сайт можно открыть по временному адресу без загрузки файлов на сервер AI Router. В контейнере runner выполните:
+
+```bash
+deploy-preview /runner-data/projects/PROJECT_ID/dist [поддомен]
+```
+
+Команда выведет `https://<поддомен>.s1m4.com`. Без имени создаётся свободный адрес `preview-xxxxxxxx`. Для работающего dev-сервера, который слушает порт **внутри того же контейнера runner**:
+
+```bash
+deploy-preview --port 5173 [поддомен]
+```
+
+Трафик HTTP и WebSocket проходит через исходящее соединение runner с сервером. Статические файлы остаются в проекте или рабочем каталоге runner. Публикация действует 7 дней; повторный запуск продлевает срок. Вкладка **Сайты** на `ai.s1m4.com` показывает превью всех ваших runner и позволяет скрыть сайт (публичный адрес вернёт 404) или открыть снова. Остановка публикации: `deploy-preview --stop <поддомен>`.
+
+Для статического сайта нужен `index.html` в выбранной папке. Допускаются только папки внутри `/runner-data/projects` и `/runner-data/workspaces`; скрытые файлы и ссылки за пределы папки не выдаются. Dev-сервер должен слушать `127.0.0.1` внутри контейнера runner, а не на хосте Docker.
+
+### Wildcard HTTPS в Nginx Proxy Manager
+
+Для `*.s1m4.com` нужен wildcard-сертификат. На OVH он выпущен через acme.sh и DNS API Name.com. Стабильные файлы находятся в `/etc/ai-router/ssl/fullchain.pem` и `/etc/ai-router/ssl/privkey.pem`; acme.sh обновляет их по root cron. Скрипт `ops/sync-npm-wildcard.sh` после продления копирует обновлённый сертификат в уже импортированный Custom SSL NPM и перезагружает Nginx.
+
+Первый импорт выполняется в NPM вручную: **Certificates → Add SSL Certificate → Custom**, имя `s1m4.com wildcard`, сертификат из `fullchain.pem`, ключ из `privkey.pem`. Чтобы перенести файлы на свой компьютер без вывода ключа в чат:
+
+```bash
+ssh ovhserver 'sudo cat /etc/ai-router/ssl/fullchain.pem' > /tmp/s1m4-fullchain.pem
+ssh ovhserver 'sudo cat /etc/ai-router/ssl/privkey.pem' > /tmp/s1m4-privkey.pem
+chmod 600 /tmp/s1m4-privkey.pem
+```
+
+В NPM создайте **Proxy Host** с доменом `*.s1m4.com`: `Scheme=http`, `Forward Hostname=ai-router-web`, `Forward Port=80`, `Websockets Support=ON`, `Block Common Exploits=ON`. Во вкладке SSL выберите импортированный Custom SSL, включите `Force SSL` и `HTTP/2 Support`. Уже существующий отдельный Proxy Host `ai.s1m4.com` должен остаться: он обслуживает сам AI Router. После импорта на сервере выполните `sudo /usr/local/sbin/sync-ai-router-wildcard`; этим проверяется, что автообновление видит импортированный сертификат. Удалите временные копии закрытого ключа на своём компьютере после импорта.
+
 ## Доступ и границы MVP
 
 У каждого пользователя свои аккаунты, исполнители, чаты и веб-сессия. Привязка исполнителя одноразовая; его секрет хранится локально и на сайте сохраняется только хэш. Пользователь может отозвать доступ исполнителя на сайте. Задания приходят только по исходящему Socket.IO соединению с центральным сервисом; при разрыве соединения активные задания останавливаются. Локального API запуска заданий у контейнера нет.

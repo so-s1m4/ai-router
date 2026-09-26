@@ -8,6 +8,11 @@
 @import '@fontsource/jetbrains-mono/latin-700.css';
 @import 'highlight.js/styles/github-dark-dimmed.css';
 
+.site-card{min-width:0}
+.site-card h3{overflow-wrap:anywhere}
+.site-card .project-meta{margin-bottom:20px}
+.site-card .card-actions a{text-decoration:none}
+
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
