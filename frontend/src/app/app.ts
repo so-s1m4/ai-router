@@ -28,6 +28,13 @@ export const DEFAULT_CODEX_MODELS: Model[] = [
 
 export const DEFAULT_GEMINI_MODELS: Model[] = [
   { id: 'default', label: 'По умолчанию Gemini' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
+  { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+  { id: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' },
   { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }, { id: 'max', label: 'Максимальное' }] },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
   { id: 'gemini-2.5-flash-thinking', label: 'Gemini 2.5 Flash Thinking', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
