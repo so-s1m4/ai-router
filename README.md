@@ -126,9 +126,9 @@ deploy-preview --port 5173 [поддомен]
 Первый импорт выполняется в NPM вручную: **Certificates → Add SSL Certificate → Custom**, имя `s1m4.com wildcard`, сертификат из `fullchain.pem`, ключ из `privkey.pem`. Чтобы перенести файлы на свой компьютер без вывода ключа в чат:
 
 ```bash
+umask 077
 ssh ovhserver 'sudo cat /etc/ai-router/ssl/fullchain.pem' > /tmp/s1m4-fullchain.pem
 ssh ovhserver 'sudo cat /etc/ai-router/ssl/privkey.pem' > /tmp/s1m4-privkey.pem
-chmod 600 /tmp/s1m4-privkey.pem
 ```
 
 В NPM создайте **Proxy Host** с доменом `*.s1m4.com`: `Scheme=http`, `Forward Hostname=ai-router-web`, `Forward Port=80`, `Websockets Support=ON`, `Block Common Exploits=ON`. Во вкладке SSL выберите импортированный Custom SSL, включите `Force SSL` и `HTTP/2 Support`. Уже существующий отдельный Proxy Host `ai.s1m4.com` должен остаться: он обслуживает сам AI Router. После импорта на сервере выполните `sudo /usr/local/sbin/sync-ai-router-wildcard`; этим проверяется, что автообновление видит импортированный сертификат. Удалите временные копии закрытого ключа на своём компьютере после импорта.
