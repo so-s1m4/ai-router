@@ -95,6 +95,11 @@
           <span>Сайты</span>
           @if(previews().length){<span class="nav-badge">{{previews().length}}</span>}
         </button>
+        <button class="nav-btn" [class.active]="page()==='providers'" (click)="showPage('providers')">
+          <svg lucideCpu [size]="18" aria-hidden="true"></svg>
+          <span>Провайдеры</span>
+          @if(disabledModelsCount()){<span class="nav-badge nav-badge-warn" title="Отключено моделей">{{disabledModelsCount()}}</span>}
+        </button>
         <button class="nav-btn" [class.active]="page()==='connections'" (click)="showPage('connections')">
           <svg lucidePlugZap [size]="18" aria-hidden="true"></svg>
           <span>Подключения</span>
@@ -552,6 +557,253 @@
                 <div class="card-actions"><a class="btn btn-outline btn-sm" [href]="site.url" target="_blank" rel="noopener noreferrer">Открыть</a><button class="btn btn-primary btn-sm" (click)="setPreviewVisible(site,!site.visible)" [disabled]="site.expired">{{site.visible?'Скрыть':'Показывать'}}</button></div>
               </article>
             }
+          </div>
+        </div>
+      } @else if(page()==='providers') {
+        <!-- PROVIDERS & MODELS VIEW -->
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
+              <svg lucideMenu [size]="20"></svg>
+            </button>
+            <div class="topbar-info">
+              <h1 class="chat-title">Провайдеры и модели</h1>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <button class="btn btn-outline btn-sm" (click)="refreshProviders()" title="Обновить список моделей">
+              <svg lucideRefreshCw [size]="15"></svg>
+              <span>Обновить</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="page-content">
+          <div class="section-hero">
+            <div>
+              <span class="section-tag">МОДЕЛИ И ПРОВАЙДЕРЫ</span>
+              <h2>Управление моделями ИИ</h2>
+              <p>Включайте или отключайте доступные модели для вашего аккаунта. По умолчанию все модели включены. Отключенные модели (черный список) скрываются из выбора в чате и блокируются при запуске задач.</p>
+            </div>
+          </div>
+
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+
+          <!-- TOOLBAR & STATS CARD -->
+          <div class="providers-toolbar-card">
+            <div class="providers-summary-stats">
+              <div class="summary-stat-item">
+                <span class="stat-value">{{totalModelsCount()}}</span>
+                <span class="stat-label">Всего моделей</span>
+              </div>
+              <div class="summary-stat-divider"></div>
+              <div class="summary-stat-item stat-success">
+                <span class="stat-value">{{totalEnabledCount()}}</span>
+                <span class="stat-label">Включено</span>
+              </div>
+              <div class="summary-stat-divider"></div>
+              <div class="summary-stat-item" [class.stat-warning]="disabledModelsCount() > 0">
+                <span class="stat-value">{{disabledModelsCount()}}</span>
+                <span class="stat-label">В черном списке</span>
+              </div>
+            </div>
+
+            <div class="providers-toolbar-controls">
+              <div class="search-box">
+                <svg lucideSearch [size]="15" class="search-icon"></svg>
+                <input type="text"
+                       placeholder="Поиск по названию или ID модели…"
+                       [ngModel]="providerModelSearch()"
+                       (ngModelChange)="providerModelSearch.set($event)"
+                       class="search-input" />
+                @if(providerModelSearch()){
+                  <button class="btn-clear-search" (click)="providerModelSearch.set('')" title="Очистить поиск">
+                    <svg lucideX [size]="14"></svg>
+                  </button>
+                }
+              </div>
+
+              <div class="filter-pills">
+                <button type="button" class="filter-pill-btn" [class.active]="providerModelFilter() === 'all'" (click)="providerModelFilter.set('all')">
+                  Все ({{totalModelsCount()}})
+                </button>
+                <button type="button" class="filter-pill-btn" [class.active]="providerModelFilter() === 'enabled'" (click)="providerModelFilter.set('enabled')">
+                  Включённые ({{totalEnabledCount()}})
+                </button>
+                <button type="button" class="filter-pill-btn" [class.active]="providerModelFilter() === 'disabled'" (click)="providerModelFilter.set('disabled')">
+                  Отключённые ({{disabledModelsCount()}})
+                </button>
+              </div>
+
+              <div class="bulk-actions">
+                <button type="button" class="btn btn-outline btn-sm" (click)="enableAllModels()" [disabled]="disabledModelsCount() === 0" title="Включить все модели">
+                  <svg lucideCheck [size]="14"></svg>
+                  <span>Включить все</span>
+                </button>
+                <button type="button" class="btn btn-outline btn-sm btn-subtle-danger" (click)="disableAllModels()" [disabled]="totalEnabledCount() === 0" title="Отключить все модели">
+                  <svg lucideX [size]="14"></svg>
+                  <span>Отключить все</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- PROVIDER SECTIONS GRID -->
+          <div class="providers-grid">
+
+            <!-- GEMINI / ANTIGRAVITY PROVIDER -->
+            <div class="card provider-card">
+              <div class="provider-box-header">
+                <div class="provider-box-title-group">
+                  <div class="provider-badge-icon provider-gemini">
+                    <svg lucideSparkles [size]="22"></svg>
+                  </div>
+                  <div>
+                    <div class="provider-title-row">
+                      <h3>Google DeepMind / Gemini</h3>
+                      <span class="provider-count-pill" [class.has-disabled]="allGeminiModels().length > geminiEnabledCount()">
+                        {{geminiEnabledCount()}} из {{allGeminiModels().length}} активно
+                      </span>
+                    </div>
+                    <p class="provider-desc">Модели Google DeepMind, мультимодальность, рассуждения и длинный контекст (Antigravity CLI)</p>
+                  </div>
+                </div>
+
+                <div class="provider-header-actions">
+                  <button type="button" class="btn btn-outline btn-xs" (click)="enableAllForProvider('antigravity')" [disabled]="geminiEnabledCount() === allGeminiModels().length" title="Включить все модели Gemini">
+                    Включить все
+                  </button>
+                  <button type="button" class="btn btn-outline btn-xs" (click)="disableAllForProvider('antigravity')" [disabled]="geminiEnabledCount() === 0" title="Отключить все модели Gemini">
+                    Отключить все
+                  </button>
+                </div>
+              </div>
+
+              <div class="models-list">
+                @for(m of filteredGeminiModels(); track m.id){
+                  <div class="model-row" [class.model-disabled]="!isModelEnabled(m.id)" (click)="toggleModel(m.id)">
+                    <div class="model-info">
+                      <div class="model-name-line">
+                        <span class="model-label">{{m.label}}</span>
+                        <code class="model-id-tag">{{m.id}}</code>
+                        @if(m.reasoning?.length){
+                          <span class="feature-tag feature-tag-reasoning" title="Поддерживает уровни рассуждений">
+                            Рассуждения ({{m.reasoning?.length}})
+                          </span>
+                        }
+                      </div>
+                      <div class="model-status-hint">
+                        @if(isModelEnabled(m.id)){
+                          <span class="status-dot status-dot-active"></span>
+                          <span class="status-text-active">Активна в чате</span>
+                        } @else {
+                          <span class="status-dot status-dot-disabled"></span>
+                          <span class="status-text-disabled">В черном списке (скрыта)</span>
+                        }
+                      </div>
+                    </div>
+
+                    <div class="model-action" (click)="$event.stopPropagation()">
+                      <button type="button"
+                              class="toggle-switch"
+                              [class.checked]="isModelEnabled(m.id)"
+                              (click)="toggleModel(m.id)"
+                              [attr.aria-pressed]="isModelEnabled(m.id)"
+                              [title]="isModelEnabled(m.id) ? 'Нажмите, чтобы отключить модель' : 'Нажмите, чтобы включить модель'">
+                        <span class="toggle-track">
+                          <span class="toggle-thumb"></span>
+                        </span>
+                        <span class="toggle-label">{{isModelEnabled(m.id) ? 'ВКЛ' : 'ВЫКЛ'}}</span>
+                      </button>
+                    </div>
+                  </div>
+                }
+                @if(!filteredGeminiModels().length){
+                  <div class="models-empty-notice">
+                    <svg lucideInfo [size]="16"></svg>
+                    <span>Нет моделей Gemini, соответствующих фильтру</span>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- CODEX PROVIDER -->
+            <div class="card provider-card">
+              <div class="provider-box-header">
+                <div class="provider-box-title-group">
+                  <div class="provider-badge-icon provider-codex">
+                    <svg lucideBot [size]="22"></svg>
+                  </div>
+                  <div>
+                    <div class="provider-title-row">
+                      <h3>OpenAI Codex</h3>
+                      <span class="provider-count-pill" [class.has-disabled]="allCodexModels().length > codexEnabledCount()">
+                        {{codexEnabledCount()}} из {{allCodexModels().length}} активно
+                      </span>
+                    </div>
+                    <p class="provider-desc">Модели OpenAI, GPT-5, o-series рассуждения и задачи программирования (Codex CLI)</p>
+                  </div>
+                </div>
+
+                <div class="provider-header-actions">
+                  <button type="button" class="btn btn-outline btn-xs" (click)="enableAllForProvider('codex')" [disabled]="codexEnabledCount() === allCodexModels().length" title="Включить все модели Codex">
+                    Включить все
+                  </button>
+                  <button type="button" class="btn btn-outline btn-xs" (click)="disableAllForProvider('codex')" [disabled]="codexEnabledCount() === 0" title="Отключить все модели Codex">
+                    Отключить все
+                  </button>
+                </div>
+              </div>
+
+              <div class="models-list">
+                @for(m of filteredCodexModels(); track m.id){
+                  <div class="model-row" [class.model-disabled]="!isModelEnabled(m.id)" (click)="toggleModel(m.id)">
+                    <div class="model-info">
+                      <div class="model-name-line">
+                        <span class="model-label">{{m.label}}</span>
+                        <code class="model-id-tag">{{m.id}}</code>
+                        @if(m.reasoning?.length){
+                          <span class="feature-tag feature-tag-reasoning" title="Поддерживает уровни рассуждений">
+                            Рассуждения ({{m.reasoning?.length}})
+                          </span>
+                        }
+                      </div>
+                      <div class="model-status-hint">
+                        @if(isModelEnabled(m.id)){
+                          <span class="status-dot status-dot-active"></span>
+                          <span class="status-text-active">Активна в чате</span>
+                        } @else {
+                          <span class="status-dot status-dot-disabled"></span>
+                          <span class="status-text-disabled">В черном списке (скрыта)</span>
+                        }
+                      </div>
+                    </div>
+
+                    <div class="model-action" (click)="$event.stopPropagation()">
+                      <button type="button"
+                              class="toggle-switch"
+                              [class.checked]="isModelEnabled(m.id)"
+                              (click)="toggleModel(m.id)"
+                              [attr.aria-pressed]="isModelEnabled(m.id)"
+                              [title]="isModelEnabled(m.id) ? 'Нажмите, чтобы отключить модель' : 'Нажмите, чтобы включить модель'">
+                        <span class="toggle-track">
+                          <span class="toggle-thumb"></span>
+                        </span>
+                        <span class="toggle-label">{{isModelEnabled(m.id) ? 'ВКЛ' : 'ВЫКЛ'}}</span>
+                      </button>
+                    </div>
+                  </div>
+                }
+                @if(!filteredCodexModels().length){
+                  <div class="models-empty-notice">
+                    <svg lucideInfo [size]="16"></svg>
+                    <span>Нет моделей Codex, соответствующих фильтру</span>
+                  </div>
+                }
+              </div>
+            </div>
+
           </div>
         </div>
       } @else if(page()==='connections') {

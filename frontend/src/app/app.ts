@@ -4,10 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import { 
   LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, LucideChevronDown, 
-  LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideCopy, LucideCpu, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff,
   LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
-  LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, LucideZap 
+  LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, LucideZap 
 } from '@lucide/angular';
 import { ManagerPanel } from './manager-panel';
 import { MarkdownPipe } from './markdown.pipe';
@@ -60,9 +60,9 @@ type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:strin
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, 
-    LucideChevronDown, LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
+    LucideChevronDown, LucideCopy, LucideCpu, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideMic, LucideMicOff, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
-    LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, 
+    LucideRefreshCw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, 
     LucideZap, ManagerPanel, MarkdownPipe
   ],
   templateUrl:'./app.html',
@@ -308,6 +308,39 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return this.allCodexModels().filter(m=>!blacklist.has(m.id)).length;
   });
 
+  totalModelsCount=computed(()=>this.allGeminiModels().length+this.allCodexModels().length);
+  totalEnabledCount=computed(()=>this.geminiEnabledCount()+this.codexEnabledCount());
+  providerModelSearch=signal('');
+  providerModelFilter=signal<'all'|'enabled'|'disabled'>('all');
+
+  filteredGeminiModels=computed(()=>{
+    const q=this.providerModelSearch().toLowerCase().trim();
+    const filter=this.providerModelFilter();
+    const blacklist=new Set(this.modelBlacklist());
+    return this.allGeminiModels().filter(m=>{
+      const matchesQuery=!q||m.label.toLowerCase().includes(q)||m.id.toLowerCase().includes(q);
+      if(!matchesQuery)return false;
+      const isEnabled=!blacklist.has(m.id);
+      if(filter==='enabled')return isEnabled;
+      if(filter==='disabled')return !isEnabled;
+      return true;
+    });
+  });
+
+  filteredCodexModels=computed(()=>{
+    const q=this.providerModelSearch().toLowerCase().trim();
+    const filter=this.providerModelFilter();
+    const blacklist=new Set(this.modelBlacklist());
+    return this.allCodexModels().filter(m=>{
+      const matchesQuery=!q||m.label.toLowerCase().includes(q)||m.id.toLowerCase().includes(q);
+      if(!matchesQuery)return false;
+      const isEnabled=!blacklist.has(m.id);
+      if(filter==='enabled')return isEnabled;
+      if(filter==='disabled')return !isEnabled;
+      return true;
+    });
+  });
+
   isModelEnabled(id:string):boolean{
     return !this.modelBlacklist().includes(id);
   }
@@ -323,6 +356,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       updated=current.includes(id)?current:[...current,id];
     }
     await this.saveBlacklist(updated);
+  }
+
+  async enableAllModels(){
+    await this.saveBlacklist([]);
+  }
+
+  async disableAllModels(){
+    const allIds=[...this.allGeminiModels().map(m=>m.id),...this.allCodexModels().map(m=>m.id)];
+    await this.saveBlacklist(Array.from(new Set(allIds)));
   }
 
   async enableAllForProvider(provider:ProviderId){
@@ -429,8 +471,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     try{await this.load();}catch(e){this.error.set((e as Error).message);}
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'});this.socket?.disconnect();this.managedRunner.set(null);this.loggedIn.set(false);this.current.set(null);}
-  async load(){const [accounts,runners,projects,sessions]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions')]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
+  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'});this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.loggedIn.set(false);this.current.set(null);}
+  async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
   async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
@@ -678,7 +720,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     void this.uploadFiles(files);
     input.value = '';
   }
-  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')this.ensureChatScrollAttached(true);else this.cleanupResizeObserver();}
+  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='providers')void this.refreshProviders();if(page==='chat')this.ensureChatScrollAttached(true);else this.cleanupResizeObserver();}
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
