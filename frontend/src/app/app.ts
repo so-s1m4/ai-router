@@ -95,6 +95,10 @@ export class App implements OnInit,OnDestroy {
   showScrollBottom = signal(false);
   private chatScrollArea?: ElementRef<HTMLDivElement>;
   private scrollRaf?: number;
+  private lastScrollTop = 0;
+  private touchStartY = 0;
+  private isProgrammaticScroll = false;
+
   @ViewChild('chatScrollArea') set chatScrollAreaRef(ref: ElementRef<HTMLDivElement> | undefined) {
     this.chatScrollArea = ref;
     if (ref) {
@@ -102,9 +106,26 @@ export class App implements OnInit,OnDestroy {
     }
   }
 
+  onTouchStart(event: TouchEvent) {
+    this.isProgrammaticScroll = false;
+    if (event.touches.length === 1) {
+      this.touchStartY = event.touches[0].clientY;
+    }
+  }
+
+  onTouchMove(event: TouchEvent) {
+    if (event.touches.length === 1) {
+      const currentY = event.touches[0].clientY;
+      if (currentY - this.touchStartY > 6) {
+        this.userScrolledUp.set(true);
+        this.showScrollBottom.set(true);
+      }
+    }
+  }
+
   onWheel(event: WheelEvent) {
+    this.isProgrammaticScroll = false;
     if (event.deltaY < 0) {
-      // Scrolling UP with wheel or trackpad
       this.userScrolledUp.set(true);
       this.showScrollBottom.set(true);
     }
@@ -114,15 +135,36 @@ export class App implements OnInit,OnDestroy {
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
 
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isAtBottom = distanceFromBottom <= 25;
-    if (isAtBottom) {
-      this.userScrolledUp.set(false);
-      this.showScrollBottom.set(false);
-    } else {
+    const currentScrollTop = el.scrollTop;
+    const scrollHeight = el.scrollHeight;
+    const clientHeight = el.clientHeight;
+    const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+    const distanceFromBottom = Math.max(0, scrollHeight - currentScrollTop - clientHeight);
+
+    if (this.isProgrammaticScroll) {
+      this.lastScrollTop = currentScrollTop;
+      return;
+    }
+
+    if (currentScrollTop < this.lastScrollTop - 1) {
+      // User scrolled UP
       this.userScrolledUp.set(true);
       this.showScrollBottom.set(true);
+    } else {
+      // User scrolled down or is near bottom
+      const atBottomThreshold = maxScrollTop > 0 ? Math.min(20, Math.max(6, maxScrollTop * 0.2)) : 0;
+      const isAtBottom = maxScrollTop > 0 && distanceFromBottom <= atBottomThreshold;
+
+      if (isAtBottom) {
+        this.userScrolledUp.set(false);
+        this.showScrollBottom.set(false);
+      } else if (distanceFromBottom > atBottomThreshold + 25) {
+        this.userScrolledUp.set(true);
+        this.showScrollBottom.set(true);
+      }
     }
+
+    this.lastScrollTop = currentScrollTop;
   }
 
   scrollToBottom(force = false, behavior: ScrollBehavior = 'auto') {
@@ -138,9 +180,15 @@ export class App implements OnInit,OnDestroy {
     }
 
     if (behavior === 'smooth') {
+      this.isProgrammaticScroll = true;
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      setTimeout(() => {
+        this.isProgrammaticScroll = false;
+        if (el) this.lastScrollTop = el.scrollTop;
+      }, 400);
     } else {
       el.scrollTop = el.scrollHeight;
+      this.lastScrollTop = el.scrollTop;
     }
   }
 
