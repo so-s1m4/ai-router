@@ -13,10 +13,43 @@ services:
       CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-180}
       CODEX_APP_SERVER_MODE: ${CODEX_APP_SERVER_MODE:-true}
       CODEX_TASK_SANDBOX: ${CODEX_TASK_SANDBOX:-danger-full-access}
+      SSH_AUTH_SOCK: /ssh-agent/agent.sock
+      GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-ssh -o StrictHostKeyChecking=accept-new}
     volumes:
       - runner_data:/runner-data
+      - manager_ssh_agent:/ssh-agent
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  manager:
+    profiles: ["management"]
+    build:
+      context: .
+      args:
+        INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+        INSTALL_AGY_CLI: ${INSTALL_AGY_CLI:-false}
+    command: ["node", "dist/manager.js"]
+    user: "0:0"
+    environment:
+      ROUTER_SERVER_URL: ${ROUTER_SERVER_URL:?Set ROUTER_SERVER_URL}
+      ROUTER_ALLOW_INSECURE: ${ROUTER_ALLOW_INSECURE:-false}
+      RUNNER_MANAGER_PAIRING_CODE: ${RUNNER_MANAGER_PAIRING_CODE:-}
+      RUNNER_MANAGER_PASSWORD: ${RUNNER_MANAGER_PASSWORD:-}
+      MANAGER_DATA_DIR: /manager-data
+      RUNNER_DATA_DIR: /runner-data
+      SSH_AUTH_SOCK: /ssh-agent/agent.sock
+    volumes:
+      - runner_data:/runner-data
+      - manager_data:/manager-data
+      - manager_ssh_agent:/ssh-agent
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
     security_opt:
       - no-new-privileges:true
 volumes:
   runner_data:
+  manager_data:
+  manager_ssh_agent:
