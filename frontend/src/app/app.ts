@@ -4,10 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import { 
   LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, LucideChevronDown, 
-  LucideCopy, LucideCpu, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff,
   LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
-  LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX, LucideZap 
+  LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideUploadCloud, LucideX, LucideZap 
 } from '@lucide/angular';
 import { ManagerPanel } from './manager-panel';
 import { MarkdownPipe } from './markdown.pipe';
@@ -60,9 +60,9 @@ type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:strin
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, 
-    LucideChevronDown, LucideCopy, LucideCpu, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
+    LucideChevronDown, LucideCopy, LucideFolder, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideMic, LucideMicOff, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
-    LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX, 
+    LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideUploadCloud, LucideX, 
     LucideZap, ManagerPanel, MarkdownPipe
   ],
   templateUrl:'./app.html',
@@ -81,6 +81,8 @@ export class App implements OnInit,OnDestroy {
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
   copiedId=signal<string>('');
+  isDraggingOver = signal(false);
+  private dragCounter = 0;
 
   isRecording = signal(false);
   speechSupported = signal(false);
@@ -292,6 +294,11 @@ export class App implements OnInit,OnDestroy {
     const options=currentModel?.reasoning||[];
     return [{id:'default',label:'По умолчанию'},...options.filter(r=>r.id!=='default')];
   });
+  private preventWindowDrop = (e: DragEvent) => {
+    if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault();
+    }
+  };
   ngOnInit(){
     this.clock=setInterval(()=>this.now.set(Date.now()),1000);
     if(typeof window !== 'undefined'){
@@ -300,6 +307,8 @@ export class App implements OnInit,OnDestroy {
       if(typeof navigator !== 'undefined' && navigator.language){
         this.voiceLang.set(navigator.language.toLowerCase().startsWith('en') ? 'en-US' : 'ru-RU');
       }
+      window.addEventListener('dragover', this.preventWindowDrop);
+      window.addEventListener('drop', this.preventWindowDrop);
     }
     this.restore();
   }
@@ -308,6 +317,10 @@ export class App implements OnInit,OnDestroy {
     this.socket?.disconnect();
     if(this.clock)clearInterval(this.clock);
     if(this.scrollRaf)cancelAnimationFrame(this.scrollRaf);
+    if(typeof window !== 'undefined'){
+      window.removeEventListener('dragover', this.preventWindowDrop);
+      window.removeEventListener('drop', this.preventWindowDrop);
+    }
   }
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
   async restore(){
@@ -333,7 +346,244 @@ export class App implements OnInit,OnDestroy {
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
-  async uploadFile(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0],projectId=this.current()?.projectId;if(input)input.value='';if(!file)return;if(!projectId){this.error.set('Сначала откройте чат внутри проекта');return;}if(file.size>20*1024*1024){this.error.set('Файл больше 20 МБ');return;}this.uploading.set(true);this.error.set('');try{const response=await fetch(`/api/projects/${projectId}/files`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file,credentials:'same-origin'});const body=await response.json() as {name?:string;size?:number;error?:string};if(!response.ok)throw new Error(body.error||'Не удалось загрузить файл');this.notice.set(`Файл «${body.name||file.name}» добавлен в папку проекта`);}catch(error){this.error.set(error instanceof Error?error.message:'Не удалось загрузить файл');}finally{this.uploading.set(false);}}
+  onDragEnter(event: DragEvent) {
+    if (this.page() !== 'chat' || !this.loggedIn()) return;
+    if (!event.dataTransfer?.types || !Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault();
+    this.dragCounter++;
+    if (this.dragCounter === 1) {
+      this.isDraggingOver.set(true);
+    }
+  }
+
+  onDragOver(event: DragEvent) {
+    if (this.page() !== 'chat' || !this.loggedIn()) return;
+    if (!event.dataTransfer?.types || !Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  onDragLeave(event: DragEvent) {
+    if (this.page() !== 'chat' || !this.loggedIn()) return;
+    this.dragCounter--;
+    if (this.dragCounter <= 0) {
+      this.dragCounter = 0;
+      this.isDraggingOver.set(false);
+    }
+  }
+
+  onDrop(event: DragEvent) {
+    if (this.page() !== 'chat' || !this.loggedIn()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragCounter = 0;
+    this.isDraggingOver.set(false);
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      void this.uploadFiles(files);
+    }
+  }
+
+  onPaste(event: ClipboardEvent) {
+    if (this.page() !== 'chat' || !this.loggedIn()) return;
+    const clipboardData = event.clipboardData;
+    if (!clipboardData) return;
+
+    const files: File[] = [];
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const f = clipboardData.files[i];
+        if (f) files.push(f);
+      }
+    } else if (clipboardData.items && clipboardData.items.length > 0) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.kind === 'file') {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      event.preventDefault();
+      void this.uploadFiles(files);
+    }
+  }
+
+  async ensureCurrentProjectId(): Promise<string> {
+    const currentSession = this.current();
+    if (!currentSession) throw new Error('Сначала откройте или создайте чат');
+    if (currentSession.projectId) return currentSession.projectId;
+
+    let projectId = this.selectedProjectId();
+    if (!projectId && this.projects().length > 0) {
+      projectId = this.projects()[0].id;
+    }
+
+    if (!projectId) {
+      const activeRunner = this.runners().find(r => !r.revokedAt);
+      if (!activeRunner) {
+        throw new Error('Для загрузки файлов подключите исполнитель (runner)');
+      }
+      const newProj = await this.api<Project>('/projects', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Основной проект', runnerId: activeRunner.id })
+      });
+      this.projects.update(list => [newProj, ...list]);
+      projectId = newProj.id;
+    }
+
+    try {
+      const updated = await this.api<ChatSession>('/sessions/' + currentSession.id, {
+        method: 'PATCH',
+        body: JSON.stringify({ projectId })
+      });
+      this.current.set(updated);
+      this.sessions.update(list => list.map(s => s.id === updated.id ? updated : s));
+    } catch {
+      this.current.update(c => c ? { ...c, projectId } : c);
+    }
+    this.selectedProjectId.set(projectId);
+    return projectId;
+  }
+
+  async uploadFiles(fileList: File[] | FileList) {
+    const rawFiles = Array.from(fileList).filter(f => f && f.size > 0);
+    if (!rawFiles.length) return;
+
+    this.error.set('');
+    this.uploading.set(true);
+
+    try {
+      const projectId = await this.ensureCurrentProjectId();
+      const uploadedNames: string[] = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < rawFiles.length; i++) {
+        const file = rawFiles[i];
+        if (file.size > 20 * 1024 * 1024) {
+          errors.push(`«${file.name}» больше 20 МБ`);
+          continue;
+        }
+
+        let name = file.name;
+        if (!name || name === 'image.png' || name === 'blob') {
+          const ext = file.type ? (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg') : 'png';
+          const now = new Date();
+          const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+          name = `screenshot-${timeStr}.${ext}`;
+        }
+
+        let finalName = name;
+        let counter = 1;
+        while (uploadedNames.includes(finalName)) {
+          const dotIdx = name.lastIndexOf('.');
+          if (dotIdx > 0) {
+            finalName = `${name.slice(0, dotIdx)}-${counter}${name.slice(dotIdx)}`;
+          } else {
+            finalName = `${name}-${counter}`;
+          }
+          counter++;
+        }
+
+        if (rawFiles.length > 1) {
+          this.notice.set(`Загрузка файлов (${i + 1}/${rawFiles.length}): «${finalName}»...`);
+        } else {
+          this.notice.set(`Загрузка «${finalName}»...`);
+        }
+
+        try {
+          const response = await fetch(`/api/projects/${projectId}/files`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'X-File-Name': encodeURIComponent(finalName)
+            },
+            body: file,
+            credentials: 'same-origin'
+          });
+          const body = await response.json() as { name?: string; size?: number; error?: string };
+          if (!response.ok) {
+            throw new Error(body.error || `Не удалось загрузить «${finalName}»`);
+          }
+          uploadedNames.push(body.name || finalName);
+        } catch (err) {
+          errors.push(err instanceof Error ? err.message : `Ошибка загрузки «${finalName}»`);
+        }
+      }
+
+      if (uploadedNames.length > 0) {
+        this.mentionFiles(uploadedNames);
+        if (uploadedNames.length === 1) {
+          this.notice.set(`Файл «${uploadedNames[0]}» добавлен в проект и упомянут в сообщении`);
+        } else {
+          this.notice.set(`Загружено ${uploadedNames.length} файлов в проект и упомянуто в сообщении`);
+        }
+      }
+
+      if (errors.length > 0) {
+        this.error.set(errors.join(' · '));
+      }
+    } catch (err) {
+      this.error.set(err instanceof Error ? err.message : 'Не удалось загрузить файлы');
+    } finally {
+      this.uploading.set(false);
+    }
+  }
+
+  mentionFiles(names: string[]) {
+    if (!names.length) return;
+    const mentions = names.map(n => n.includes(' ') ? `@"${n}"` : `@${n}`).join(' ');
+
+    const textarea = this.composerTextareaRef?.nativeElement;
+    const currentText = this.draft || '';
+
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+
+      let newText = '';
+      let newCursorPos = 0;
+
+      if (typeof start === 'number' && typeof end === 'number' && (document.activeElement === textarea || start !== end || currentText.length > 0)) {
+        const before = currentText.substring(0, start);
+        const after = currentText.substring(end);
+
+        const needLeadingSpace = before.length > 0 && !/\s$/.test(before);
+        const needTrailingSpace = after.length > 0 && !/^\s/.test(after);
+
+        const inserted = (needLeadingSpace ? ' ' : '') + mentions + (needTrailingSpace ? ' ' : ' ');
+        newText = before + inserted + after;
+        newCursorPos = (before + inserted).length;
+      } else {
+        const needLeadingSpace = currentText.length > 0 && !/\s$/.test(currentText);
+        newText = currentText + (needLeadingSpace ? ' ' : '') + mentions + ' ';
+        newCursorPos = newText.length;
+      }
+
+      this.draft = newText;
+      setTimeout(() => {
+        this.adjustTextareaHeight();
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 10);
+    } else {
+      const needLeadingSpace = currentText.length > 0 && !/\s$/.test(currentText);
+      this.draft = currentText + (needLeadingSpace ? ' ' : '') + mentions + ' ';
+    }
+  }
+
+  uploadFile(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    const files = input.files;
+    void this.uploadFiles(files);
+    input.value = '';
+  }
   showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')setTimeout(()=>this.scrollToBottom(true,'auto'),50);}
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}

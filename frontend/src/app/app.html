@@ -142,8 +142,25 @@
     <!-- MAIN AREA -->
     <main class="main-content">
       @if(page()==='chat'){
-        <!-- CHAT VIEW -->
-        <header class="topbar">
+        <div class="chat-view-layout"
+             (dragenter)="onDragEnter($event)"
+             (dragover)="onDragOver($event)"
+             (dragleave)="onDragLeave($event)"
+             (drop)="onDrop($event)"
+             (paste)="onPaste($event)">
+          @if(isDraggingOver()){
+            <div class="drag-drop-overlay" (drop)="onDrop($event)" (dragover)="onDragOver($event)">
+              <div class="drag-drop-modal">
+                <div class="drag-drop-icon">
+                  <svg lucideUploadCloud [size]="44" aria-hidden="true"></svg>
+                </div>
+                <h3>Перетащите файлы сюда</h3>
+                <p>Файлы загрузятся в проект и сразу упомянутся в сообщении</p>
+              </div>
+            </div>
+          }
+          <!-- CHAT VIEW -->
+          <header class="topbar">
           <div class="topbar-left">
             <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
               <svg lucideMenu [size]="20"></svg>
@@ -381,9 +398,19 @@
 
             <!-- INPUT ROW -->
             <div class="composer-input-row">
-              <input #filePicker type="file" hidden (change)="uploadFile($event)">
-              <button class="btn-attach-icon" type="button" [disabled]="uploading() || !current()?.projectId" (click)="filePicker.click()" [title]="current()?.projectId ? 'Прикрепить файл в папку проекта' : 'Откройте чат в проекте для загрузки файлов'">
-                <svg lucidePaperclip [size]="18"></svg>
+              <input #filePicker type="file" multiple hidden (change)="uploadFile($event)">
+              <button 
+                class="btn-attach-icon" 
+                type="button" 
+                [disabled]="uploading()" 
+                (click)="filePicker.click()" 
+                [title]="'Прикрепить файлы (также можно перетащить или вставить через Ctrl/⌘+V)'"
+                aria-label="Прикрепить файлы">
+                @if(uploading()){
+                  <span class="attach-spinner" aria-hidden="true"></span>
+                } @else {
+                  <svg lucidePaperclip [size]="18"></svg>
+                }
               </button>
 
               <textarea 
@@ -391,6 +418,7 @@
                 class="composer-textarea"
                 [(ngModel)]="draft" 
                 (input)="adjustTextareaHeight()"
+                (paste)="onPaste($event)"
                 [placeholder]="isRecording() ? 'Слушаю... Говорите в микрофон' : 'Сообщение или задача...'"
                 rows="1"
                 (keydown.control.enter)="send()" 
@@ -425,10 +453,11 @@
             </div>
           </div>
           <div class="composer-footnote desktop-only">
-            <span>Ctrl / ⌘ + Enter для быстрой отправки</span>
+            <span>Ctrl / ⌘ + Enter для отправки · Перетащите файлы или Ctrl/⌘+V для вставки</span>
           </div>
         </div>
-      } @else if(page()==='projects') {
+      </div>
+    } @else if(page()==='projects') {
         <!-- PROJECTS VIEW -->
         <header class="topbar">
           <div class="topbar-left">
