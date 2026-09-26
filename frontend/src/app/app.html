@@ -478,7 +478,7 @@
             @for(site of previews();track site.subdomain){
               <article class="card site-card">
                 <div class="project-header"><div class="project-avatar"><svg lucideGlobe2 [size]="22"></svg></div><span class="badge" [class.badge-ready]="site.visible && site.online && !site.expired">{{site.expired?'Истёк':!site.visible?'Скрыт':site.online?'Опубликован':'Runner не в сети'}}</span></div>
-                <h3>{{site.subdomain}}.s1m4.com</h3>
+                <h3>{{site.subdomain}}.preview.s1m4.com</h3>
                 <div class="project-meta"><svg lucideServer [size]="14"></svg><span>{{previewRunner(site)}} · До {{site.expiresAt | date:'d MMM, HH:mm'}}</span></div>
                 <div class="card-actions"><a class="btn btn-outline btn-sm" [href]="site.url" target="_blank" rel="noopener noreferrer">Открыть</a><button class="btn btn-primary btn-sm" (click)="setPreviewVisible(site,!site.visible)" [disabled]="site.expired">{{site.visible?'Скрыть':'Показывать'}}</button></div>
               </article>

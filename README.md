@@ -109,7 +109,7 @@ docker compose exec runner /app/scripts/provider-login.sh codex <account-id>
 deploy-preview /runner-data/projects/PROJECT_ID/dist [поддомен]
 ```
 
-Команда выведет `https://<поддомен>.s1m4.com`. Без имени создаётся свободный адрес `preview-xxxxxxxx`. Для работающего dev-сервера, который слушает порт **внутри того же контейнера runner**:
+Команда выведет `https://<имя>.preview.s1m4.com`. Без имени создаётся свободный адрес `site-xxxxxxxx.preview.s1m4.com`. Для работающего dev-сервера, который слушает порт **внутри того же контейнера runner**:
 
 ```bash
 deploy-preview --port 5173 [поддомен]
@@ -121,7 +121,7 @@ deploy-preview --port 5173 [поддомен]
 
 ### Wildcard HTTPS в Nginx Proxy Manager
 
-Для `*.s1m4.com` нужен wildcard-сертификат. На OVH он выпущен через acme.sh и DNS API Name.com. Стабильные файлы находятся в `/etc/ai-router/ssl/fullchain.pem` и `/etc/ai-router/ssl/privkey.pem`; acme.sh обновляет их по root cron. Скрипт `ops/sync-npm-wildcard.sh` после продления копирует обновлённый сертификат в уже импортированный Custom SSL NPM и перезагружает Nginx.
+Для `*.preview.s1m4.com` нужен отдельный wildcard SAN: сертификат только для `*.s1m4.com` не покрывает вложенный поддомен. На OVH сертификат выпущен через acme.sh и DNS API Name.com с обоими wildcard SAN. Стабильные файлы находятся в `/etc/ai-router/ssl/fullchain.pem` и `/etc/ai-router/ssl/privkey.pem`; acme.sh обновляет их по root cron. Скрипт `ops/sync-npm-wildcard.sh` после продления копирует обновлённый сертификат в уже импортированный Custom SSL NPM и перезагружает Nginx.
 
 Первый импорт выполняется в NPM вручную: **Certificates → Add SSL Certificate → Custom**, имя `s1m4.com wildcard`, сертификат из `fullchain.pem`, ключ из `privkey.pem`. Чтобы перенести файлы на свой компьютер без вывода ключа в чат:
 
@@ -131,7 +131,7 @@ ssh ovhserver 'sudo cat /etc/ai-router/ssl/fullchain.pem' > /tmp/s1m4-fullchain.
 ssh ovhserver 'sudo cat /etc/ai-router/ssl/privkey.pem' > /tmp/s1m4-privkey.pem
 ```
 
-В NPM создайте **Proxy Host** с доменом `*.s1m4.com`: `Scheme=http`, `Forward Hostname=ai-router-web`, `Forward Port=80`, `Websockets Support=ON`, `Block Common Exploits=ON`. Во вкладке SSL выберите импортированный Custom SSL, включите `Force SSL` и `HTTP/2 Support`. Уже существующий отдельный Proxy Host `ai.s1m4.com` должен остаться: он обслуживает сам AI Router. После импорта на сервере выполните `sudo /usr/local/sbin/sync-ai-router-wildcard`; этим проверяется, что автообновление видит импортированный сертификат. Удалите временные копии закрытого ключа на своём компьютере после импорта.
+В Name.com должна быть A-запись `*.preview` → `57.129.125.71`. На текущем OVH существующий Proxy Host `*.s1m4.com` уже передаёт запросы вложенного домена в `ai-router-web:80`, а обновлённый Custom SSL покрывает оба wildcard SAN, поэтому ещё один Proxy Host не требуется. При настройке NPM с нуля используйте `*.preview.s1m4.com` → `http://ai-router-web:80`, `Websockets Support=ON`, `Block Common Exploits=ON`, `Force SSL=ON`, `HTTP/2 Support=ON`. Отдельный Proxy Host `ai.s1m4.com` обслуживает сам AI Router. После импорта на сервере выполните `sudo /usr/local/sbin/sync-ai-router-wildcard`; этим проверяется, что автообновление видит импортированный сертификат. Удалите временные копии закрытого ключа на своём компьютере после импорта.
 
 ## Доступ и границы MVP
 

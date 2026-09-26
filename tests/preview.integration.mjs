@@ -14,7 +14,7 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const require=createRequire(path.join(repo,'backend','package.json'));
 const {WebSocket,WebSocketServer}=require('ws');
 async function freePort(){const server=createNetServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
-async function previewFetch(port,subdomain,url='/'){return await new Promise((resolve,reject)=>{httpRequest({hostname:'127.0.0.1',port,path:url,headers:{host:`${subdomain}.s1m4.com`}},response=>{const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,text:Buffer.concat(chunks).toString()}));}).on('error',reject).end();});}
+async function previewFetch(port,subdomain,url='/'){return await new Promise((resolve,reject)=>{httpRequest({hostname:'127.0.0.1',port,path:url,headers:{host:`${subdomain}.preview.s1m4.com`}},response=>{const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,text:Buffer.concat(chunks).toString()}));}).on('error',reject).end();});}
 async function waitFor(fn,timeout=15000){const end=Date.now()+timeout;while(Date.now()<end){try{const value=await fn();if(value)return value;}catch{}await new Promise(resolve=>setTimeout(resolve,80));}throw new Error('Timed out waiting for preview service');}
 function processAt(file,env){const child=spawn(process.execPath,[file],{cwd:repo,env:{...process.env,...env},stdio:['ignore','pipe','pipe']});let output='';for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>output=(output+chunk.toString()).slice(-3000));return {child,output:()=>output};}
 async function command(args,env){return await new Promise((resolve,reject)=>{const child=spawn(process.execPath,[path.join(repo,'runner/dist/deploy-preview.js'),...args],{cwd:repo,env:{...process.env,...env}});let out='',err='';child.stdout.on('data',chunk=>out+=chunk);child.stderr.on('data',chunk=>err+=chunk);child.on('close',code=>code===0?resolve(out.trim()):reject(new Error(err||`deploy-preview exited ${code}`)));child.on('error',reject);});}
@@ -36,7 +36,7 @@ test('preview streams static, live HTTP and WebSocket traffic; visibility blocks
     const runnerId=await waitFor(async()=>{const response=await api('/api/runners');return response.body.find(row=>row.online)?.id;});
     const dist=path.join(runnerData,'projects','test-project','dist');await mkdir(dist,{recursive:true});await writeFile(path.join(dist,'index.html'),'<h1>Preview tunnel works</h1>');await writeFile(path.join(dist,'style.css'),'body{color:red}');
     const cliEnv={RUNNER_DATA_DIR:runnerData};
-    assert.equal(await command([dist,names.static],cliEnv),`https://${names.static}.s1m4.com`);
+    assert.equal(await command([dist,names.static],cliEnv),`https://${names.static}.preview.s1m4.com`);
     const site=await previewFetch(previewPort,names.static);assert.equal(site.status,200,'static site');assert.match(site.text,/Preview tunnel works/);
     const asset=await previewFetch(previewPort,names.static,'/style.css');assert.equal(asset.status,200,'static asset');assert.match(asset.headers['content-type'],/text\/css/);
     const list=await api(`/api/runners/${runnerId}/previews`);assert.equal(list.body[0].subdomain,names.static);
@@ -45,9 +45,9 @@ test('preview streams static, live HTTP and WebSocket traffic; visibility blocks
     await api(`/api/runners/${runnerId}/previews/${names.static}`,'PATCH',{visible:true});
     dev=createServer((req,res)=>{res.setHeader('content-type','text/plain');res.end(`dev:${req.url}`);});const wsServer=new WebSocketServer({server:dev});wsServer.on('connection',ws=>ws.on('message',message=>ws.send(message)));
     await new Promise(resolve=>dev.listen(devPort,'127.0.0.1',resolve));
-    assert.equal(await command(['--port',String(devPort),names.dev],cliEnv),`https://${names.dev}.s1m4.com`);
+    assert.equal(await command(['--port',String(devPort),names.dev],cliEnv),`https://${names.dev}.preview.s1m4.com`);
     const live=await previewFetch(previewPort,names.dev,'/hello');assert.equal(live.status,200,'live site');assert.equal(live.text,'dev:/hello');
-    const ws=new WebSocket(`ws://127.0.0.1:${previewPort}/hmr`,{headers:{host:`${names.dev}.s1m4.com`}});await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});const echoed=new Promise((resolve,reject)=>{ws.once('message',data=>resolve(data.toString()));ws.once('error',reject);});ws.send('hello websocket');assert.equal(await echoed,'hello websocket');ws.close();
+    const ws=new WebSocket(`ws://127.0.0.1:${previewPort}/hmr`,{headers:{host:`${names.dev}.preview.s1m4.com`}});await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});const echoed=new Promise((resolve,reject)=>{ws.once('message',data=>resolve(data.toString()));ws.once('error',reject);});ws.send('hello websocket');assert.equal(await echoed,'hello websocket');ws.close();
     await command(['--stop',names.static],cliEnv);const stopped=await previewFetch(previewPort,names.static);assert.equal(stopped.status,404);
   }catch(error){throw new Error(`${error.message}\nbackend: ${backend.output()}\nrunner: ${runner?.output()||''}`);}finally{runner?.child.kill('SIGTERM');backend.child.kill('SIGTERM');if(dev)await new Promise(resolve=>dev.close(resolve));await rm(root,{recursive:true,force:true});}
 });

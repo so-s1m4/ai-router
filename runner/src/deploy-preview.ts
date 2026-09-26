@@ -5,7 +5,7 @@ import path from 'node:path';
 const args=process.argv.slice(2);
 const usage='Использование: deploy-preview <папка-сайта> [поддомен] | deploy-preview --port <порт> [поддомен] | deploy-preview --stop <поддомен> | deploy-preview --list';
 if(!args.length){console.error(usage);process.exit(2);}
-const subdomain=(value?:string)=>value||`preview-${randomBytes(4).toString('hex')}`;
+const subdomain=(value?:string)=>value||`site-${randomBytes(4).toString('hex')}`;
 let command:Record<string,unknown>;
 if(args[0]==='--list')command={action:'list'};
 else if(args[0]==='--stop'&&args[1])command={action:'stop',subdomain:args[1]};

@@ -13,7 +13,7 @@ const file=path.join(dataRoot,'previews.json');
 const records=new Map<string,PreviewRecord>();
 const reserved=new Set(['ai','api','admin','npm','portainer','mail','www','autoconfig','autodiscover','quest','arcade','wearly','htlbets','proxy','static']);
 const namePattern=/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
-const domain=process.env.PREVIEW_BASE_DOMAIN||'s1m4.com';
+const domain=process.env.PREVIEW_BASE_DOMAIN||'preview.s1m4.com';
 let saving=Promise.resolve();
 const validName=(name:string)=>name.length>=2&&name.length<=32&&namePattern.test(name)&&!reserved.has(name);
 const publicUrl=(name:string)=>`https://${name}.${domain}`;
