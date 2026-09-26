@@ -11,6 +11,7 @@ services:
       MOCK_MODE: ${MOCK_MODE:-true}
       CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-180}
       CODEX_APP_SERVER_MODE: ${CODEX_APP_SERVER_MODE:-true}
+      CODEX_TASK_SANDBOX: ${CODEX_TASK_SANDBOX:-danger-full-access}
     volumes:
       - runner_data:/runner-data
     restart: unless-stopped

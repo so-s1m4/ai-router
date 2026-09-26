@@ -9,6 +9,7 @@ type NotificationHandler = (value: Json) => void;
 
 const processes = new Map<string, AppServerConnection>();
 const codexBin = process.env.CODEX_BIN || 'codex';
+const taskSandbox = process.env.CODEX_TASK_SANDBOX === 'workspace-write' ? 'workspace-write' : 'danger-full-access';
 
 function envFor(home: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, CODEX_HOME: `${home}/.codex` };
@@ -99,7 +100,7 @@ class AppServerConnection {
     if (!threadId) {
       const started = await this.request('thread/start', {
         ...(job.model !== 'default' ? { model: job.model } : {}), cwd,
-        approvalPolicy: 'never', sandbox: job.mode === 'task' ? 'workspaceWrite' : 'readOnly',
+        approvalPolicy: 'never', sandbox: job.mode === 'task' ? taskSandbox : 'read-only',
         serviceName: 'ai_router_runner'
       });
       threadId = String(started.thread?.id || '');
@@ -163,7 +164,7 @@ class AppServerConnection {
       const turn = await this.request('turn/start', {
         threadId, input: [{ type: 'text', text: job.prompt }], cwd,
         approvalPolicy: 'never',
-        sandboxPolicy: job.mode === 'task' ? { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: true } : { type: 'readOnly', access: { type: 'fullAccess' } },
+        sandboxPolicy: job.mode === 'task' ? (taskSandbox === 'workspace-write' ? { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: true } : { type: 'dangerFullAccess' }) : { type: 'readOnly', access: { type: 'fullAccess' } },
         ...(job.model !== 'default' ? { model: job.model } : {}),
         ...(job.reasoning && job.reasoning !== 'default' ? { effort: job.reasoning } : {})
       });
