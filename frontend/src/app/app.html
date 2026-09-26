@@ -1,73 +1,762 @@
 @if (!loggedIn()) {
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="brand-mark"><svg lucideSparkles [size]="22" aria-hidden="true"></svg></div>
-      <div class="eyebrow">SELF-HOSTED AI WORKSPACE</div>
-      <h1>@if(registerMode()){Создайте аккаунт.}@else{Один вход.}<br><span>Несколько моделей.</span></h1>
-      <p>@if(registerMode()){Зарегистрируйтесь, чтобы подключить свой контейнер и аккаунты CLI.}@else{Войдите в AI Router, чтобы управлять подключениями и задачами.}</p>
-      <form (ngSubmit)="login()">
-        <label>Логин<input name="username" [(ngModel)]="loginName" autocomplete="username" required></label>
-        <label>Пароль<input name="password" type="password" [(ngModel)]="password" autocomplete="current-password" required></label>
-        @if(loginError){<div class="form-error">{{loginError}}</div>}
-        <button class="primary wide" type="submit">{{registerMode()?'Создать аккаунт':'Войти'}} <svg lucideArrowUpRight [size]="18" aria-hidden="true"></svg></button>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-glow"></div>
+        <div class="brand-icon">
+          <svg lucideSparkles [size]="24" aria-hidden="true"></svg>
+        </div>
+        <div class="brand-title">
+          <span>AI Router</span>
+          <span class="brand-tag">WORKSPACE</span>
+        </div>
+      </div>
+
+      <div class="auth-header">
+        <h1>{{registerMode() ? 'Создайте аккаунт' : 'С возвращением'}}</h1>
+        <p>{{registerMode() ? 'Подключите свои CLI и контейнеры к единому хабу.' : 'Единый интерфейс для ваших аккаунтов OpenAI Codex и Google Antigravity.'}}</p>
+      </div>
+
+      <form class="auth-form" (ngSubmit)="login()">
+        <div class="input-group">
+          <label for="username">Имя пользователя</label>
+          <input id="username" name="username" [(ngModel)]="loginName" autocomplete="username" placeholder="ivan_developer" required>
+        </div>
+
+        <div class="input-group">
+          <label for="password">Пароль</label>
+          <input id="password" name="password" type="password" [(ngModel)]="password" autocomplete="current-password" placeholder="••••••••••••" required>
+        </div>
+
+        @if(loginError){
+          <div class="banner banner-error">
+            <svg lucideInfo [size]="16" aria-hidden="true"></svg>
+            <span>{{loginError}}</span>
+          </div>
+        }
+
+        <button class="btn btn-primary btn-block" type="submit">
+          <span>{{registerMode() ? 'Зарегистрироваться' : 'Войти в систему'}}</span>
+          <svg lucideArrowUpRight [size]="18" aria-hidden="true"></svg>
+        </button>
       </form>
-      <button class="auth-switch" (click)="registerMode.set(!registerMode());loginError=''">{{registerMode()?'Уже есть аккаунт? Войти':'Нет аккаунта? Зарегистрироваться'}}</button>
-      <div class="login-foot">CLI и входы в провайдеров остаются в вашем контейнере</div>
+
+      <div class="auth-footer">
+        <button class="btn-link" (click)="registerMode.set(!registerMode()); loginError=''">
+          {{registerMode() ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}}
+        </button>
+        <span class="auth-hint">Ключи и токены остаются только на вашем runner-контейнере</span>
+      </div>
     </div>
   </div>
 } @else {
-  <div class="app-shell">
-    @if(mobileMenu()){<button class="drawer-backdrop" aria-label="Закрыть меню" (click)="mobileMenu.set(false)"></button>}
-    <aside class="sidebar" [class.open]="mobileMenu()">
-      <div class="brand"><div class="brand-icon"><svg lucideSparkles [size]="21" aria-hidden="true"></svg></div><div><strong>AI Router</strong><small>WORKSPACE</small></div><button class="drawer-close" aria-label="Закрыть меню" (click)="mobileMenu.set(false)"><svg lucideX [size]="21"></svg></button></div>
-      <button class="sidebar-new" (click)="newSession()"><svg lucidePencilLine [size]="19" aria-hidden="true"></svg><span>Новый чат</span></button>
-      <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-      <button class="nav-item" [class.active]="page()==='chat'" (click)="showPage('chat')"><svg lucideMessageSquare [size]="19" aria-hidden="true"></svg><span>Чат и задачи</span></button>
-      <button class="nav-item" [class.active]="page()==='projects'" (click)="showPage('projects')"><svg lucideFolder [size]="19" aria-hidden="true"></svg><span>Проекты</span><em>{{projects().length}}</em></button>
-      <button class="nav-item" [class.active]="page()==='connections'" (click)="showPage('connections')"><svg lucidePlugZap [size]="19" aria-hidden="true"></svg><span>Подключения</span><em>{{accounts().length}}</em></button>
-      <button class="nav-item" [class.active]="page()==='runners'" (click)="showPage('runners')"><svg lucideServer [size]="19" aria-hidden="true"></svg><span>Исполнители</span><em>{{runners().length}}</em></button>
-      <div class="sidebar-divider"></div>
-      <div class="history-head"><span>ЧАТЫ</span><button aria-label="Новый чат" (click)="selectedProjectId.set('');newSession()"><svg lucidePlus [size]="18"></svg></button></div>
-      <div class="history-list">@for(s of sessions();track s.id){<button class="history-item" [class.selected]="current()?.id===s.id && page()==='chat'" (click)="openSession(s.id)"><svg lucideMessageSquare [size]="16" aria-hidden="true"></svg><span class="truncate">{{s.title}}</span></button>}</div>
-      <div class="sidebar-bottom"><div class="owner-avatar">{{username.slice(0,1).toUpperCase()}}</div><div class="owner-text"><strong>{{username}}</strong><small>Пользователь</small></div><button class="logout" aria-label="Выйти" (click)="logout()"><svg lucideLogOut [size]="19"></svg></button></div>
-    </aside>
-    <main class="main">
-      @if(page()==='chat'){
-        <header class="topbar"><div class="topbar-title"><button class="mobile-menu" aria-label="Открыть меню" (click)="mobileMenu.set(true)"><svg lucideMenu [size]="22"></svg></button><div><div class="eyebrow">AI WORKSPACE / ЧАТ</div><h2>{{current()?.title || 'Новый чат'}}</h2></div></div><div class="header-right"><span class="live-dot"></span><span class="status-text">Сервер работает</span><button class="outline desktop-new" (click)="newSession()"><svg lucidePlus [size]="17" aria-hidden="true"></svg> Новый чат</button></div></header>
-        <section class="chat-content">
-          @if(!current()?.messages?.length){<div class="empty-state"><div class="empty-orbit"><svg lucideSparkles [size]="34" aria-hidden="true"></svg></div><div class="eyebrow">ГОТОВ К РАБОТЕ</div><h1>С чего начнём?</h1><p>Выберите аккаунт и модель. В режиме Auto запрос перейдёт к следующему доступному подключению при ошибке или ограничении.</p><div class="prompt-ideas"><button (click)="draft='Объясни архитектуру этого проекта'">Объяснить архитектуру <svg lucideArrowUpRight [size]="15" aria-hidden="true"></svg></button><button (click)="draft='Помоги спланировать задачу'">Спланировать задачу <svg lucideArrowUpRight [size]="15" aria-hidden="true"></svg></button></div></div>}
-          <div class="messages">@for(m of current()?.messages||[];track m.id){<div class="message" [class.user]="m.role==='user'"><div class="message-avatar">@if(m.role==='user'){Я}@else{<svg lucideSparkles [size]="18" aria-hidden="true"></svg>}</div><div class="message-body"><div class="message-meta">{{m.role==='user'?'Вы':providerLabel(m.provider)}} <span>{{m.at | date:'HH:mm'}}</span></div><div class="message-text">{{m.text}}</div></div></div>}
-            @if(running() && stream()){<div class="message"><div class="message-avatar"><svg lucideSparkles [size]="18" aria-hidden="true"></svg></div><div class="message-body"><div class="message-meta">{{accountLabel(activeAccount()) || 'AI Router'}} <span>печатает...</span></div><div class="message-text">{{stream()}}</div></div></div>}
+  <div class="app-layout">
+    @if(mobileMenu()){
+      <div class="drawer-overlay" (click)="mobileMenu.set(false)"></div>
+    }
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" [class.drawer-open]="mobileMenu()">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg lucideSparkles [size]="20" aria-hidden="true"></svg>
           </div>
-        </section>
-        <div class="composer-wrap">@if(running()){<div class="run-progress" role="status" aria-live="polite"><div class="run-progress-head"><span class="run-pulse" aria-hidden="true"></span><strong>{{accountLabel(activeAccount()) || 'AI Router'}} работает</strong><time>{{elapsed()}}</time></div><div class="run-progress-current">{{notice() || 'Ожидаем обновления от исполнителя…'}}</div>@if(activity().length>1){<div class="run-activity">@for(row of activity().slice(-4,-1);track $index){<span>{{row.message}}</span>}</div>}</div>}@else if(notice()){<div class="notice"><svg lucideInfo [size]="15" aria-hidden="true"></svg>{{notice()}}</div>}@if(error()){<div class="error-banner">{{error()}}</div>}
-          <div class="composer"><div class="attachment-row"><input #filePicker type="file" hidden (change)="uploadFile($event)"><button class="attach-file" type="button" [disabled]="uploading() || !current()?.projectId" (click)="filePicker.click()"><svg lucidePaperclip [size]="16" aria-hidden="true"></svg>{{uploading()?'Загрузка...':'Прикрепить файл'}}</button>@if(current()?.projectId){<span>Файл попадёт в папку проекта (до 20 МБ)</span>}@else{<span>Для файлов откройте чат внутри проекта</span>}</div><textarea [(ngModel)]="draft" placeholder="Напишите сообщение или задачу..." rows="3" (keydown.control.enter)="send()" (keydown.meta.enter)="send()"></textarea><div class="composer-toolbar"><div class="selectors"><label><span>ПОДКЛЮЧЕНИЕ</span><select [ngModel]="selectedAccount" (ngModelChange)="selectAccount($event)"><option value="auto">Auto · все аккаунты</option>@for(a of accounts();track a.id){<option [value]="a.id">{{a.name}} · {{providerLabel(a.provider)}}</option>}</select></label><label><span>МОДЕЛЬ</span><select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)">@for(m of models();track m.id){<option [value]="m.id">{{m.label}}</option>}</select></label><label><span>РАССУЖДЕНИЕ</span><select [(ngModel)]="selectedReasoning">@for(r of reasoningOptions();track r.id){<option [value]="r.id">{{r.label}}</option>}</select></label><label><span>РЕЖИМ</span><select [(ngModel)]="runMode"><option value="chat">Чат</option><option value="task">Задача</option></select></label></div>@if(running()){<button class="stop" (click)="cancel()"><svg lucideSquare [size]="14" aria-hidden="true"></svg> Стоп</button>}@else{<button class="send" [disabled]="!draft.trim() || !accounts().length" (click)="send()">Отправить <svg lucideArrowUp [size]="18" aria-hidden="true"></svg></button>}</div></div><div class="composer-note">Codex держит сессию аккаунта на runner · Ctrl/⌘ + Enter для отправки</div>
+          <div class="brand-info">
+            <span class="brand-name">AI Router</span>
+            <span class="brand-sub">WORKSPACE</span>
+          </div>
+        </div>
+        <button class="btn-icon mobile-only" (click)="mobileMenu.set(false)" aria-label="Закрыть меню">
+          <svg lucideX [size]="20"></svg>
+        </button>
+      </div>
+
+      <div class="sidebar-actions">
+        <button class="btn btn-new-chat" (click)="newSession()">
+          <svg lucidePencilLine [size]="18" aria-hidden="true"></svg>
+          <span>Новый диалог</span>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">НАВИГАЦИЯ</div>
+        <button class="nav-btn" [class.active]="page()==='chat'" (click)="showPage('chat')">
+          <svg lucideMessageSquare [size]="18" aria-hidden="true"></svg>
+          <span>Чат и задачи</span>
+        </button>
+        <button class="nav-btn" [class.active]="page()==='projects'" (click)="showPage('projects')">
+          <svg lucideFolder [size]="18" aria-hidden="true"></svg>
+          <span>Проекты</span>
+          @if(projects().length){<span class="nav-badge">{{projects().length}}</span>}
+        </button>
+        <button class="nav-btn" [class.active]="page()==='connections'" (click)="showPage('connections')">
+          <svg lucidePlugZap [size]="18" aria-hidden="true"></svg>
+          <span>Подключения</span>
+          @if(accounts().length){<span class="nav-badge">{{accounts().length}}</span>}
+        </button>
+        <button class="nav-btn" [class.active]="page()==='runners'" (click)="showPage('runners')">
+          <svg lucideServer [size]="18" aria-hidden="true"></svg>
+          <span>Исполнители</span>
+          @if(runners().length){<span class="nav-badge">{{runners().length}}</span>}
+        </button>
+      </nav>
+
+      <div class="sidebar-history">
+        <div class="history-header">
+          <span>НЕДАВНИЕ ЧАТЫ</span>
+          <button class="btn-icon-subtle" (click)="selectedProjectId.set(''); newSession()" title="Создать чат">
+            <svg lucidePlus [size]="16"></svg>
+          </button>
+        </div>
+        <div class="history-list">
+          @for(s of sessions(); track s.id){
+            <button class="history-btn" [class.active]="current()?.id===s.id && page()==='chat'" (click)="openSession(s.id)">
+              <svg lucideMessageSquare [size]="15" aria-hidden="true"></svg>
+              <span class="truncate">{{s.title || 'Новый диалог'}}</span>
+            </button>
+          }
+          @if(!sessions().length){
+            <div class="history-empty">Нет недавних чатов</div>
+          }
+        </div>
+      </div>
+
+      <div class="sidebar-user">
+        <div class="user-avatar">{{username.slice(0,1).toUpperCase()}}</div>
+        <div class="user-meta">
+          <span class="user-name">{{username}}</span>
+          <span class="user-role">Локальный пользователь</span>
+        </div>
+        <button class="btn-icon logout-btn" (click)="logout()" title="Выйти из системы">
+          <svg lucideLogOut [size]="18"></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN AREA -->
+    <main class="main-content">
+      @if(page()==='chat'){
+        <!-- CHAT VIEW -->
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
+              <svg lucideMenu [size]="20"></svg>
+            </button>
+            <div class="topbar-info">
+              <div class="chat-title-row">
+                <h1 class="chat-title">{{current()?.title || 'Новый чат'}}</h1>
+                @if(currentProject()){
+                  <button class="project-pill" (click)="selectProject(currentProject()!.id)">
+                    <svg lucideFolder [size]="13"></svg>
+                    <span>{{currentProject()!.name}}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <div class="status-indicator" title="Сервер подключен">
+              <span class="pulse-dot"></span>
+              <span class="status-label">В сети</span>
+            </div>
+            <button class="btn btn-outline btn-sm desktop-only" (click)="newSession()">
+              <svg lucidePlus [size]="15"></svg>
+              <span>Новый чат</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="chat-scroll-area">
+          @if(!current()?.messages?.length){
+            <div class="welcome-screen">
+              <div class="welcome-badge">
+                <svg lucideSparkles [size]="28" aria-hidden="true"></svg>
+              </div>
+              <h2>Чем могу помочь?</h2>
+              <p>Задайте вопрос, опишите задачу или прикрепите файлы проекта. Роутер автоматически выберет активный аккаунт или переключится при достижении квоты.</p>
+              
+              <div class="prompt-grid">
+                <button class="prompt-card" (click)="draft='Объясни архитектуру этого проекта'">
+                  <div class="prompt-card-content">
+                    <strong>Объяснить архитектуру</strong>
+                    <span>Анализ структуры и зависимостей модулей</span>
+                  </div>
+                  <svg lucideArrowUpRight [size]="16"></svg>
+                </button>
+                <button class="prompt-card" (click)="draft='Помоги спланировать реализацию задачи'">
+                  <div class="prompt-card-content">
+                    <strong>Спланировать задачу</strong>
+                    <span>Декомпозиция на этапы и шаги</span>
+                  </div>
+                  <svg lucideArrowUpRight [size]="16"></svg>
+                </button>
+                <button class="prompt-card" (click)="draft='Проверь проект на возможные ошибки и узкие места'">
+                  <div class="prompt-card-content">
+                    <strong>Аудит кодовой базы</strong>
+                    <span>Поиск узких мест и оптимизация</span>
+                  </div>
+                  <svg lucideArrowUpRight [size]="16"></svg>
+                </button>
+                <button class="prompt-card" (click)="draft='Напиши модульные тесты для последней фичи'">
+                  <div class="prompt-card-content">
+                    <strong>Написать тесты</strong>
+                    <span>Покрытие тестами основных сценариев</span>
+                  </div>
+                  <svg lucideArrowUpRight [size]="16"></svg>
+                </button>
+              </div>
+            </div>
+          }
+
+          <div class="message-feed" (click)="handleChatClick($event)">
+            @for(m of current()?.messages||[]; track m.id){
+              <div class="message-row" [class.user-row]="m.role==='user'">
+                <div class="message-avatar" [class.user-avatar-bg]="m.role==='user'">
+                  @if(m.role==='user'){
+                    <span>Я</span>
+                  } @else {
+                    <svg lucideSparkles [size]="17"></svg>
+                  }
+                </div>
+                <div class="message-bubble">
+                  <div class="message-meta">
+                    <span class="sender-name">{{m.role==='user' ? 'Вы' : (providerLabel(m.provider) || 'AI Router')}}</span>
+                    <span class="message-time">{{m.at | date:'HH:mm'}}</span>
+                  </div>
+                  <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
+                </div>
+              </div>
+            }
+
+            @if(running() && stream()){
+              <div class="message-row">
+                <div class="message-avatar stream-avatar">
+                  <svg lucideSparkles [size]="17"></svg>
+                </div>
+                <div class="message-bubble">
+                  <div class="message-meta">
+                    <span class="sender-name">{{accountLabel(activeAccount()) || 'AI Router'}}</span>
+                    <span class="streaming-status">печатает...</span>
+                  </div>
+                  <div class="message-text markdown-body streaming-wrapper">
+                    <div class="streaming-content" [innerHTML]="stream() | markdown"></div>
+                    <span class="typing-cursor"></span>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- COMPOSER SECTION -->
+        <div class="composer-container">
+          @if(running()){
+            <div class="run-progress" role="status" aria-live="polite">
+              <div class="run-progress-head">
+                <span class="run-pulse" aria-hidden="true"></span>
+                <strong>{{accountLabel(activeAccount()) || 'AI Router'}} работает</strong>
+                <time>{{elapsed()}}</time>
+              </div>
+              <div class="run-progress-current">{{notice() || 'Ожидаем обновления от исполнителя…'}}</div>
+              @if(activity().length > 1){
+                <div class="run-activity">
+                  @for(row of activity().slice(-4,-1); track $index){
+                    <span>{{row.message}}</span>
+                  }
+                </div>
+              }
+            </div>
+          } @else if(notice()){
+            <div class="banner banner-notice">
+              <svg lucideInfo [size]="16"></svg>
+              <span>{{notice()}}</span>
+            </div>
+          }
+          @if(error()){
+            <div class="banner banner-error">
+              <svg lucideInfo [size]="16"></svg>
+              <span>{{error()}}</span>
+            </div>
+          }
+
+          <div class="composer-card">
+            <div class="composer-attachment-bar">
+              <input #filePicker type="file" hidden (change)="uploadFile($event)">
+              <button class="btn-attach" type="button" [disabled]="uploading() || !current()?.projectId" (click)="filePicker.click()">
+                <svg lucidePaperclip [size]="15"></svg>
+                <span>{{uploading() ? 'Загрузка...' : 'Прикрепить файл'}}</span>
+              </button>
+              @if(currentProject()){
+                <span class="attachment-hint">Папка «{{currentProject()!.name}}» (до 20 МБ)</span>
+              } @else {
+                <span class="attachment-hint">Для передачи файлов в runner откройте чат в проекте</span>
+              }
+            </div>
+
+            <textarea 
+              class="composer-textarea"
+              [(ngModel)]="draft" 
+              placeholder="Задайте вопрос или опишите задачу..."
+              rows="3"
+              (keydown.control.enter)="send()" 
+              (keydown.meta.enter)="send()"></textarea>
+
+            <div class="composer-toolbar">
+              <div class="toolbar-controls">
+                <!-- ACCOUNT PILL -->
+                <div class="select-pill" title="Подключение">
+                  @if(selectedAccount==='auto'){
+                    <svg lucideSparkles [size]="14"></svg>
+                  } @else {
+                    <svg lucideBot [size]="14"></svg>
+                  }
+                  <select [ngModel]="selectedAccount" (ngModelChange)="selectAccount($event)" aria-label="Подключение">
+                    <option value="auto">Auto · Все аккаунты</option>
+                    @for(a of accounts(); track a.id){
+                      <option [value]="a.id">{{a.name}} ({{providerLabel(a.provider)}})</option>
+                    }
+                  </select>
+                  <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
+                </div>
+
+                <!-- MODEL PILL -->
+                <div class="select-pill" title="Модель">
+                  <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" aria-label="Модель">
+                    @for(m of models(); track m.id){
+                      <option [value]="m.id">{{m.label}}</option>
+                    }
+                  </select>
+                  <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
+                </div>
+
+                <!-- REASONING PILL -->
+                @if(reasoningOptions().length > 1){
+                  <div class="select-pill" title="Рассуждение">
+                    <select [(ngModel)]="selectedReasoning" aria-label="Рассуждение">
+                      @for(r of reasoningOptions(); track r.id){
+                        <option [value]="r.id">{{r.label}}</option>
+                      }
+                    </select>
+                    <svg lucideChevronDown [size]="13" class="select-arrow"></svg>
+                  </div>
+                }
+
+                <!-- RUN MODE TOGGLE -->
+                <button class="mode-toggle-btn" [class.mode-task]="runMode==='task'" (click)="toggleRunMode()" title="Переключить режим Чат / Задача">
+                  @if(runMode==='task'){
+                    <svg lucideZap [size]="14"></svg>
+                    <span>Задача</span>
+                  } @else {
+                    <span>Чат</span>
+                  }
+                </button>
+              </div>
+
+              <div class="toolbar-actions">
+                @if(running()){
+                  <button class="btn btn-stop" (click)="cancel()">
+                    <svg lucideSquare [size]="14"></svg>
+                    <span>Стоп</span>
+                  </button>
+                } @else {
+                  <button class="btn btn-send" [disabled]="!draft.trim() || !accounts().length" (click)="send()">
+                    <span>Отправить</span>
+                    <svg lucideArrowUp [size]="17"></svg>
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+          <div class="composer-footnote">
+            <span>Ctrl / ⌘ + Enter для быстрой отправки</span>
+          </div>
         </div>
       } @else if(page()==='projects') {
-        <header class="topbar"><div class="topbar-title"><button class="mobile-menu" aria-label="Открыть меню" (click)="mobileMenu.set(true)"><svg lucideMenu [size]="22"></svg></button><div><h2>Проекты</h2></div></div><div class="header-right"><span class="live-dot"></span><span class="status-text">{{projects().length}} проектов</span></div></header>
-        <div class="connections-content projects-content"><div class="section-intro"><div><div class="eyebrow">ПАПКИ РАБОТЫ</div><h1>Проекты и чаты</h1><p>Каждый проект привязан к runner. Все аккаунты этого runner работают с общей папкой проекта и видят чаты проекта.</p></div><button class="primary" (click)="createProject()"><svg lucidePlus [size]="17" aria-hidden="true"></svg> Новый проект</button></div>
-          @if(error()){<div class="error-banner">{{error()}}</div>}@if(notice()){<div class="notice"><svg lucideInfo [size]="15" aria-hidden="true"></svg>{{notice()}}</div>}
-          @if(!projects().length){<div class="project-empty"><svg lucideFolder [size]="28"></svg><h3>Проектов пока нет</h3><p>Создайте проект, чтобы собрать его чаты и файлы в одной папке runner.</p><button class="primary" (click)="createProject()">Создать проект</button></div>}
-          <div class="project-grid">@for(project of projects();track project.id){<article class="project-card"><div class="project-card-head"><div class="project-symbol"><svg lucideFolder [size]="21"></svg></div><span class="badge ready">{{chatsFor(project.id).length}} чатов</span></div><h3>{{project.name}}</h3><div class="provider-sub">Runner: {{projectRunner(project)}}</div><div class="project-card-actions"><button class="outline" (click)="selectProject(project.id)">Открыть</button><button class="primary" (click)="newSessionFor(project.id)"><svg lucidePlus [size]="15"></svg> Новый чат</button></div><div class="project-chat-list">@for(s of chatsFor(project.id);track s.id){<button class="history-item" (click)="openSession(s.id)"><svg lucideMessageSquare [size]="15"></svg><span class="truncate">{{s.title}}</span></button>}</div></article>}</div>
+        <!-- PROJECTS VIEW -->
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
+              <svg lucideMenu [size]="20"></svg>
+            </button>
+            <div class="topbar-info">
+              <h1 class="chat-title">Проекты</h1>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <button class="btn btn-primary btn-sm" (click)="createProject()">
+              <svg lucidePlus [size]="16"></svg>
+              <span>Новый проект</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="page-content">
+          <div class="section-hero">
+            <div>
+              <span class="section-tag">РАБОЧИЕ ПАПКИ</span>
+              <h2>Изолированные пространства проектов</h2>
+              <p>Каждый проект привязан к runner-контейнеру. Аккаунты этого runner работают с файлами проекта и сохраняют историю контекста.</p>
+            </div>
+          </div>
+
+          @if(error()){
+            <div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>
+          }
+          @if(notice()){
+            <div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>
+          }
+
+          @if(!projects().length){
+            <div class="empty-card">
+              <div class="empty-icon"><svg lucideFolder [size]="32"></svg></div>
+              <h3>Проектов пока нет</h3>
+              <p>Создайте проект, чтобы объединить чаты, задачи и файлы в рабочей папке на runner.</p>
+              <button class="btn btn-primary" (click)="createProject()">
+                <svg lucidePlus [size]="16"></svg>
+                <span>Создать первый проект</span>
+              </button>
+            </div>
+          }
+
+          <div class="cards-grid">
+            @for(project of projects(); track project.id){
+              <div class="card project-card">
+                <div class="project-header">
+                  <div class="project-avatar">
+                    <svg lucideFolder [size]="22"></svg>
+                  </div>
+                  <span class="badge badge-ready">{{chatsFor(project.id).length}} чатов</span>
+                </div>
+                <h3>{{project.name}}</h3>
+                <div class="project-meta">
+                  <svg lucideServer [size]="14"></svg>
+                  <span>Runner: {{projectRunner(project)}}</span>
+                </div>
+                <div class="card-actions">
+                  <button class="btn btn-outline btn-sm" (click)="selectProject(project.id)">Открыть</button>
+                  <button class="btn btn-primary btn-sm" (click)="newSessionFor(project.id)">
+                    <svg lucidePlus [size]="14"></svg>
+                    <span>Новый чат</span>
+                  </button>
+                </div>
+                @if(chatsFor(project.id).length){
+                  <div class="project-chats-list">
+                    <div class="project-chats-title">Диалоги проекта</div>
+                    @for(s of chatsFor(project.id); track s.id){
+                      <button class="project-chat-item" (click)="openSession(s.id)">
+                        <svg lucideMessageSquare [size]="14"></svg>
+                        <span class="truncate">{{s.title}}</span>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
         </div>
       } @else if(page()==='connections') {
-        <header class="topbar"><div class="topbar-title"><button class="mobile-menu" aria-label="Открыть меню" (click)="mobileMenu.set(true)"><svg lucideMenu [size]="22"></svg></button><div><div class="eyebrow">AI WORKSPACE / НАСТРОЙКИ</div><h2>Подключения</h2></div></div><div class="header-right"><span class="live-dot"></span><span class="status-text">{{accounts().length}} аккаунтов</span></div></header>
-        <div class="connections-content"><div class="section-intro"><div><div class="eyebrow">ВАШИ ПРОВАЙДЕРЫ</div><h1>Управляйте аккаунтами</h1><p>Каждое подключение использует собственный вход CLI и рабочие каталоги. Квота берётся у самого аккаунта провайдера.</p></div><button class="outline" (click)="refreshAccounts()"><svg lucideRefreshCw [size]="16" aria-hidden="true"></svg> Обновить статусы</button></div>
-          @if(error()){<div class="error-banner">{{error()}}</div>}@if(notice()){<div class="notice"><svg lucideInfo [size]="15" aria-hidden="true"></svg>{{notice()}}</div>}
-          <div class="account-grid">@for(a of accounts();track a.id){<article class="account-card"><div class="account-top"><div class="provider-icon" [class.google]="a.provider==='antigravity'">@if(a.provider==='codex'){<svg lucideBot [size]="23" aria-hidden="true"></svg>}@else{<svg lucideSparkles [size]="23" aria-hidden="true"></svg>}</div><span class="badge" [class.ready]="a.mode==='runner'">{{accountMode(a)}}</span></div><h3>{{a.name}}</h3><div class="provider-sub">{{providerLabel(a.provider)}} <span>·</span> {{a.detail}}</div><div class="account-stat"><span>Лимит аккаунта</span><strong>{{limitLabel(a)}}</strong></div>@if(a.limit.primary || a.limit.secondary){<div class="usage-windows">@if(a.limit.primary){<div><span>{{windowLabel(a.limit.primary)}}</span><strong>{{remaining(a.limit.primary)}}</strong>@if(resetLabel(a.limit.primary)){<small>{{resetLabel(a.limit.primary)}}</small>}</div>}@if(a.limit.secondary){<div><span>{{windowLabel(a.limit.secondary)}}</span><strong>{{remaining(a.limit.secondary)}}</strong>@if(resetLabel(a.limit.secondary)){<small>{{resetLabel(a.limit.secondary)}}</small>}</div>}</div>}@else{<div class="usage-unknown">{{a.provider==='antigravity'?'CLI не вернул квоту Gemini':'Покажет CLI после запроса'}}</div>}@if(a.mode==='unassigned'){<select class="assign-select" aria-label="Назначить исполнитель" (change)="assignAccount(a,$any($event.target).value)"><option value="">Назначить исполнитель</option>@for(r of runners();track r.id){@if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}}</select>}<div class="account-foot"><span>Учётные данные только в вашем контейнере</span><button title="Скопировать команду входа" (click)="copy(loginCommand(a))"><svg lucideCopy [size]="14" aria-hidden="true"></svg> Команда входа</button></div><code class="login-command">{{loginCommand(a)}}</code></article>}</div>
-          <div class="add-card"><div><div class="eyebrow">НОВОЕ ПОДКЛЮЧЕНИЕ</div><h3>Добавить аккаунт</h3><p>Выберите свой контейнер. Вход в CLI и рабочие файлы останутся на вашем устройстве.</p></div><div class="add-form"><input [(ngModel)]="accountName" placeholder="Название, например OpenAI 2" aria-label="Название аккаунта"><select [(ngModel)]="accountProvider" aria-label="Провайдер"><option value="codex">OpenAI Codex</option><option value="antigravity">Google Antigravity</option></select><select [(ngModel)]="selectedRunner" aria-label="Исполнитель"><option value="">Выберите контейнер</option>@for(r of runners();track r.id){@if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}}</select><button class="primary" (click)="addAccount()" [disabled]="!accountName.trim() || !selectedRunner"><svg lucidePlus [size]="17" aria-hidden="true"></svg> Добавить</button></div></div>
-          <div class="add-card"><div><div class="eyebrow">ИМПОРТ CODEX</div><h3>Файлы .codexprofile.json</h3><p>Импортируйте один файл или архив с несколькими профилями на устройстве с контейнером. Токены попадут только в его локальный volume; сайт получит названия аккаунтов.</p></div><div><code class="login-command">./runner/import-profiles.sh ~/Desktop/*.codexprofile.json</code><p>Сначала подключите исполнитель и установите Codex CLI в его контейнере. Повторный импорт сохраняет обновлённую сессию.</p></div></div>
-          <div class="helper"><svg lucideInfo [size]="20" aria-hidden="true"></svg><p><strong>Как работает Auto:</strong> AI Router последовательно проверяет ваши подключения. При квоте провайдера, отсутствии входа или ошибке до начала ответа он переходит к следующему аккаунту.</p></div>
+        <!-- CONNECTIONS VIEW -->
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
+              <svg lucideMenu [size]="20"></svg>
+            </button>
+            <div class="topbar-info">
+              <h1 class="chat-title">Подключения</h1>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <button class="btn btn-outline btn-sm" (click)="refreshAccounts()">
+              <svg lucideRefreshCw [size]="15"></svg>
+              <span>Обновить статусы</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="page-content">
+          <div class="section-hero">
+            <div>
+              <span class="section-tag">ПРОВАЙДЕРЫ И КВОТЫ</span>
+              <h2>Аккаунты искусственного интеллекта</h2>
+              <p>Каждое подключение изолированно использует свой CLI-вход на runner. Лимиты и квоты обновляются напрямую от провайдеров.</p>
+            </div>
+          </div>
+
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+
+          <div class="cards-grid">
+            @for(a of accounts(); track a.id){
+              <div class="card account-card">
+                <div class="account-card-head">
+                  <div class="provider-badge-icon" [class.provider-gemini]="a.provider==='antigravity'">
+                    @if(a.provider==='codex'){
+                      <svg lucideBot [size]="22"></svg>
+                    } @else {
+                      <svg lucideSparkles [size]="22"></svg>
+                    }
+                  </div>
+                  <span class="badge" [class.badge-ready]="a.mode==='runner'" [class.badge-offline]="a.mode==='offline'">
+                    {{accountMode(a)}}
+                  </span>
+                </div>
+
+                <h3 class="account-name">{{a.name}}</h3>
+                <div class="account-detail">{{providerLabel(a.provider)}} · {{a.detail}}</div>
+
+                <div class="account-quota-box">
+                  <div class="quota-head">
+                    <span>Статус квоты</span>
+                    <strong>{{limitLabel(a)}}</strong>
+                  </div>
+
+                  @if(a.limit.primary || a.limit.secondary){
+                    <div class="usage-bars">
+                      @if(a.limit.primary){
+                        <div class="usage-bar-row">
+                          <div class="usage-bar-label">
+                            <span>{{windowLabel(a.limit.primary)}}</span>
+                            <strong>{{remaining(a.limit.primary)}} осталось</strong>
+                          </div>
+                          <div class="progress-track">
+                            <div class="progress-fill" [style.width]="remaining(a.limit.primary)"></div>
+                          </div>
+                          @if(resetLabel(a.limit.primary)){
+                            <span class="usage-reset">{{resetLabel(a.limit.primary)}}</span>
+                          }
+                        </div>
+                      }
+                      @if(a.limit.secondary){
+                        <div class="usage-bar-row">
+                          <div class="usage-bar-label">
+                            <span>{{windowLabel(a.limit.secondary)}}</span>
+                            <strong>{{remaining(a.limit.secondary)}} осталось</strong>
+                          </div>
+                          <div class="progress-track">
+                            <div class="progress-fill" [style.width]="remaining(a.limit.secondary)"></div>
+                          </div>
+                          @if(resetLabel(a.limit.secondary)){
+                            <span class="usage-reset">{{resetLabel(a.limit.secondary)}}</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="quota-unknown">
+                      {{a.provider==='antigravity' ? 'Квота Gemini будет запрошена при обращении' : 'Информация появится после первого запроса CLI'}}
+                    </div>
+                  }
+                </div>
+
+                @if(a.mode==='unassigned'){
+                  <div class="assign-box">
+                    <label>Назначить контейнер</label>
+                    <select class="custom-select" (change)="assignAccount(a, $any($event.target).value)">
+                      <option value="">Выберите runner</option>
+                      @for(r of runners(); track r.id){
+                        @if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}
+                      }
+                    </select>
+                  </div>
+                }
+
+                <div class="command-box">
+                  <div class="command-title">
+                    <span>Команда авторизации в runner:</span>
+                    <button class="btn-copy" (click)="copy(loginCommand(a), a.id)">
+                      @if(copiedId() === a.id){
+                        <svg lucideCheck [size]="14"></svg>
+                        <span>Скопировано</span>
+                      } @else {
+                        <svg lucideCopy [size]="14"></svg>
+                        <span>Копировать</span>
+                      }
+                    </button>
+                  </div>
+                  <code class="code-snippet">{{loginCommand(a)}}</code>
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- ADD ACCOUNT FORM -->
+          <div class="card form-card">
+            <div class="form-card-head">
+              <span class="section-tag">НОВОЕ ПОДКЛЮЧЕНИЕ</span>
+              <h3>Добавить аккаунт</h3>
+              <p>Выберите контейнер для запуска CLI. Вход в аккаунт и токены будут привязаны к этому контейнеру.</p>
+            </div>
+            <div class="form-row">
+              <input class="custom-input" [(ngModel)]="accountName" placeholder="Название, например: OpenAI Pro 2" aria-label="Название аккаунта">
+              <select class="custom-select" [(ngModel)]="accountProvider" aria-label="Провайдер">
+                <option value="codex">OpenAI Codex</option>
+                <option value="antigravity">Google Antigravity</option>
+              </select>
+              <select class="custom-select" [(ngModel)]="selectedRunner" aria-label="Исполнитель">
+                <option value="">Выберите контейнер</option>
+                @for(r of runners(); track r.id){
+                  @if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}
+                }
+              </select>
+              <button class="btn btn-primary" (click)="addAccount()" [disabled]="!accountName.trim() || !selectedRunner">
+                <svg lucidePlus [size]="16"></svg>
+                <span>Добавить</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- IMPORT CODEX PROFILES -->
+          <div class="card form-card">
+            <div class="form-card-head">
+              <span class="section-tag">МАССОВЫЙ ИМПОРТ</span>
+              <h3>Импорт профилей .codexprofile.json</h3>
+              <p>Вы можете импортировать сохранённые профили Codex напрямую на сервере с контейнером.</p>
+            </div>
+            <div class="command-box">
+              <div class="command-title">
+                <span>Команда для импорта файлов:</span>
+                <button class="btn-copy" (click)="copy('./runner/import-profiles.sh ~/Desktop/*.codexprofile.json', 'import-cmd')">
+                  @if(copiedId() === 'import-cmd'){
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Скопировано</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Копировать</span>
+                  }
+                </button>
+              </div>
+              <code class="code-snippet">./runner/import-profiles.sh ~/Desktop/*.codexprofile.json</code>
+            </div>
+          </div>
+
+          <div class="helper-box">
+            <svg lucideInfo [size]="20" class="helper-icon"></svg>
+            <div>
+              <strong>Интеллектуальная маршрутизация (Auto)</strong>
+              <p>AI Router последовательно проверяет ваши подключения. При исчерпании лимитов или сбое провайдера запрос бесшовно передаётся следующему доступному аккаунту с сохранением контекста задачи.</p>
+            </div>
+          </div>
         </div>
       } @else {
-        <header class="topbar"><div class="topbar-title"><button class="mobile-menu" aria-label="Открыть меню" (click)="mobileMenu.set(true)"><svg lucideMenu [size]="22"></svg></button><div><h2>Исполнители</h2></div></div><div class="header-right"><span class="live-dot"></span><span class="status-text">Ваши контейнеры</span></div></header>
-        <div class="connections-content"><div class="section-intro"><div><div class="eyebrow">ВАШЕ УСТРОЙСТВО</div><h1>Подключите контейнер</h1><p>CLI и входы в OpenAI или Google будут работать на вашем устройстве. Сайт отправляет задания и управляет аккаунтами.</p></div><button class="outline" (click)="refreshRunners()"><svg lucideRefreshCw [size]="16" aria-hidden="true"></svg> Обновить</button></div>
-          @if(error()){<div class="error-banner">{{error()}}</div>}
-          @if(managedRunner()){<app-manager-panel [runner]="managedRunner()!" [accounts]="accounts()" (close)="managedRunner.set(null);refreshRunners()"></app-manager-panel>}
-          @else{<div class="runner-grid">@for(r of runners();track r.id){<article class="runner-card"><div class="runner-title"><div class="provider-icon"><svg lucideServer [size]="21" aria-hidden="true"></svg></div><span class="badge" [class.ready]="r.online" [class.revoked]="r.revokedAt">{{r.revokedAt?'Отключён':r.online?'В сети':'Не в сети'}}</span></div><h3>{{r.name}}</h3><div class="provider-sub">ID: {{r.id}}</div>@if(!r.revokedAt){<div class="runner-actions"><button class="outline" (click)="managedRunner.set(r)"><svg lucideSettings2 [size]="16" aria-hidden="true"></svg> Настройки</button><button class="revoke" (click)="revokeRunner(r)">Отключить контейнер</button></div>}</article>}</div>}
-          <div class="add-card runner-setup"><div><div class="eyebrow">ОДНОРАЗОВАЯ ПРИВЯЗКА</div><h3>Добавить исполнителя</h3><p>Придумайте название и получите код на 10 минут. Контейнер использует его один раз, затем хранит свой секрет в локальном volume.</p></div><div class="add-form"><input [(ngModel)]="runnerName" placeholder="Мой компьютер" aria-label="Название исполнителя"><button class="primary" (click)="createPairing()" [disabled]="!runnerName.trim()"><svg lucidePlus [size]="17" aria-hidden="true"></svg> Получить код</button></div></div>
-          @if(pairing()){<div class="pairing-panel"><strong>Код привязки</strong><code>{{pairing()!.code}}</code><button class="outline" (click)="copy(pairing()!.code)"><svg lucideCopy [size]="15" aria-hidden="true"></svg> Скопировать</button><p>Действует до {{pairing()!.expiresAt | date:'HH:mm'}}. В папке <code>runner</code> скопируйте <code>.env.example</code> в <code>.env</code>, укажите адрес сайта и этот код, затем выполните:</p><code class="login-command">docker compose -f runner/compose.yaml up --build -d</code></div>}
-          <div class="helper"><svg lucideInfo [size]="20" aria-hidden="true"></svg><p>Контейнер устанавливает только исходящее соединение с сайтом и прекращает задания при разрыве связи. Для удалённого сайта нужен HTTPS. После подключения добавьте аккаунты на соседней вкладке.</p></div>
+        <!-- RUNNERS VIEW -->
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
+              <svg lucideMenu [size]="20"></svg>
+            </button>
+            <div class="topbar-info">
+              <h1 class="chat-title">Исполнители (Runners)</h1>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <button class="btn btn-outline btn-sm" (click)="refreshRunners()">
+              <svg lucideRefreshCw [size]="15"></svg>
+              <span>Обновить</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="page-content">
+          <div class="section-hero">
+            <div>
+              <span class="section-tag">ЛОКАЛЬНЫЕ КОНТЕЙНЕРЫ</span>
+              <h2>Исполнители задач</h2>
+              <p>Runner-контейнеры запускаются на ваших серверах или компьютерах. Они выполняют код, хранят секреты и держат соединения с CLI.</p>
+            </div>
+          </div>
+
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+
+          @if(managedRunner()){
+            <app-manager-panel [runner]="managedRunner()!" [accounts]="accounts()" (close)="managedRunner.set(null); refreshRunners()"></app-manager-panel>
+          } @else {
+            <div class="cards-grid">
+              @for(r of runners(); track r.id){
+                <div class="card runner-card">
+                  <div class="runner-card-head">
+                    <div class="runner-icon">
+                      <svg lucideServer [size]="22"></svg>
+                    </div>
+                    <span class="badge" [class.badge-ready]="r.online && !r.revokedAt" [class.badge-danger]="r.revokedAt" [class.badge-offline]="!r.online && !r.revokedAt">
+                      {{r.revokedAt ? 'Отключён' : (r.online ? 'В сети' : 'Не в сети')}}
+                    </span>
+                  </div>
+
+                  <h3>{{r.name}}</h3>
+                  <div class="runner-id">ID: <code>{{r.id}}</code></div>
+
+                  @if(!r.revokedAt){
+                    <div class="card-actions">
+                      <button class="btn btn-outline btn-sm" (click)="managedRunner.set(r)">
+                        <svg lucideSettings2 [size]="15"></svg>
+                        <span>Настройки</span>
+                      </button>
+                      <button class="btn btn-danger-outline btn-sm" (click)="revokeRunner(r)">
+                        <span>Отключить</span>
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- ADD RUNNER / PAIRING -->
+          <div class="card form-card">
+            <div class="form-card-head">
+              <span class="section-tag">ПОДКЛЮЧЕНИЕ УСТРОЙСТВА</span>
+              <h3>Добавить нового исполнителя</h3>
+              <p>Введите название и сгенерируйте код привязки. Runner использует его один раз при первом запуске через Docker Compose.</p>
+            </div>
+            <div class="form-row">
+              <input class="custom-input" [(ngModel)]="runnerName" placeholder="Например: Домашний ПК или VPS" aria-label="Название исполнителя">
+              <button class="btn btn-primary" (click)="createPairing()" [disabled]="!runnerName.trim()">
+                <svg lucidePlus [size]="16"></svg>
+                <span>Получить код привязки</span>
+              </button>
+            </div>
+          </div>
+
+          @if(pairing()){
+            <div class="card pairing-card">
+              <div class="pairing-head">
+                <div>
+                  <span class="section-tag">ОДНОРАЗОВЫЙ КОД ПРИВЯЗКИ</span>
+                  <h3>Код действителен до {{pairing()!.expiresAt | date:'HH:mm'}}</h3>
+                </div>
+                <button class="btn btn-outline btn-sm" (click)="copy(pairing()!.code, 'pairing-code')">
+                  @if(copiedId() === 'pairing-code'){
+                    <svg lucideCheck [size]="15"></svg>
+                    <span>Скопировано!</span>
+                  } @else {
+                    <svg lucideCopy [size]="15"></svg>
+                    <span>Скопировать код</span>
+                  }
+                </button>
+              </div>
+
+              <div class="pairing-code-display">
+                <code>{{pairing()!.code}}</code>
+              </div>
+
+              <div class="pairing-steps">
+                <p>1. В папке проекта <code>runner/</code> скопируйте <code>.env.example</code> в <code>.env</code></p>
+                <p>2. Укажите URL веб-сервера и вставьте этот код привязки в <code>RUNNER_PAIRING_CODE</code></p>
+                <p>3. Запустите стек runner командой:</p>
+                <code class="code-snippet">docker compose -f runner/compose.yaml up --build -d</code>
+              </div>
+            </div>
+          }
+
+          <div class="helper-box">
+            <svg lucideInfo [size]="20" class="helper-icon"></svg>
+            <div>
+              <strong>Безопасность runner</strong>
+              <p>Контейнер runner устанавливает только исходящее websocket-соединение с сайтом и не открывает внешние порты. Все токены и ключи авторизации сохраняются в изолированном Docker volume на вашем хосте.</p>
+            </div>
+          </div>
         </div>
       }
     </main>

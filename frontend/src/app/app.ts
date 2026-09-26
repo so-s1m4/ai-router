@@ -2,8 +2,14 @@ import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
-import { LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCopy, LucideFolder, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX } from '@lucide/angular';
+import { 
+  LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, LucideChevronDown, 
+  LucideCopy, LucideFolder, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare, 
+  LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
+  LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX, LucideZap 
+} from '@lucide/angular';
 import { ManagerPanel } from './manager-panel';
+import { MarkdownPipe } from './markdown.pipe';
 
 type ProviderId = 'codex'|'antigravity';
 type ReasoningEffort = {id:string;label:string};
@@ -19,7 +25,19 @@ type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:Pr
 type RunActivity = {type:string;message:string;at:string;provider?:ProviderId;accountId?:string};
 type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[]};
 
-@Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule,LucideArrowUp,LucideArrowUpRight,LucideBot,LucideCopy,LucideFolder,LucideInfo,LucideLogOut,LucideMenu,LucideMessageSquare,LucidePaperclip,LucidePencilLine,LucidePlugZap,LucidePlus,LucideRefreshCw,LucideServer,LucideSettings2,LucideSparkles,LucideSquare,LucideX,ManagerPanel],templateUrl:'./app.html',styleUrl:'./app.css'})
+@Component({
+  selector:'app-root',
+  standalone:true,
+  imports:[
+    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBot, LucideCheck, 
+    LucideChevronDown, LucideCopy, LucideFolder, LucideInfo, LucideLogOut, LucideMenu, 
+    LucideMessageSquare, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
+    LucideRefreshCw, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideX, 
+    LucideZap, ManagerPanel, MarkdownPipe
+  ],
+  templateUrl:'./app.html',
+  styleUrl:'./app.css'
+})
 export class App implements OnInit,OnDestroy {
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
   loggedIn=signal(false); page=signal<'chat'|'projects'|'connections'|'runners'>('chat');
@@ -31,6 +49,8 @@ export class App implements OnInit,OnDestroy {
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
+  copiedId=signal<string>('');
+  currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
   models=computed(()=>{const selected=this.selectedAccount==='auto'?this.accounts().flatMap(a=>a.models):(this.accounts().find(a=>a.id===this.selectedAccount)?.models||[]);const unique=new Map<string,Model>();for(const model of selected)if(!unique.has(model.id))unique.set(model.id,model);if(!unique.has('default'))unique.set('default',{id:'default',label:this.selectedAccount==='auto'?'По умолчанию выбранного CLI':'По умолчанию аккаунта'});return [...unique.values()];});
   reasoningOptions=computed(()=>{const selected=this.models().filter(m=>m.id===this.selectedModel).flatMap(m=>m.reasoning||[]),unique=new Map<string,ReasoningEffort>();for(const option of selected)if(!unique.has(option.id))unique.set(option.id,option);return [{id:'default',label:'По умолчанию'},...Array.from(unique.values()).filter((x:ReasoningEffort)=>x.id!=='default')];});
   ngOnInit(){this.clock=setInterval(()=>this.now.set(Date.now()),1000);this.restore();} ngOnDestroy(){this.socket?.disconnect();if(this.clock)clearInterval(this.clock);}
@@ -75,7 +95,14 @@ export class App implements OnInit,OnDestroy {
   async createPairing(){this.error.set('');try{this.pairing.set(await this.api<Pairing>('/runners/pairing',{method:'POST',body:JSON.stringify({name:this.runnerName})}));}catch(e){this.error.set((e as Error).message);}}
   async revokeRunner(r:Runner){if(!confirm(`Отключить ${r.name}? Его задачи остановятся.`))return;try{await this.api('/runners/'+r.id,{method:'DELETE'});await this.refreshRunners();}catch(e){this.error.set((e as Error).message);}}
   loginCommand(a:Account){return `docker compose -f runner/compose.yaml exec runner /app/scripts/provider-login.sh ${a.provider} ${a.id}`;}
-  async copy(text:string){await navigator.clipboard.writeText(text);this.notice.set('Команда скопирована');}
+  async copy(text:string, id:string=''){
+    await navigator.clipboard.writeText(text);
+    if(id){
+      this.copiedId.set(id);
+      setTimeout(()=>{if(this.copiedId()===id)this.copiedId.set('');},2000);
+    }
+    this.notice.set('Скопировано в буфер обмена');
+  }
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
   providerLabel(id?:ProviderId){return id==='codex'?'Codex':id==='antigravity'?'Antigravity':'';}
   limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
@@ -85,4 +112,33 @@ export class App implements OnInit,OnDestroy {
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';this.selectedReasoning='default';}
   selectModel(id:string){this.selectedModel=id;this.selectedReasoning='default';}
+  toggleRunMode(){this.runMode=this.runMode==='chat'?'task':'chat';}
+
+  handleChatClick(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const copyBtn = target.closest('.copy-code-btn') as HTMLButtonElement | null;
+    if (!copyBtn) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const codeBlock = copyBtn.closest('.code-block');
+    const codeEl = codeBlock?.querySelector('pre code');
+    const codeText = codeEl?.textContent || '';
+    if (!codeText) return;
+
+    navigator.clipboard.writeText(codeText).then(() => {
+      copyBtn.classList.add('copied');
+      const label = copyBtn.querySelector('.copy-label');
+      if (label) label.textContent = 'Скопировано!';
+      setTimeout(() => {
+        copyBtn.classList.remove('copied');
+        if (label) label.textContent = 'Копировать';
+      }, 2000);
+      this.notice.set('Код скопирован в буфер обмена');
+    }).catch(() => {
+      this.notice.set('Не удалось скопировать код');
+    });
+  }
 }
