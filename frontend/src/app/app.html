@@ -192,7 +192,7 @@
           </div>
         </header>
 
-        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onWheel($event)" (touchstart)="onTouchStart($event)" (touchmove)="onTouchMove($event)">
+        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()">
           @if(!current()?.messages?.length){
             <div class="welcome-screen">
               <div class="welcome-badge">
@@ -234,7 +234,7 @@
             </div>
           }
 
-          <div class="message-feed" (click)="handleChatClick($event)">
+          <div #messageFeed class="message-feed" (click)="handleChatClick($event)">
             @for(m of current()?.messages||[]; track m.id){
               <div class="message-row" [class.user-row]="m.role==='user'">
                 <div class="message-avatar" [class.user-avatar-bg]="m.role==='user'">

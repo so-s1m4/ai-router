@@ -354,6 +354,7 @@ code, pre, kbd, samp, .mono {
   padding: 12px 14px;
   overflow-x: auto;
   background: transparent !important;
+  touch-action: pan-x pan-y;
 }
 
 .code-block pre code.hljs {
@@ -377,6 +378,7 @@ code, pre, kbd, samp, .mono {
   border-radius: var(--radius-xs);
   border: 1px solid var(--border-medium);
   font-size: 13px;
+  touch-action: pan-x pan-y;
 }
 
 .markdown-body th,

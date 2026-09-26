@@ -590,6 +590,7 @@
   flex-direction: column;
   gap: 20px;
   flex-shrink: 0;
+  padding-bottom: 24px;
 }
 
 .message-row {
@@ -2000,7 +2001,7 @@
 
   /* Chat Feed & Messages */
   .chat-scroll-area {
-    padding: 10px 8px;
+    padding: 10px 8px 20px;
   }
 
   .message-feed {

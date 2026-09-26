@@ -94,46 +94,64 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   userScrolledUp = signal(false);
   showScrollBottom = signal(false);
   @ViewChild('chatScrollArea') chatScrollArea?: ElementRef<HTMLDivElement>;
+  @ViewChild('messageFeed') messageFeed?: ElementRef<HTMLDivElement>;
   private scrollRaf?: number;
-  private touchStartY = 0;
+  private resizeObserver?: ResizeObserver;
   private isProgrammaticScroll = false;
+  private isSmoothScrollingToBottom = false;
+  private smoothScrollTimeout?: ReturnType<typeof setTimeout>;
+  private lastScrollTop = 0;
   private onViewportResize = () => {
     if (!this.userScrolledUp()) this.requestScrollToBottom();
   };
 
   ngAfterViewInit() {
-    setTimeout(() => this.scrollToBottom(true, 'auto'), 50);
+    this.setupResizeObserver();
+    this.scrollToBottom(true, 'auto');
   }
 
-  onTouchStart(event: TouchEvent) {
-    this.isProgrammaticScroll = false;
-    if (event.touches.length === 1) {
-      this.touchStartY = event.touches[0].clientY;
+  private setupResizeObserver() {
+    if (typeof ResizeObserver === 'undefined') return;
+    const container = this.chatScrollArea?.nativeElement;
+    const feed = this.messageFeed?.nativeElement;
+    if (!container) return;
+
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
     }
-  }
 
-  onTouchMove(event: TouchEvent) {
-    if (event.touches.length === 1) {
-      const currentY = event.touches[0].clientY;
-      // Moving finger down (currentY > touchStartY) scrolls view UP
-      if (currentY - this.touchStartY > 8) {
-        this.userScrolledUp.set(true);
-        this.showScrollBottom.set(true);
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.userScrolledUp()) {
+        this.scrollToBottom(false, 'auto');
       }
+    });
+
+    this.resizeObserver.observe(container);
+    if (feed) {
+      this.resizeObserver.observe(feed);
     }
   }
 
-  onWheel(event: WheelEvent) {
-    this.isProgrammaticScroll = false;
-    if (event.deltaY < 0) {
-      this.userScrolledUp.set(true);
-      this.showScrollBottom.set(true);
+  private cleanupResizeObserver() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = undefined;
     }
+  }
+
+  ensureChatScrollAttached(forceScroll = false) {
+    this.userScrolledUp.set(false);
+    this.showScrollBottom.set(false);
+    this.isSmoothScrollingToBottom = false;
+    setTimeout(() => {
+      this.setupResizeObserver();
+      if (forceScroll) {
+        this.scrollToBottom(true, 'auto');
+      }
+    }, 0);
   }
 
   onChatScroll() {
-    if (this.isProgrammaticScroll) return;
-
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
 
@@ -142,14 +160,37 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     const clientHeight = el.clientHeight;
     const distanceFromBottom = Math.max(0, scrollHeight - currentScrollTop - clientHeight);
 
-    const isAtBottom = distanceFromBottom <= 40;
+    if (this.isProgrammaticScroll) {
+      this.lastScrollTop = currentScrollTop;
+      return;
+    }
 
-    if (isAtBottom) {
-      this.userScrolledUp.set(false);
-      this.showScrollBottom.set(false);
-    } else {
-      this.userScrolledUp.set(true);
-      this.showScrollBottom.set(true);
+    if (this.isSmoothScrollingToBottom) {
+      if (distanceFromBottom <= 40) {
+        this.isSmoothScrollingToBottom = false;
+        if (this.smoothScrollTimeout) {
+          clearTimeout(this.smoothScrollTimeout);
+          this.smoothScrollTimeout = undefined;
+        }
+      }
+      this.lastScrollTop = currentScrollTop;
+      return;
+    }
+
+    const scrollDelta = currentScrollTop - this.lastScrollTop;
+    this.lastScrollTop = currentScrollTop;
+
+    if (distanceFromBottom <= 40) {
+      if (this.userScrolledUp()) this.userScrolledUp.set(false);
+      if (this.showScrollBottom()) this.showScrollBottom.set(false);
+    } else if (scrollDelta < -2 && distanceFromBottom > 25) {
+      // User actively scrolled UP
+      if (!this.userScrolledUp()) this.userScrolledUp.set(true);
+      if (!this.showScrollBottom()) this.showScrollBottom.set(true);
+    } else if (distanceFromBottom > 100) {
+      // Significantly away from bottom
+      if (!this.userScrolledUp()) this.userScrolledUp.set(true);
+      if (!this.showScrollBottom()) this.showScrollBottom.set(true);
     }
   }
 
@@ -166,22 +207,35 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     }
 
     if (behavior === 'smooth') {
-      this.isProgrammaticScroll = true;
+      this.isSmoothScrollingToBottom = true;
+      if (this.smoothScrollTimeout) clearTimeout(this.smoothScrollTimeout);
+      this.smoothScrollTimeout = setTimeout(() => {
+        this.isSmoothScrollingToBottom = false;
+      }, 800);
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-      setTimeout(() => {
-        this.isProgrammaticScroll = false;
-      }, 400);
     } else {
+      this.isProgrammaticScroll = true;
       el.scrollTop = el.scrollHeight;
+      this.lastScrollTop = el.scrollTop;
+      requestAnimationFrame(() => {
+        this.isProgrammaticScroll = false;
+        if (el) this.lastScrollTop = el.scrollTop;
+      });
     }
   }
 
   requestScrollToBottom(force = false, behavior: ScrollBehavior = 'auto') {
-    if (!force && this.userScrolledUp()) return;
+    if (force) {
+      this.userScrolledUp.set(false);
+      this.showScrollBottom.set(false);
+    } else if (this.userScrolledUp()) {
+      return;
+    }
     if (this.scrollRaf) {
       cancelAnimationFrame(this.scrollRaf);
     }
     this.scrollRaf = requestAnimationFrame(() => {
+      this.scrollRaf = undefined;
       this.scrollToBottom(force, behavior);
     });
   }
@@ -352,6 +406,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.socket?.disconnect();
     if(this.clock)clearInterval(this.clock);
     if(this.scrollRaf)cancelAnimationFrame(this.scrollRaf);
+    this.cleanupResizeObserver();
+    if(this.smoothScrollTimeout)clearTimeout(this.smoothScrollTimeout);
     if(typeof window !== 'undefined'){
       window.removeEventListener('dragover', this.preventWindowDrop);
       window.removeEventListener('drop', this.preventWindowDrop);
@@ -377,8 +433,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async load(){const [accounts,runners,projects,sessions]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions')]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
-  async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
-  async openSession(id:string){this.stopVoiceInput();this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);setTimeout(()=>this.scrollToBottom(true,'auto'),50);}catch(e){this.error.set((e as Error).message);}}
+  async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
+  async openSession(id:string){this.stopVoiceInput();this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
   chatsFor(projectId?:string){return this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId);}
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
@@ -622,7 +678,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     void this.uploadFiles(files);
     input.value = '';
   }
-  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')setTimeout(()=>this.scrollToBottom(true,'auto'),50);}
+  showPage(page:'chat'|'projects'|'sites'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='chat')this.ensureChatScrollAttached(true);else this.cleanupResizeObserver();}
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
@@ -631,8 +687,9 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();}}
   async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);this.requestScrollToBottom();}
-  send(){if(this.isRecording())this.stopVoiceInput();const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
-    this.scrollToBottom(true,'smooth');
+  send(){if(this.isRecording())this.stopVoiceInput();const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
+    this.scrollToBottom(true,'auto');
+    requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
     this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:this.runMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
