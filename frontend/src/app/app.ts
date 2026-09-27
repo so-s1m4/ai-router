@@ -134,10 +134,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   sidebarOpen = signal(true);
   mode = signal<'chat'|'work'>('chat');
   expandedProjects = signal<Set<string>>(new Set(['CCC-Solutions', 'Quest Control', 'proj-ccc', 'proj-quest']));
-  pinnedChats = signal<{id: string; title: string}[]>([
-    { id: 'pin-cat', title: 'кот' },
-    { id: 'pin-yulia', title: 'юля' }
-  ]);
   moreMenuOpen = signal(false);
   userMenuOpen = signal(false);
   helpModalOpen = signal(false);
@@ -674,27 +670,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     } else {
       this.notice.set('Голосовой режим ChatGPT активен');
       setTimeout(() => this.notice.set(''), 3000);
-    }
-  }
-
-  openPinnedChat(title: string) {
-    const s = this.sessions().find(x => x.title === title);
-    if (s) {
-      void this.openSession(s.id);
-    } else {
-      const now = new Date().toISOString();
-      const newS: ChatSession = {
-        id: 'pinned-' + Date.now(),
-        title,
-        updatedAt: now,
-        messages: [
-          { id: 'p1', role: 'user', text: `Привет, ${title}!`, at: now },
-          { id: 'p2', role: 'assistant', text: `Привет! Чем могу помочь по теме «${title}»?`, at: now }
-        ]
-      };
-      this.sessions.update(list => sortSessions([newS, ...list]));
-      this.current.set(newS);
-      this.page.set('chat');
     }
   }
 

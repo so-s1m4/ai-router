@@ -185,21 +185,6 @@
       </nav>
 
       <div class="sidebar-scroll">
-        <!-- PINNED SECTION -->
-        <div class="sidebar-section">
-          <div class="section-label">
-            <span>Pinned</span>
-          </div>
-          <div class="section-list">
-            @for(pin of pinnedChats(); track pin.id) {
-              <button class="sidebar-item" (click)="openPinnedChat(pin.title)">
-                <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
-                <span class="truncate">{{pin.title}}</span>
-              </button>
-            }
-          </div>
-        </div>
-
         <!-- PROJECTS SECTION -->
         <div class="sidebar-section">
           <div class="section-label">
