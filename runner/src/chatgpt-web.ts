@@ -97,7 +97,7 @@ export async function executeChatGPTWeb(
       }
       return text;
     }
-    throw new RunnerError('Chromium не установлен в контейнере runner. Установите Chromium в Dockerfile.', 'unavailable');
+    throw new RunnerError('Chromium не найден в контейнере runner. Обновите образ и пересоздайте контейнер runner.', 'unavailable');
   }
 
   const profileDir = path.join(home, 'chrome-profile');

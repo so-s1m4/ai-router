@@ -1,0 +1,17 @@
+# Local build override for custom CLI installations.
+# Use with: docker compose -f compose.yaml -f compose.build.yaml up -d --build
+services:
+  runner:
+    build:
+      context: .
+      args:
+        INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+        INSTALL_AGY_CLI: ${INSTALL_AGY_CLI:-false}
+    pull_policy: build
+  manager:
+    build:
+      context: .
+      args:
+        INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
+        INSTALL_AGY_CLI: ${INSTALL_AGY_CLI:-false}
+    pull_policy: build

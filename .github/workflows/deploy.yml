@@ -67,6 +67,18 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
+      - uses: docker/build-push-action@v6
+        with:
+          context: runner
+          push: true
+          build-args: INSTALL_CODEX_CLI=true
+          tags: |
+            ghcr.io/${{ steps.names.outputs.owner }}/ai-router-runner:latest
+            ghcr.io/${{ steps.names.outputs.owner }}/ai-router-runner:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=runner
+          cache-to: type=gha,mode=max,scope=runner
+
   deploy:
     needs: images
     if: vars.DEPLOY_ENABLED == 'true'
@@ -83,3 +95,21 @@ jobs:
             --retry 3 \
             --max-time 120 \
             "$PORTAINER_WEBHOOK_URL"
+
+  deploy-runner:
+    needs: images
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Redeploy runner stack when configured
+        env:
+          PORTAINER_RUNNER_WEBHOOK_URL: ${{ secrets.PORTAINER_RUNNER_WEBHOOK_URL }}
+        run: |
+          if [ -n "$PORTAINER_RUNNER_WEBHOOK_URL" ]; then
+            curl --fail --silent --show-error \
+              --request POST \
+              --retry 3 \
+              --max-time 120 \
+              "$PORTAINER_RUNNER_WEBHOOK_URL"
+          fi

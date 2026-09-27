@@ -26,7 +26,7 @@ docker compose up --build -d
 
 1. Войдите на сайт и откройте **Исполнители**. Укажите имя устройства и нажмите **Получить код**. Код действует 10 минут и используется один раз.
 2. Скопируйте каталог `runner/` на устройство с Docker. В этом каталоге выполните `cp .env.example .env`, укажите `ROUTER_SERVER_URL=https://ваш-сайт` и одноразовый `ROUTER_PAIRING_CODE`.
-3. Запустите контейнер из каталога `runner/`: `docker compose up --build -d`. После успешной привязки исполнитель сохраняет секрет устройства в локальном Docker volume. Код из `.env` можно удалить. На сайте появится статус **В сети**.
+3. Запустите контейнер из каталога `runner/`: `docker compose up -d`. Compose скачает готовый образ с Chromium. После успешной привязки исполнитель сохраняет секрет устройства в локальном Docker volume. Код из `.env` можно удалить. На сайте появится статус **В сети**.
 4. На экране **Подключения** добавьте аккаунт Codex или Antigravity и назначьте свой исполнитель. Количество аккаунтов и исполнителей в интерфейсе не ограничено фиксированным числом. Каждому аккаунту выделяется отдельный каталог HOME внутри volume исполнителя.
 
 При работе через интернет нужен HTTPS. `ROUTER_ALLOW_INSECURE=true` допустим только в локальной тестовой сети. Для публичного сайта разместите TLS reverse proxy перед frontend и задайте `COOKIE_SECURE=true` на сервере.
@@ -43,21 +43,21 @@ docker compose --profile local-runner up --build -d
 
 ### Вход в провайдеров
 
-Для Codex CLI задайте `INSTALL_CODEX_CLI=true` в `.env` **исполнителя** и пересоберите его. Затем скопируйте команду входа с карточки аккаунта и выполните её на устройстве исполнителя. При запуске Compose из каталога `runner/` команда выглядит так:
+Готовый образ содержит Codex CLI. Для собственной сборки задайте `INSTALL_CODEX_CLI=true` в `.env` **исполнителя** и выполните `docker compose -f compose.yaml -f compose.build.yaml up -d --build` из каталога `runner/`. Затем скопируйте команду входа с карточки аккаунта и выполните её на устройстве исполнителя:
 
 ```bash
 docker compose exec runner /app/scripts/provider-login.sh codex <account-id>
 ```
 
-Скрипт запускает официальный `codex login --device-auth` с отдельным `CODEX_HOME`. Для каждого аккаунта повторите вход с его ID. Для Antigravity задайте `INSTALL_AGY_CLI=true` в `runner/.env`, пересоберите **тот же** runner и выполните `/app/scripts/provider-login.sh antigravity <account-id>`. Команда запускает официальный `agy` с отдельным `HOME`. В headless Linux окружении Antigravity может потребовать работающий D-Bus и системный keyring для сохранения входа; это отдельное требование CLI, которое нужно проверить на вашем хосте. Проверка авторизации происходит при запуске задачи.
+Скрипт запускает официальный `codex login --device-auth` с отдельным `CODEX_HOME`. Для каждого аккаунта повторите вход с его ID. Для Antigravity задайте `INSTALL_AGY_CLI=true` в `runner/.env`, соберите образ той же командой с `compose.build.yaml` и выполните `/app/scripts/provider-login.sh antigravity <account-id>`. Команда запускает официальный `agy` с отдельным `HOME`. В headless Linux окружении Antigravity может потребовать работающий D-Bus и системный keyring для сохранения входа; это отдельное требование CLI, которое нужно проверить на вашем хосте. Проверка авторизации происходит при запуске задачи.
 
 ### Управление runner через сайт
 
 Для каждого runner можно включить **отдельный сервис управления**. Его пароль находится только в `runner/.env` на устройстве владельца; backend не сохраняет пароль. В браузере пароль используется для одноразового подтверждения каждой команды. Сервис управления подключается к сайту исходящим WebSocket-соединением, как и runner.
 
 1. На вкладке **Исполнители** нажмите **Настройки** → **Получить код управления**. Код действует 10 минут.
-2. В `runner/.env` задайте `RUNNER_MANAGER_PAIRING_CODE=<код>` и уникальный `RUNNER_MANAGER_PASSWORD=<пароль от 16 символов>`. Убедитесь, что `ROUTER_SERVER_URL` указывает на ваш сайт. Для входа Codex из веб-панели задайте `INSTALL_CODEX_CLI=true`; для Antigravity CLI — `INSTALL_AGY_CLI=true`.
-3. В каталоге с проектом выполните `docker compose -f runner/compose.yaml --profile management up --build -d`. Если runner развёрнут через Portainer, задайте в переменных **существующего** Git-стека `COMPOSE_PROFILES=management`, пароль и код управления, затем обновите этот стек. Не создавайте второй runner с новым volume.
+2. В `runner/.env` задайте `RUNNER_MANAGER_PAIRING_CODE=<код>` и уникальный `RUNNER_MANAGER_PASSWORD=<пароль от 16 символов>`. Убедитесь, что `ROUTER_SERVER_URL` указывает на ваш сайт. Для собственного образа с Codex или Antigravity задайте `INSTALL_CODEX_CLI=true` или `INSTALL_AGY_CLI=true` и используйте `compose.build.yaml`.
+3. В каталоге с проектом выполните `docker compose -f runner/compose.yaml --profile management up -d`. Для собственной сборки добавьте `-f runner/compose.build.yaml` перед `--profile` и `--build` после `up`. Если runner развёрнут через Portainer, задайте в переменных **существующего** Git-стека `COMPOSE_PROFILES=management`, пароль и код управления, затем обновите этот стек. Не создавайте второй runner с новым volume.
 4. Обновите вкладку **Исполнители**. Откройте шестерню и введите пароль управления.
 
 Сервис управления хранит собственный секрет подключения и закрытые SSH-ключи в отдельном `manager_data` volume. Он не передаёт закрытые ключи runner: для GitHub runner использует SSH-agent через отдельный Unix socket. Публичный ключ скопируйте из панели в GitHub → Settings → SSH and GPG keys, затем используйте SSH-адрес репозитория. Сервис также позволяет добавлять MCP-серверы в конфигурацию конкретного аккаунта Codex или Antigravity и запускать вход Codex по device code в браузере. Вход Google Antigravity по-прежнему выполняется через интерактивный терминал runner, поскольку официальный CLI использует TTY и системный keyring.
@@ -66,7 +66,7 @@ docker compose exec runner /app/scripts/provider-login.sh codex <account-id>
 
 ### Импорт сохранённых профилей Codex
 
-Поддерживается JSON-архив `codex-profiles-archive` версии 1 (`.codexprofile.json`, поле `authJSONString`). Импорт выполняется **на устройстве с контейнером исполнителя**, после его привязки к сайту. В `runner/.env` задайте `INSTALL_CODEX_CLI=true`, пересоберите и запустите контейнер, затем из корня проекта выполните:
+Поддерживается JSON-архив `codex-profiles-archive` версии 1 (`.codexprofile.json`, поле `authJSONString`). Импорт выполняется **на устройстве с контейнером исполнителя**, после его привязки к сайту. Готовый образ содержит Codex CLI; при собственной сборке задайте `INSTALL_CODEX_CLI=true` и используйте `compose.build.yaml`. Затем из корня проекта выполните:
 
 ```bash
 ./runner/import-profiles.sh ~/Desktop/*.codexprofile.json
@@ -155,6 +155,6 @@ CLI-адаптеры используют официальные потоки [C
 
 Публичный репозиторий: [so-s1m4/ai-router](https://github.com/so-s1m4/ai-router). Производственный стек описан в `compose.prod.yaml` и управляется Portainer как Git-стек. Он слушает `127.0.0.1:18088` на сервере и доступен Nginx Proxy Manager через общую Docker-сеть `proxy` по имени `ai-router-web:80`. HTTPS для `ai.s1m4.com` завершается в reverse proxy.
 
-Схема деплоя такая же, как у QuestControl: GitHub Actions проверяет сборку backend, frontend и runner, публикует образы `ai-router-backend` и `ai-router-frontend` в GHCR с тегами `latest` и SHA коммита, затем вызывает закрытый GitOps webhook Portainer. Для Git-стека в Portainer включите **Re-pull image**, чтобы webhook скачивал новые версии образов с тем же тегом `latest` и пересоздавал контейнеры. Для приватных образов Portainer должен иметь доступ к registry `ghcr.io` с правом `read:packages`.
+GitHub Actions проверяет сборку backend, frontend и runner, публикует все три образа в GHCR с тегами `latest` и SHA коммита, затем вызывает GitOps webhook Portainer для сайта. Runner Git-стек из `runner/compose.yaml` использует готовый образ `ai-router-runner:latest` с Chromium и Codex CLI; `pull_policy: always` скачивает актуальный образ при обновлении стека. В стеке сайта включите **Re-pull image**. Для автоматического обновления runner задайте его GitOps webhook в секрете GitHub Actions `PORTAINER_RUNNER_WEBHOOK_URL`; при включённом GitOps polling стек также сможет обновляться по расписанию. Для приватных образов Portainer должен иметь доступ к registry `ghcr.io` с правом `read:packages`.
 
-Для включения деплоя нужны переменная репозитория `DEPLOY_ENABLED=true` и секрет `PORTAINER_WEBHOOK_URL`. В Portainer стек должен быть создан из этого Git-репозитория с compose path `compose.prod.yaml` и включённым webhook. Пароли приложения задаются только в переменных окружения стека Portainer. SSH-ключ для GitHub Actions не нужен.
+Для включения деплоя нужны переменная репозитория `DEPLOY_ENABLED=true` и секрет `PORTAINER_WEBHOOK_URL`; для немедленного обновления runner добавьте `PORTAINER_RUNNER_WEBHOOK_URL`. В Portainer стек сайта должен быть создан из этого Git-репозитория с compose path `compose.prod.yaml`, стек runner — с `runner/compose.yaml`. Пароли приложения задаются только в переменных окружения стека Portainer. SSH-ключ для GitHub Actions не нужен.

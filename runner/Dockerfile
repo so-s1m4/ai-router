@@ -8,12 +8,20 @@ RUN npm run build
 FROM node:22-bookworm-slim
 ARG INSTALL_CODEX_CLI=false
 ARG INSTALL_AGY_CLI=false
-ARG INSTALL_CHROMIUM=false
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl bash git openssh-client ripgrep \
-  && if [ "$INSTALL_CHROMIUM" = "true" ]; then \
-       apt-get install -y --no-install-recommends chromium fonts-liberation libasound2 libnss3 libxss1; \
-     fi \
+  && apt-get install -y --no-install-recommends \
+       ca-certificates \
+       curl \
+       bash \
+       git \
+       openssh-client \
+       ripgrep \
+       chromium \
+       fonts-liberation \
+       libasound2 \
+       libnss3 \
+       libxss1 \
+  && chromium --version \
   && rm -rf /var/lib/apt/lists/* \
   && if [ "$INSTALL_CODEX_CLI" = "true" ]; then npm install -g @openai/codex; fi \
   && if [ "$INSTALL_AGY_CLI" = "true" ]; then \
@@ -29,5 +37,10 @@ COPY --from=build /app/dist ./dist
 COPY scripts ./scripts
 RUN chmod +x scripts/*.sh scripts/deploy-preview && ln -s /app/scripts/deploy-preview /usr/local/bin/deploy-preview && mkdir -p /runner-data && chown -R node:node /runner-data
 USER node
-ENV NODE_ENV=production RUNNER_DATA_DIR=/runner-data SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt AGY_CLI_DISABLE_AUTO_UPDATE=true
+ENV NODE_ENV=production \
+    RUNNER_DATA_DIR=/runner-data \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    AGY_CLI_DISABLE_AUTO_UPDATE=true \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 CMD ["node","dist/main.js"]

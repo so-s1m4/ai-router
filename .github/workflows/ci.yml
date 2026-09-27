@@ -38,6 +38,12 @@ jobs:
           ADMIN_PASSWORD: ci-only
           SESSION_SECRET: ci-only
         run: docker compose -f compose.prod.yaml config --quiet
+      - name: Validate runner stacks
+        env:
+          ROUTER_SERVER_URL: https://router.example.com
+        run: |
+          docker compose -f runner/compose.yaml config --quiet
+          docker compose -f runner/compose.yaml -f runner/compose.build.yaml config --quiet
   previews:
     runs-on: ubuntu-latest
     steps:
