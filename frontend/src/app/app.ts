@@ -2,12 +2,14 @@ import { Component, OnInit, AfterViewInit, OnDestroy, signal, computed, ViewChil
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
-import { 
-  LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, LucideChevronDown, LucideChevronRight,
-  LucideCopy, LucideCpu, LucideDownload, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
-  LucideMic, LucideMicOff,
-  LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, 
-  LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, LucideZap 
+import {
+  LucideArrowUp, LucideArrowUpRight, LucideAudioLines, LucideAudioWaveform, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
+  LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass,
+  LucideCopy, LucideCpu, LucideDownload, LucideEllipsis, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
+  LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft,
+  LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
+  LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideUploadCloud, LucideX, LucideZap
 } from '@lucide/angular';
 import { ManagerPanel } from './manager-panel';
 import { MarkdownPipe } from './markdown.pipe';
@@ -80,10 +82,11 @@ interface FileNodeInternal {
   selector:'app-root',
   standalone:true,
   imports:[
-    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck, 
-    LucideChevronDown, LucideChevronRight, LucideCopy, LucideCpu, LucideDownload, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideInfo, LucideLogOut, LucideMenu,
-    LucideMessageSquare, LucideMic, LucideMicOff, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, 
-    LucideRefreshCw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideTerminal, LucideUploadCloud, LucideX, 
+    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideAudioLines, LucideAudioWaveform, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
+    LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass, LucideCopy, LucideCpu, LucideDownload, LucideEllipsis,
+    LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu,
+    LucideMessageSquare, LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus,
+    LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideUploadCloud, LucideX,
     LucideZap, ManagerPanel, MarkdownPipe
   ],
   templateUrl:'./app.html',
@@ -96,6 +99,28 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   managedRunner=signal<Runner|null>(null);
   modelBlacklist=signal<string[]>([]);
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); previews=signal<Preview[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
+  sidebarOpen = signal(true);
+  mode = signal<'chat'|'work'>('chat');
+  expandedProjects = signal<Set<string>>(new Set(['CCC-Solutions', 'Quest Control', 'proj-ccc', 'proj-quest']));
+  pinnedChats = signal<{id: string; title: string}[]>([
+    { id: 'pin-cat', title: 'кот' },
+    { id: 'pin-yulia', title: 'юля' }
+  ]);
+  brandMenuOpen = signal(false);
+  moreMenuOpen = signal(false);
+  userMenuOpen = signal(false);
+  helpModalOpen = signal(false);
+  modelMenuOpen = signal(false);
+  searchOpen = signal(false);
+  sidebarSearch = signal('');
+  isDemo = false;
+  currentReasoningOrModelLabel = computed(() => {
+    if (this.selectedReasoning && this.selectedReasoning !== 'default') {
+      const r = this.selectedReasoning;
+      return r.charAt(0).toUpperCase() + r.slice(1);
+    }
+    return 'High';
+  });
   draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
@@ -485,24 +510,245 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     }
   }
   async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
+  toggleSidebar() {
+    this.sidebarOpen.update(v => !v);
+  }
+
+  setMode(m: 'chat' | 'work') {
+    this.mode.set(m);
+    if (m === 'chat') {
+      this.showPage('chat');
+    } else {
+      this.showPage('projects');
+    }
+  }
+
+  toggleProjectExpand(nameOrId: string) {
+    this.expandedProjects.update(set => {
+      const next = new Set(set);
+      if (next.has(nameOrId)) next.delete(nameOrId);
+      else next.add(nameOrId);
+      return next;
+    });
+  }
+
+  toggleVoiceMode() {
+    if (this.speechSupported()) {
+      this.toggleVoiceInput();
+    } else {
+      this.notice.set('Голосовой режим ChatGPT активен');
+      setTimeout(() => this.notice.set(''), 3000);
+    }
+  }
+
+  openPinnedChat(title: string) {
+    const s = this.sessions().find(x => x.title === title);
+    if (s) {
+      void this.openSession(s.id);
+    } else {
+      const newS: ChatSession = {
+        id: 'pinned-' + Date.now(),
+        title,
+        updatedAt: new Date().toISOString(),
+        messages: [
+          { id: 'p1', role: 'user', text: `Привет, ${title}!`, at: '12:00' },
+          { id: 'p2', role: 'assistant', text: `Привет! Чем могу помочь по теме «${title}»?`, at: '12:00' }
+        ]
+      };
+      this.sessions.update(list => [newS, ...list]);
+      this.current.set(newS);
+      this.page.set('chat');
+    }
+  }
+
+  enableDemoMode() {
+    this.isDemo = true;
+    this.username = 'MO';
+    this.loggedIn.set(true);
+    const demoProjects: Project[] = [
+      { id: 'proj-ai-router', name: 'AI Router', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-ccc', name: 'CCC-Solutions', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-wmc', name: 'WMC', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-ascs', name: 'ascs', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-gamecenter', name: 'GameCenter', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-school', name: 'School', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-quest', name: 'Quest Control', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-work', name: 'Work', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-idk', name: 'IDK', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-htlink', name: 'HTLink', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'proj-origami', name: 'Origami', runnerId: 'r1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    ];
+    this.projects.set(demoProjects);
+
+    const demoSessions: ChatSession[] = [
+      {
+        id: 'sess-krampus',
+        title: 'Промо для Krampus Haus',
+        updatedAt: new Date().toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Сделай промо-текст для Krampus Haus', at: '11:15' },
+          { id: 'm2', role: 'assistant', text: 'Готовлю промо-материалы для мероприятия Krampus Haus...\n\n### 🔥 Krampus Haus: Зимний фестиваль\n* Погружение в атмосферу альпийского фольклора\n* Интерактивные зоны и шоу программа\n* Тематическая музыка и угощения', at: '11:16' }
+        ]
+      },
+      {
+        id: 'sess-backup-1',
+        title: 'Daily Documents backup',
+        updatedAt: new Date(Date.now() - 3600000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Проверь статус ежедневного бэкапа документов', at: '10:00' },
+          { id: 'm2', role: 'assistant', text: 'Все документы успешно синхронизированы в хранилище. Ошибок не обнаружено.', at: '10:01' }
+        ]
+      },
+      {
+        id: 'sess-backup-2',
+        title: 'Daily Documents backup',
+        updatedAt: new Date(Date.now() - 86400000).toISOString(),
+        messages: []
+      },
+      {
+        id: 'sess-mower-1',
+        title: 'Solve Classic Lawn Mower',
+        projectId: 'proj-ccc',
+        updatedAt: new Date(Date.now() - 172800000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Реши задачу Classic Lawn Mower для тура Cloudflight Coding Contest', at: '14:20' },
+          { id: 'm2', role: 'assistant', text: 'Для задачи Classic Lawn Mower оптимальный алгоритм использует имитацию движения газонокосилки по сетке с отслеживанием скошенных клеток:\n\n```python\ndef solve_lawn_mower(grid, moves):\n    x, y = 0, 0\n    mowed = {(0, 0)}\n    directions = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}\n    for move in moves:\n        dx, dy = directions[move]\n        x += dx\n        y += dy\n        mowed.add((x, y))\n    return len(mowed)\n```\nСложность: O(N) по времени и O(N) по памяти.', at: '14:21' }
+        ]
+      },
+      {
+        id: 'sess-mower-2',
+        title: 'Solve Classic Lawn Mower',
+        projectId: 'proj-ccc',
+        updatedAt: new Date(Date.now() - 259200000).toISOString(),
+        messages: []
+      },
+      {
+        id: 'sess-clarify',
+        title: 'Clarify the issue',
+        projectId: 'proj-ccc',
+        updatedAt: new Date(Date.now() - 300000000).toISOString(),
+        messages: []
+      },
+      {
+        id: 'sess-hu-pdf',
+        title: 'Improve HÜ180926 PDF',
+        projectId: 'proj-ccc',
+        updatedAt: new Date(Date.now() - 320000000).toISOString(),
+        messages: []
+      },
+      {
+        id: 'sess-mcp-upload',
+        title: 'Ускорить MCP upload и Tele...',
+        projectId: 'proj-ccc',
+        updatedAt: new Date(Date.now() - 340000000).toISOString(),
+        messages: []
+      },
+      {
+        id: 'sess-quest-check',
+        title: 'Проверить локальные события',
+        projectId: 'proj-quest',
+        updatedAt: new Date(Date.now() - 350000000).toISOString(),
+        messages: []
+      },
+      {
+        id: 'sess-router-mvp',
+        title: 'Создать MVP AI router',
+        projectId: 'proj-ai-router',
+        updatedAt: new Date(Date.now() - 360000000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Создай структуру проекта и маршрутизатор моделей', at: '09:30' },
+          { id: 'm2', role: 'assistant', text: 'Архитектура AI Router разделена на:\n- `backend`: Express / WebSocket хаб\n- `runner`: изолированный процесс на клиенте с прямым доступом к Codex и Antigravity\n- `frontend`: Angular веб-интерфейс', at: '09:31' }
+        ]
+      }
+    ];
+    this.sessions.set(demoSessions);
+    this.current.set(null);
+  }
+
   async restore(){
     let me:{username:string};
     try{me=await this.api<{username:string}>('/me');}
     catch(e){
-      if((e as Error&{status?:number}).status===401)this.loggedIn.set(false);
-      else this.loginError='Не удалось проверить вход. Обновите страницу.';
       return;
     }
     this.username=me.username;this.loggedIn.set(true);this.connect();
     try{await this.load();}catch(e){this.error.set((e as Error).message);}
   }
-  async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'});this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.loggedIn.set(false);this.current.set(null);}
+  async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.isDemo=false;this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
+  async logout(){this.stopVoiceInput();if(!this.isDemo)await this.api('/logout',{method:'POST'}).catch(()=>{});this.isDemo=false;this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.loggedIn.set(false);this.current.set(null);}
   async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
-  async newSession(){this.stopVoiceInput();this.mobileMenu.set(false);try{const projectId=this.selectedProjectId()||undefined;const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.sessions.update(v=>[s,...v]);this.current.set(s);this.taskFiles.set([]);this.sharedFileLinks.set({});this.collapsedDirs.set(new Set());this.filesFilter.set('');this.filesOpen.set(false);this.selectedProjectId.set(s.projectId||'');this.page.set('chat');this.resetRun();this.error.set('');this.syncRun(s.id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
-  async openSession(id:string){this.stopVoiceInput();this.mobileMenu.set(false);try{const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.taskFiles.set([]);this.sharedFileLinks.set({});this.collapsedDirs.set(new Set());this.filesFilter.set('');this.filesOpen.set(false);this.selectedProjectId.set(s.projectId||'');this.resetRun();this.error.set('');this.page.set('chat');this.syncRun(id);this.ensureChatScrollAttached(true);}catch(e){this.error.set((e as Error).message);}}
+  async newSession(){
+    this.stopVoiceInput();
+    this.mobileMenu.set(false);
+    if(this.isDemo){
+      this.current.set(null);
+      this.taskFiles.set([]);
+      this.sharedFileLinks.set({});
+      this.collapsedDirs.set(new Set());
+      this.filesFilter.set('');
+      this.filesOpen.set(false);
+      this.page.set('chat');
+      this.resetRun();
+      this.error.set('');
+      this.ensureChatScrollAttached(true);
+      return;
+    }
+    try{
+      const projectId=this.selectedProjectId()||undefined;
+      const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});
+      this.sessions.update(v=>[s,...v]);
+      this.current.set(s);
+      this.taskFiles.set([]);
+      this.sharedFileLinks.set({});
+      this.collapsedDirs.set(new Set());
+      this.filesFilter.set('');
+      this.filesOpen.set(false);
+      this.selectedProjectId.set(s.projectId||'');
+      this.page.set('chat');
+      this.resetRun();
+      this.error.set('');
+      this.syncRun(s.id);
+      this.ensureChatScrollAttached(true);
+    }catch(e){this.error.set((e as Error).message);}
+  }
+  async openSession(id:string){
+    this.stopVoiceInput();
+    this.mobileMenu.set(false);
+    if(this.isDemo){
+      const s = this.sessions().find(x => x.id === id);
+      if(s){
+        this.current.set(s);
+        this.taskFiles.set([]);
+        this.sharedFileLinks.set({});
+        this.collapsedDirs.set(new Set());
+        this.filesFilter.set('');
+        this.filesOpen.set(false);
+        this.selectedProjectId.set(s.projectId||'');
+        this.resetRun();
+        this.error.set('');
+        this.page.set('chat');
+        this.ensureChatScrollAttached(true);
+        return;
+      }
+    }
+    try{
+      const s=await this.api<ChatSession>('/sessions/'+id);
+      this.current.set(s);
+      this.taskFiles.set([]);
+      this.sharedFileLinks.set({});
+      this.collapsedDirs.set(new Set());
+      this.filesFilter.set('');
+      this.filesOpen.set(false);
+      this.selectedProjectId.set(s.projectId||'');
+      this.resetRun();
+      this.error.set('');
+      this.page.set('chat');
+      this.syncRun(id);
+      this.ensureChatScrollAttached(true);
+    }catch(e){this.error.set((e as Error).message);}
+  }
   async refreshTaskFiles(){const id=this.current()?.id;if(!id)return;this.filesLoading.set(true);try{const result=await this.api<{files:{name:string;size:number;modified:string}[]}>(`/sessions/${id}/files`);if(this.current()?.id===id)this.taskFiles.set(result.files);}catch(e){if(this.filesOpen())this.error.set((e as Error).message);}finally{this.filesLoading.set(false);}}
   toggleTaskFiles(){this.filesOpen.update(open=>!open);if(this.filesOpen())void this.refreshTaskFiles();}
   async shareTaskFile(name:string,download=false){const id=this.current()?.id;if(!id)return;try{const result=await this.api<{url:string;expiresAt:string}>(`/sessions/${id}/files/share`,{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,window.location.origin).href;if(this.current()?.id!==id)return;this.sharedFileLinks.update(links=>({...links,[name]:url}));if(download){window.location.assign(url);return;}try{await this.copy(url,'share-'+name);this.notice.set('Ссылка скопирована. Действует 7 дней.');}catch{this.notice.set('Ссылка готова. Скопируйте её из списка файлов.');}}catch(e){this.error.set((e as Error).message);}}
@@ -653,6 +899,47 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.collapsedDirs.set(new Set());
   }
   chatsFor(projectId?:string){return this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId);}
+  projectIcon(p: Project | string): 'folder' | 'graduation-cap' | 'origami' {
+    const name = typeof p === 'string' ? p : p.name;
+    if (name === 'HTLink') return 'graduation-cap';
+    if (name === 'Origami') return 'origami';
+    return 'folder';
+  }
+
+  isProjectExpanded(p: Project | string): boolean {
+    const key = typeof p === 'string' ? p : (p.id || p.name);
+    const name = typeof p === 'string' ? p : p.name;
+    return this.expandedProjects().has(key) || this.expandedProjects().has(name);
+  }
+
+  chatsForProject(p: Project): ChatSession[] {
+    const realChats = this.chatsFor(p.id);
+    if (realChats.length) return realChats;
+    if (p.name === 'CCC-Solutions' || p.id === 'proj-ccc') {
+      return this.sessions().filter(s => s.projectId === 'proj-ccc' || s.title.includes('Lawn Mower') || s.title.includes('Clarify') || s.title.includes('HÜ180926') || s.title.includes('MCP upload'));
+    }
+    if (p.name === 'Quest Control' || p.id === 'proj-quest') {
+      return this.sessions().filter(s => s.projectId === 'proj-quest' || s.title.includes('локальные события'));
+    }
+    if (p.name === 'AI Router' || p.id === 'proj-ai-router') {
+      return this.sessions().filter(s => s.projectId === 'proj-ai-router' || s.title.includes('MVP AI router'));
+    }
+    return [];
+  }
+
+  filteredRecentSessions = computed(() => {
+    const query = this.sidebarSearch().trim().toLowerCase();
+    const all = this.sessions();
+    if (!query) return all;
+    return all.filter(s => s.title.toLowerCase().includes(query));
+  });
+
+  filteredProjects = computed(() => {
+    const query = this.sidebarSearch().trim().toLowerCase();
+    const all = this.projects();
+    if (!query) return all;
+    return all.filter(p => p.name.toLowerCase().includes(query));
+  });
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
@@ -904,10 +1191,89 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();void this.refreshTaskFiles();}}
   async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);this.requestScrollToBottom();}
-  send(){if(this.isRecording())this.stopVoiceInput();const prompt=this.draft.trim(),s=this.current();if(!prompt||!s||this.running())return;if(!this.socket?.connected){this.error.set('Соединение с сервером потеряно');return;}this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
+  send(){
+    if(this.isRecording())this.stopVoiceInput();
+    const prompt=this.draft.trim();
+    if(!prompt||this.running())return;
+
+    let s=this.current();
+    if(!s && this.isDemo){
+      s = {
+        id: 'sess-' + Date.now(),
+        title: prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt,
+        updatedAt: new Date().toISOString(),
+        messages: []
+      };
+      this.sessions.update(list => [s!, ...list]);
+      this.current.set(s);
+    }
+
+    if(!s){
+      this.error.set('Создайте новый чат и повторите запрос');
+      return;
+    }
+    if(this.isDemo){
+      this.sendDemoMessage(prompt, s);
+      return;
+    }
+    if(!this.socket?.connected){
+      this.error.set('Соединение с сервером потеряно');
+      return;
+    }
+    this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
     this.scrollToBottom(true,'auto');
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
     this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
+  }
+
+  sendDemoMessage(prompt: string, s: ChatSession) {
+    this.error.set('');
+    this.notice.set('');
+    this.stream.set('');
+    this.activity.set([]);
+    this.runStartedAt.set(new Date().toISOString());
+    this.running.set(true);
+    this.draft = '';
+    setTimeout(() => this.adjustTextareaHeight(), 0);
+    this.userScrolledUp.set(false);
+    this.showScrollBottom.set(false);
+    this.isSmoothScrollingToBottom = false;
+
+    const userMsg: Message = {
+      id: 'u-' + Date.now(),
+      role: 'user',
+      text: prompt,
+      at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    this.current.update(x => x ? { ...x, messages: [...x.messages, userMsg] } : x);
+    this.scrollToBottom(true, 'auto');
+
+    const responses = [
+      `Я обработал ваш запрос «${prompt}».\n\n### Резюме решения\n\n\`\`\`typescript\n// Автоматически сгенерированный модуль\nexport function executeTask(params: Record<string, unknown>) {\n  console.log("Выполнение задачи:", params);\n  return { success: true, timestamp: Date.now() };\n}\n\`\`\`\n\n- Архитектурная проверка пройдена\n- Все тесты завершены успешно`,
+      `Отличный вопрос! Вот ключевые шаги по реализации:\n\n1. **Инициализация контекста**: настраиваем рабочее окружение проекта.\n2. **Обработка данных**: применяем алгоритм оптимизации.\n3. **Тестирование**: проверяем краевые случаи и производительность.\n\n\`\`\`python\ndef solve():\n    return "Готово!"\n\`\`\``,
+      `Всё готово! Задача выполнена в полном соответствии с требованиями.\n\n> Если потребуются дополнительные правки или тесты — просто напишите!`
+    ];
+    const fullText = responses[Math.floor(Math.random() * responses.length)];
+    let index = 0;
+    const interval = setInterval(() => {
+      index += Math.floor(Math.random() * 8) + 4;
+      if (index >= fullText.length) {
+        clearInterval(interval);
+        this.stream.set('');
+        this.running.set(false);
+        const assistantMsg: Message = {
+          id: 'a-' + Date.now(),
+          role: 'assistant',
+          text: fullText,
+          at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        this.current.update(x => x ? { ...x, messages: [...x.messages, assistantMsg] } : x);
+        this.scrollToBottom(true, 'smooth');
+      } else {
+        this.stream.set(fullText.slice(0, index));
+        this.requestScrollToBottom();
+      }
+    }, 35);
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
@@ -987,11 +1353,27 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     });
   }
 
+  @ViewChild('heroComposerTextarea') heroComposerTextareaRef?: ElementRef<HTMLTextAreaElement>;
+
+  adjustHeroTextareaHeight() {
+    const el = this.heroComposerTextareaRef?.nativeElement;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+  }
+
+  onComposerEnter(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      this.send();
+    }
+  }
+
   adjustTextareaHeight() {
     const el = this.composerTextareaRef?.nativeElement;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }
 
   toggleVoiceLang() {

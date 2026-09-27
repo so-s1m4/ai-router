@@ -45,6 +45,10 @@
         <button class="btn-link" (click)="registerMode.set(!registerMode()); loginError=''">
           {{registerMode() ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}}
         </button>
+        <button type="button" class="btn-demo-pill" (click)="enableDemoMode()">
+          <span>Открыть демо-режим ChatGPT</span>
+          <svg lucideArrowUpRight [size]="14"></svg>
+        </button>
         <span class="auth-hint">Ключи и токены остаются только на вашем runner-контейнере</span>
       </div>
     </div>
@@ -55,97 +59,247 @@
       <div class="drawer-overlay" (click)="mobileMenu.set(false)"></div>
     }
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar" [class.drawer-open]="mobileMenu()">
-      <div class="sidebar-header">
-        <div class="brand">
-          <div class="brand-icon">
-            <svg lucideSparkles [size]="20" aria-hidden="true"></svg>
-          </div>
-          <div class="brand-info">
-            <span class="brand-name">AI Router</span>
-            <span class="brand-sub">WORKSPACE</span>
-          </div>
+    <!-- 1. LEFT MINI RAIL (DOCK) -->
+    <nav class="app-rail" aria-label="Quick Rail">
+      <div class="rail-group">
+        <button class="rail-btn" [class.active]="page()==='chat'" (click)="setMode('chat')" title="Chat">
+          <svg lucideHouse [size]="20"></svg>
+        </button>
+        <button class="rail-btn" (click)="searchOpen.set(!searchOpen())" title="Поиск чатов">
+          <svg lucideClock [size]="20"></svg>
+        </button>
+        <button class="rail-btn" [class.active]="page()==='projects'" (click)="setMode('work')" title="Проекты (Workspaces)">
+          <svg lucideLibrary [size]="20"></svg>
+        </button>
+        <button class="rail-btn" (click)="setMode('chat')" title="Сообщения">
+          <svg lucideMessageSquare [size]="20"></svg>
+        </button>
+        <button class="rail-btn" [class.active]="page()==='providers'" (click)="showPage('providers')" title="Провайдеры и модели">
+          <svg lucideCompass [size]="20"></svg>
+        </button>
+
+        <div class="rail-dropdown-wrapper">
+          <button class="rail-btn" (click)="moreMenuOpen.set(!moreMenuOpen())" title="Ещё разделы">
+            <svg lucideEllipsis [size]="20"></svg>
+          </button>
+          @if(moreMenuOpen()) {
+            <div class="rail-popover-menu" (click)="moreMenuOpen.set(false)">
+              <button class="popover-item" (click)="showPage('sites')">
+                <svg lucideGlobe2 [size]="16"></svg>
+                <span>Сайты и превью</span>
+              </button>
+              <button class="popover-item" (click)="showPage('providers')">
+                <svg lucideCpu [size]="16"></svg>
+                <span>Провайдеры моделей</span>
+              </button>
+              <button class="popover-item" (click)="showPage('connections')">
+                <svg lucidePlugZap [size]="16"></svg>
+                <span>Подключения</span>
+              </button>
+              <button class="popover-item" (click)="showPage('runners')">
+                <svg lucideServer [size]="16"></svg>
+                <span>Исполнители (Runners)</span>
+              </button>
+            </div>
+          }
         </div>
-        <button class="btn-icon mobile-only" (click)="mobileMenu.set(false)" aria-label="Закрыть меню">
-          <svg lucideX [size]="20"></svg>
-        </button>
       </div>
 
-      <div class="sidebar-actions">
-        <button class="btn btn-new-chat" (click)="newSession()">
-          <svg lucidePencilLine [size]="18" aria-hidden="true"></svg>
-          <span>Новый диалог</span>
+      <div class="rail-spacer"></div>
+
+      <div class="rail-group">
+        <button class="rail-btn" (click)="helpModalOpen.set(!helpModalOpen())" title="Справка">
+          <svg lucideCircleQuestionMark [size]="20"></svg>
         </button>
+
+        <div class="rail-avatar-wrapper">
+          <button class="rail-avatar-btn" (click)="userMenuOpen.set(!userMenuOpen())" [title]="username || 'Пользователь'">
+            {{ username ? username.slice(0, 2).toUpperCase() : 'MO' }}
+          </button>
+          @if(userMenuOpen()) {
+            <div class="rail-popover-menu rail-user-menu" (click)="userMenuOpen.set(false)">
+              <div class="popover-header">
+                <strong>{{username || 'Maksym Rvachov'}}</strong>
+                <span>AI Router Workspace</span>
+              </div>
+              <div class="popover-divider"></div>
+              <button class="popover-item" (click)="showPage('projects')">
+                <svg lucideFolder [size]="16"></svg>
+                <span>Рабочие проекты</span>
+              </button>
+              <button class="popover-item" (click)="showPage('runners')">
+                <svg lucideServer [size]="16"></svg>
+                <span>Исполнители</span>
+              </button>
+              <button class="popover-item" (click)="logout()">
+                <svg lucideLogOut [size]="16"></svg>
+                <span>Выйти из аккаунта</span>
+              </button>
+            </div>
+          }
+        </div>
       </div>
+    </nav>
 
-      <nav class="sidebar-nav">
-        <div class="nav-section-title">НАВИГАЦИЯ</div>
-        <button class="nav-btn" [class.active]="page()==='chat'" (click)="showPage('chat')">
-          <svg lucideMessageSquare [size]="18" aria-hidden="true"></svg>
-          <span>Чат и задачи</span>
+    <!-- 2. SECONDARY SIDEBAR (260px COLLAPSIBLE) -->
+    <aside class="sidebar" [class.collapsed]="!sidebarOpen()" [class.drawer-open]="mobileMenu()">
+      <div class="sidebar-header">
+        <button class="sidebar-brand-btn" (click)="brandMenuOpen.set(!brandMenuOpen())">
+          <span>ChatGPT</span>
+          <svg lucideChevronDown [size]="15" class="brand-chevron"></svg>
         </button>
-        <button class="nav-btn" [class.active]="page()==='projects'" (click)="showPage('projects')">
-          <svg lucideFolder [size]="18" aria-hidden="true"></svg>
-          <span>Проекты</span>
-          @if(projects().length){<span class="nav-badge">{{projects().length}}</span>}
-        </button>
-        <button class="nav-btn" [class.active]="page()==='sites'" (click)="showPage('sites')">
-          <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg>
-          <span>Сайты</span>
-          @if(previews().length){<span class="nav-badge">{{previews().length}}</span>}
-        </button>
-        <button class="nav-btn" [class.active]="page()==='providers'" (click)="showPage('providers')">
-          <svg lucideCpu [size]="18" aria-hidden="true"></svg>
-          <span>Провайдеры</span>
-          @if(disabledModelsCount()){<span class="nav-badge nav-badge-warn" title="Отключено моделей">{{disabledModelsCount()}}</span>}
-        </button>
-        <button class="nav-btn" [class.active]="page()==='connections'" (click)="showPage('connections')">
-          <svg lucidePlugZap [size]="18" aria-hidden="true"></svg>
-          <span>Подключения</span>
-          @if(accounts().length){<span class="nav-badge">{{accounts().length}}</span>}
-        </button>
-        <button class="nav-btn" [class.active]="page()==='runners'" (click)="showPage('runners')">
-          <svg lucideServer [size]="18" aria-hidden="true"></svg>
-          <span>Исполнители</span>
-          @if(runners().length){<span class="nav-badge">{{runners().length}}</span>}
-        </button>
-      </nav>
-
-      <div class="sidebar-history">
-        <div class="history-header">
-          <span>НЕДАВНИЕ ЧАТЫ</span>
-          <button class="btn-icon-subtle" (click)="selectedProjectId.set(''); newSession()" title="Создать чат">
-            <svg lucidePlus [size]="16"></svg>
+        <div class="sidebar-header-actions">
+          <button class="sidebar-icon-btn" (click)="notice.set(notice() ? '' : 'Уведомлений нет')" title="Уведомления">
+            <svg lucideBell [size]="17"></svg>
+          </button>
+          <button class="sidebar-icon-btn" (click)="searchOpen.set(!searchOpen())" title="Поиск">
+            <svg lucideSearch [size]="17"></svg>
           </button>
         </div>
-        <div class="history-list">
-          @for(s of sessions(); track s.id){
-            <button class="history-btn" [class.active]="current()?.id===s.id && page()==='chat'" (click)="openSession(s.id)">
-              <svg lucideMessageSquare [size]="15" aria-hidden="true"></svg>
-              <span class="truncate">{{s.title || 'Новый диалог'}}</span>
-            </button>
-          }
-          @if(!sessions().length){
-            <div class="history-empty">Нет недавних чатов</div>
-          }
-        </div>
       </div>
 
-      <div class="sidebar-user">
-        <div class="user-avatar">{{username.slice(0,1).toUpperCase()}}</div>
-        <div class="user-meta">
-          <span class="user-name">{{username}}</span>
-          <span class="user-role">Локальный пользователь</span>
+      @if(searchOpen()) {
+        <div class="sidebar-search-box">
+          <svg lucideSearch [size]="14"></svg>
+          <input type="text"
+                 placeholder="Search chats and projects..."
+                 [ngModel]="sidebarSearch()"
+                 (ngModelChange)="sidebarSearch.set($event)"
+                 class="sidebar-search-input" />
+          @if(sidebarSearch()) {
+            <button class="sidebar-search-clear" (click)="sidebarSearch.set('')">
+              <svg lucideX [size]="12"></svg>
+            </button>
+          }
         </div>
-        <button class="btn-icon logout-btn" (click)="logout()" title="Выйти из системы">
-          <svg lucideLogOut [size]="18"></svg>
+      }
+
+      <div class="sidebar-new-chat">
+        <button class="btn-new-chat-row" (click)="newSession()">
+          <svg lucideSquarePen [size]="17"></svg>
+          <span>New chat</span>
         </button>
+      </div>
+
+      <div class="sidebar-scroll">
+        <!-- PINNED SECTION -->
+        <div class="sidebar-section">
+          <div class="section-label">
+            <span>Pinned</span>
+          </div>
+          <div class="section-list">
+            @for(pin of pinnedChats(); track pin.id) {
+              <button class="sidebar-item" (click)="openPinnedChat(pin.title)">
+                <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
+                <span class="truncate">{{pin.title}}</span>
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- PROJECTS SECTION -->
+        <div class="sidebar-section">
+          <div class="section-label">
+            <span>Projects</span>
+            <button class="btn-subtle-add" (click)="createProject()" title="Новый проект">
+              <svg lucidePlus [size]="14"></svg>
+            </button>
+          </div>
+          <div class="section-list">
+            @for(p of filteredProjects(); track p.id || p.name) {
+              <div class="tree-folder">
+                <button class="tree-folder-head" (click)="toggleProjectExpand(p.id || p.name)">
+                  @if(projectIcon(p) === 'graduation-cap') {
+                    <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
+                  } @else if(projectIcon(p) === 'origami') {
+                    <svg lucideOrigami [size]="16" class="icon-origami"></svg>
+                  } @else if(isProjectExpanded(p)) {
+                    <svg lucideFolderOpen [size]="16" class="item-icon-folder"></svg>
+                  } @else {
+                    <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
+                  }
+                  <span class="truncate">{{p.name}}</span>
+                </button>
+
+                @if(isProjectExpanded(p)) {
+                  <div class="tree-sub-list">
+                    @for(c of chatsForProject(p); track c.id) {
+                      <button class="tree-sub-item truncate" [class.active]="current()?.id === c.id" (click)="openSession(c.id)">
+                        {{c.title}}
+                      </button>
+                    }
+                    @if(chatsForProject(p).length > 4) {
+                      <button class="tree-sub-item tree-sub-more" (click)="selectProject(p.id)">
+                        Show more
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- RECENTS SECTION -->
+        <div class="sidebar-section">
+          <div class="section-label">
+            <span>Recents</span>
+          </div>
+          <div class="section-list">
+            @for(s of filteredRecentSessions(); track s.id) {
+              <button class="sidebar-item" [class.active]="current()?.id === s.id && page() === 'chat'" (click)="openSession(s.id)">
+                <span class="truncate">{{s.title || 'New chat'}}</span>
+                @if(running() && current()?.id === s.id) {
+                  <span class="item-running-spinner"></span>
+                } @else if(s.title.includes('backup')) {
+                  <svg lucideClock [size]="13" class="item-icon-right"></svg>
+                }
+              </button>
+            }
+          </div>
+        </div>
       </div>
     </aside>
 
-    <!-- MAIN AREA -->
+    <!-- 3. MAIN AREA -->
     <main class="main-content">
+      <!-- TOPBAR -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="topbar-nav-arrow" (click)="toggleSidebar()" [title]="sidebarOpen() ? 'Свернуть панель' : 'Развернуть панель'">
+            <svg lucidePanelLeft [size]="18"></svg>
+          </button>
+          <button class="topbar-nav-arrow desktop-only" (click)="newSession()" title="Назад">
+            <svg lucideChevronLeft [size]="18"></svg>
+          </button>
+          <button class="topbar-nav-arrow desktop-only" title="Вперёд">
+            <svg lucideChevronRight [size]="18"></svg>
+          </button>
+        </div>
+
+        <div class="topbar-center">
+          <div class="segmented-toggle" role="tablist">
+            <button class="segmented-btn" [class.active]="page()==='chat'" (click)="setMode('chat')" role="tab">Chat</button>
+            <button class="segmented-btn" [class.active]="page()==='projects'" (click)="setMode('work')" role="tab">Work</button>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          @if(taskFiles().length) {
+            <button class="btn-topbar-files" (click)="toggleTaskFiles()" title="Файлы задачи">
+              <svg lucideDownload [size]="14"></svg>
+              <span>Files ({{taskFiles().length}})</span>
+            </button>
+          }
+          <button class="topbar-btn" (click)="newSession()" title="Новый чат">
+            <svg lucidePlus [size]="18"></svg>
+          </button>
+          <button class="topbar-btn" (click)="newSession()" title="Обновить / Перезапустить">
+            <svg lucideRotateCcw [size]="17"></svg>
+          </button>
+        </div>
+      </header>
+
       @if(page()==='chat'){
         <div class="chat-view-layout"
              (dragenter)="onDragEnter($event)"
@@ -164,42 +318,6 @@
               </div>
             </div>
           }
-          <!-- CHAT VIEW -->
-          <header class="topbar">
-          <div class="topbar-left">
-            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
-              <svg lucideMenu [size]="20"></svg>
-            </button>
-            <div class="topbar-info">
-              <div class="chat-title-row">
-                <h1 class="chat-title">{{current()?.title || 'Новый чат'}}</h1>
-                @if(currentProject()){
-                  <button class="project-pill" (click)="selectProject(currentProject()!.id)">
-                    <svg lucideFolder [size]="13"></svg>
-                    <span>{{currentProject()!.name}}</span>
-                  </button>
-                }
-              </div>
-            </div>
-          </div>
-          <div class="topbar-right">
-            <button class="btn btn-outline btn-sm" (click)="toggleTaskFiles()" [attr.aria-expanded]="filesOpen()" title="Файлы задачи">
-              <svg lucideDownload [size]="15"></svg>
-              <span>Файлы{{taskFiles().length ? ' (' + taskFiles().length + ')' : ''}}</span>
-            </button>
-            <div class="status-indicator" title="Сервер подключен">
-              <span class="pulse-dot"></span>
-              <span class="status-label">В сети</span>
-            </div>
-            <button class="btn btn-outline btn-sm desktop-only" (click)="newSession()">
-              <svg lucidePlus [size]="15"></svg>
-              <span>Новый чат</span>
-            </button>
-            <button class="btn-icon mobile-new-chat-btn mobile-only" (click)="newSession()" aria-label="Новый чат" title="Новый чат">
-              <svg lucidePencilLine [size]="17"></svg>
-            </button>
-          </div>
-        </header>
 
         @if(filesOpen()){
           <section class="task-files-panel" aria-label="Файлы задачи">
@@ -328,258 +446,222 @@
 
         <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()">
           @if(!current()?.messages?.length){
-            <div class="welcome-screen">
-              <div class="welcome-badge">
-                <svg lucideSparkles [size]="28" aria-hidden="true"></svg>
-              </div>
-              <h2>Чем могу помочь?</h2>
-              <p>Задайте вопрос, опишите задачу или прикрепите файлы проекта. Роутер автоматически выберет активный аккаунт или переключится при достижении квоты.</p>
-              
-              <div class="prompt-grid">
-                <button class="prompt-card" (click)="draft='Объясни архитектуру этого проекта'">
-                  <div class="prompt-card-content">
-                    <strong>Объяснить архитектуру</strong>
-                    <span>Анализ структуры и зависимостей модулей</span>
-                  </div>
-                  <svg lucideArrowUpRight [size]="16"></svg>
-                </button>
-                <button class="prompt-card" (click)="draft='Помоги спланировать реализацию задачи'">
-                  <div class="prompt-card-content">
-                    <strong>Спланировать задачу</strong>
-                    <span>Декомпозиция на этапы и шаги</span>
-                  </div>
-                  <svg lucideArrowUpRight [size]="16"></svg>
-                </button>
-                <button class="prompt-card" (click)="draft='Проверь проект на возможные ошибки и узкие места'">
-                  <div class="prompt-card-content">
-                    <strong>Аудит кодовой базы</strong>
-                    <span>Поиск узких мест и оптимизация</span>
-                  </div>
-                  <svg lucideArrowUpRight [size]="16"></svg>
-                </button>
-                <button class="prompt-card" (click)="draft='Напиши модульные тесты для последней фичи'">
-                  <div class="prompt-card-content">
-                    <strong>Написать тесты</strong>
-                    <span>Покрытие тестами основных сценариев</span>
-                  </div>
-                  <svg lucideArrowUpRight [size]="16"></svg>
-                </button>
-              </div>
-            </div>
-          }
+            <!-- THE HERO SCREEN: WHAT'S ON THE AGENDA TODAY? -->
+            <div class="hero-view">
+              <h1 class="hero-title">What’s on the agenda today?</h1>
 
-          <div #messageFeed class="message-feed" (click)="handleChatClick($event)">
-            @for(m of current()?.messages||[]; track m.id){
-              <div class="message-row" [class.user-row]="m.role==='user'">
-                <div class="message-avatar" [class.user-avatar-bg]="m.role==='user'">
-                  @if(m.role==='user'){
-                    <span>Я</span>
-                  } @else {
-                    <svg lucideSparkles [size]="17"></svg>
+              <div class="hero-pill-bar">
+                <input #filePickerHero type="file" multiple hidden (change)="uploadFile($event)">
+                <button class="pill-btn-icon pill-btn-plus" type="button" (click)="filePickerHero.click()" title="Attach files">
+                  <svg lucidePlus [size]="18"></svg>
+                </button>
+
+                <div class="pill-input-wrap">
+                  <textarea #heroComposerTextarea
+                            class="pill-textarea"
+                            [(ngModel)]="draft"
+                            (input)="adjustHeroTextareaHeight()"
+                            (paste)="onPaste($event)"
+                            placeholder="Ask ChatGPT"
+                            rows="1"
+                            (keydown)="onComposerEnter($event)"></textarea>
+                  @if(!draft) {
+                    <span class="blinking-caret"></span>
                   }
                 </div>
-                <div class="message-bubble">
-                  <div class="message-meta">
-                    <span class="sender-name">{{m.role==='user' ? 'Вы' : (providerLabel(m.provider) || 'AI Router')}}</span>
-                    <span class="message-time">{{m.at | date:'HH:mm'}}</span>
-                  </div>
-                  <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
-                </div>
-              </div>
-            }
 
-            @if(running() && stream()){
-              <div class="message-row">
-                <div class="message-avatar stream-avatar">
-                  <svg lucideSparkles [size]="17"></svg>
-                </div>
-                <div class="message-bubble">
-                  <div class="message-meta">
-                    <span class="sender-name">{{currentRunnerLabel()}}</span>
-                    <span class="streaming-status">печатает...</span>
+                <div class="pill-controls">
+                  <!-- MODEL / REASONING PILL -->
+                  <div class="pill-select-wrapper" title="Reasoning effort & model">
+                    <select [ngModel]="selectedReasoning" (ngModelChange)="selectedReasoning = $event" class="pill-select-overlay" aria-label="Reasoning effort">
+                      @for(r of reasoningOptions(); track r.id) {
+                        <option [value]="r.id">{{r.label}}</option>
+                      }
+                    </select>
+                    <button class="pill-model-badge" type="button">
+                      <span>{{currentReasoningOrModelLabel()}}</span>
+                      <svg lucideChevronDown [size]="13"></svg>
+                    </button>
                   </div>
-                  <div class="message-text markdown-body streaming-wrapper">
-                    <div class="streaming-content" [innerHTML]="stream() | markdown"></div>
-                    <span class="typing-cursor"></span>
-                  </div>
+
+                  <!-- MIC BUTTON -->
+                  <button class="pill-btn-icon pill-btn-mic"
+                          type="button"
+                          [class.recording]="isRecording()"
+                          (click)="toggleVoiceInput()"
+                          [title]="isRecording() ? 'Остановить запись' : 'Голосовой ввод'">
+                    @if(isRecording()) {
+                      <svg lucideMicOff [size]="17"></svg>
+                    } @else {
+                      <svg lucideMic [size]="17"></svg>
+                    }
+                  </button>
+
+                  <!-- EQUALIZER / SEND BUTTON -->
+                  @if(draft.trim()) {
+                    <button class="pill-btn-send" type="button" (click)="send()" title="Send">
+                      <svg lucideArrowUp [size]="17"></svg>
+                    </button>
+                  } @else {
+                    <button class="pill-btn-voice" type="button" (click)="toggleVoiceMode()" title="Voice mode">
+                      <div class="equalizer-bars">
+                        <span class="eq-bar"></span>
+                        <span class="eq-bar"></span>
+                        <span class="eq-bar"></span>
+                        <span class="eq-bar"></span>
+                      </div>
+                    </button>
+                  }
                 </div>
               </div>
-            }
-          </div>
+            </div>
+          } @else {
+            <div #messageFeed class="message-feed" (click)="handleChatClick($event)">
+              @for(m of current()?.messages||[]; track m.id){
+                <div class="message-row" [class.user-row]="m.role==='user'">
+                  @if(m.role==='user'){
+                    <div class="user-bubble">
+                      <div class="message-text">{{m.text}}</div>
+                    </div>
+                  } @else {
+                    <div class="assistant-row">
+                      <div class="assistant-avatar">
+                        <svg lucideSparkles [size]="18"></svg>
+                      </div>
+                      <div class="assistant-content">
+                        <div class="assistant-meta">
+                          <span class="sender-name">{{providerLabel(m.provider) || 'ChatGPT'}}</span>
+                          <span class="message-time">{{m.at | date:'HH:mm'}}</span>
+                        </div>
+                        <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
+                        <div class="assistant-actions">
+                          <button class="btn-action-icon" (click)="copy(m.text, m.id)" title="Копировать сообщение">
+                            <svg lucideCopy [size]="14"></svg>
+                          </button>
+                          <button class="btn-action-icon" (click)="newSession()" title="Повторить запрос">
+                            <svg lucideRotateCcw [size]="14"></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              @if(running() && stream()){
+                <div class="message-row">
+                  <div class="assistant-row">
+                    <div class="assistant-avatar stream-avatar">
+                      <svg lucideSparkles [size]="18"></svg>
+                    </div>
+                    <div class="assistant-content">
+                      <div class="assistant-meta">
+                        <span class="sender-name">{{currentRunnerLabel() || 'ChatGPT'}}</span>
+                        <span class="streaming-status">печатает...</span>
+                      </div>
+                      <div class="message-text markdown-body streaming-wrapper">
+                        <div class="streaming-content" [innerHTML]="stream() | markdown"></div>
+                        <span class="typing-cursor"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
         </div>
 
-        <!-- COMPOSER SECTION -->
-        <div class="composer-container">
-          @if(showScrollBottom()){
-            <button type="button" class="scroll-bottom-btn" (click)="scrollToBottom(true, 'smooth')" aria-label="Прокрутить вниз" title="Вниз">
-              <svg lucideChevronDown [size]="18"></svg>
-              @if(running()){
-                <span class="scroll-bottom-pulse"></span>
-              }
-            </button>
-          }
-          @if(running()){
-            <div class="run-progress" role="status" aria-live="polite">
-              <div class="run-progress-head">
-                <span class="run-pulse" aria-hidden="true"></span>
-                <strong>{{currentRunnerLabel()}} работает</strong>
-                <time>{{elapsed()}}</time>
-              </div>
-              <div class="run-progress-current">{{notice() || 'Ожидаем обновления от исполнителя…'}}</div>
-              @if(activity().length > 1){
-                <div class="run-activity">
-                  @for(row of activity().slice(-4,-1); track $index){
-                    <span>{{row.message}}</span>
-                  }
-                </div>
-              }
-            </div>
-          } @else if(notice()){
-            <div class="banner banner-notice">
-              <svg lucideInfo [size]="16"></svg>
-              <span>{{notice()}}</span>
-            </div>
-          }
-          @if(error()){
-            <div class="banner banner-error">
-              <svg lucideInfo [size]="16"></svg>
-              <span>{{error()}}</span>
-            </div>
-          }
+        <!-- COMPOSER SECTION (WHEN IN CHAT) -->
+        @if(current()?.messages?.length) {
+          <div class="composer-floating-wrap">
+            @if(showScrollBottom()){
+              <button type="button" class="scroll-bottom-btn" (click)="scrollToBottom(true, 'smooth')" aria-label="Прокрутить вниз" title="Вниз">
+                <svg lucideChevronDown [size]="18"></svg>
+              </button>
+            }
 
-          <div class="composer-card">
-            @if(isRecording()){
-              <div class="voice-status-bar" role="status" aria-live="polite">
-                <div class="voice-status-info">
-                  <span class="voice-live-dot" aria-hidden="true"></span>
-                  <span class="voice-status-text">Идет голосовой ввод... Говорите</span>
-                  <div class="voice-soundwaves" aria-hidden="true">
-                    <span class="wave-bar"></span>
-                    <span class="wave-bar"></span>
-                    <span class="wave-bar"></span>
-                    <span class="wave-bar"></span>
-                  </div>
+            @if(running()){
+              <div class="run-progress" role="status" aria-live="polite">
+                <div class="run-progress-head">
+                  <span class="run-pulse" aria-hidden="true"></span>
+                  <strong>{{currentRunnerLabel()}} работает</strong>
+                  <time>{{elapsed()}}</time>
                 </div>
-                <div class="voice-status-actions">
-                  <button type="button" class="voice-lang-pill" (click)="toggleVoiceLang()" [title]="'Сменить язык: ' + (voiceLang() === 'ru-RU' ? 'Русский' : 'English')">
-                    {{ voiceLang() === 'ru-RU' ? 'RU' : 'EN' }}
-                  </button>
-                  <button type="button" class="voice-stop-btn" (click)="stopVoiceInput()" title="Завершить голосовой ввод">
-                    Готово
-                  </button>
-                </div>
+                <div class="run-progress-current">{{notice() || 'Ожидаем ответа…'}}</div>
               </div>
             }
 
-            <!-- CHIPS / CONFIG BAR -->
-            <div class="composer-chips-bar">
-              <!-- SERVICE PILL -->
-              <div class="select-pill" title="Выбор сервиса">
-                @if(selectedService() === 'auto'){
-                  <svg lucideSparkles [size]="13"></svg>
-                } @else if(selectedService() === 'gemini'){
-                  <svg lucideBot [size]="13" class="icon-gemini"></svg>
-                } @else {
-                  <svg lucideZap [size]="13" class="icon-codex"></svg>
-                }
-                <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" aria-label="Сервис ИИ">
-                  <option value="auto">Auto</option>
-                  <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
-                  <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
-                </select>
-                <svg lucideChevronDown [size]="12" class="select-arrow"></svg>
+            <div class="hero-pill-bar bottom-composer-pill">
+              <input #filePickerBottom type="file" multiple hidden (change)="uploadFile($event)">
+              <button class="pill-btn-icon pill-btn-plus" type="button" (click)="filePickerBottom.click()" title="Attach files">
+                <svg lucidePlus [size]="18"></svg>
+              </button>
+
+              <div class="pill-input-wrap">
+                <textarea #composerTextarea
+                          class="pill-textarea"
+                          [(ngModel)]="draft"
+                          (input)="adjustTextareaHeight()"
+                          (paste)="onPaste($event)"
+                          placeholder="Message ChatGPT"
+                          rows="1"
+                          (keydown)="onComposerEnter($event)"></textarea>
               </div>
 
-              <!-- MODEL PILL -->
-              <div class="select-pill" title="Модель">
-                <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" aria-label="Модель">
-                  @for(m of models(); track m.id){
-                    <option [value]="m.id">{{m.label}}</option>
-                  }
-                </select>
-                <svg lucideChevronDown [size]="12" class="select-arrow"></svg>
-              </div>
-
-              <!-- REASONING PILL -->
-              @if(reasoningOptions().length > 1){
-                <div class="select-pill" title="Рассуждение">
-                  <select [(ngModel)]="selectedReasoning" aria-label="Рассуждение">
-                    @for(r of reasoningOptions(); track r.id){
+              <div class="pill-controls">
+                <!-- MODEL / REASONING PILL -->
+                <div class="pill-select-wrapper" title="Reasoning effort & model">
+                  <select [ngModel]="selectedReasoning" (ngModelChange)="selectedReasoning = $event" class="pill-select-overlay" aria-label="Reasoning effort">
+                    @for(r of reasoningOptions(); track r.id) {
                       <option [value]="r.id">{{r.label}}</option>
                     }
                   </select>
-                  <svg lucideChevronDown [size]="12" class="select-arrow"></svg>
+                  <button class="pill-model-badge" type="button">
+                    <span>{{currentReasoningOrModelLabel()}}</span>
+                    <svg lucideChevronDown [size]="13"></svg>
+                  </button>
                 </div>
-              }
 
-              @if(currentProject()){
-                <span class="composer-project-pill desktop-only" title="Активный проект">
-                  <svg lucideFolder [size]="12"></svg>
-                  <span class="truncate">{{currentProject()!.name}}</span>
-                </span>
-              }
-            </div>
+                <!-- MIC BUTTON -->
+                <button class="pill-btn-icon pill-btn-mic"
+                        type="button"
+                        [class.recording]="isRecording()"
+                        (click)="toggleVoiceInput()"
+                        title="Voice input">
+                  @if(isRecording()) {
+                    <svg lucideMicOff [size]="17"></svg>
+                  } @else {
+                    <svg lucideMic [size]="17"></svg>
+                  }
+                </button>
 
-            <!-- INPUT ROW -->
-            <div class="composer-input-row">
-              <input #filePicker type="file" multiple hidden (change)="uploadFile($event)">
-              <button 
-                class="btn-attach-icon" 
-                type="button" 
-                [disabled]="uploading()" 
-                (click)="filePicker.click()" 
-                [title]="'Прикрепить файлы (также можно перетащить или вставить через Ctrl/⌘+V)'"
-                aria-label="Прикрепить файлы">
-                @if(uploading()){
-                  <span class="attach-spinner" aria-hidden="true"></span>
-                } @else {
-                  <svg lucidePaperclip [size]="18"></svg>
-                }
-              </button>
-
-              <textarea 
-                #composerTextarea
-                class="composer-textarea"
-                [(ngModel)]="draft" 
-                (input)="adjustTextareaHeight()"
-                (paste)="onPaste($event)"
-                [placeholder]="isRecording() ? 'Слушаю... Говорите в микрофон' : 'Опишите задачу...'"
-                rows="1"
-                (keydown.control.enter)="send()" 
-                (keydown.meta.enter)="send()"></textarea>
-
-              <button 
-                type="button" 
-                class="btn-mic-icon" 
-                [class.recording]="isRecording()" 
-                (click)="toggleVoiceInput()" 
-                [attr.aria-label]="isRecording() ? 'Остановить голосовой ввод' : 'Включить голосовой ввод'"
-                [title]="isRecording() ? 'Остановить голосовой ввод (кликните для завершения)' : 'Голосовой ввод'">
-                @if(isRecording()){
-                  <span class="mic-pulse-ring" aria-hidden="true"></span>
-                  <svg lucideMicOff [size]="18"></svg>
-                } @else {
-                  <svg lucideMic [size]="18"></svg>
-                }
-              </button>
-
-              <div class="composer-action-btn">
-                @if(running()){
-                  <button class="btn-circle-action btn-circle-stop" (click)="cancel()" aria-label="Остановить" title="Остановить">
+                <!-- SEND / STOP BUTTON -->
+                @if(running()) {
+                  <button class="pill-btn-voice btn-circle-stop" type="button" (click)="cancel()" title="Stop">
                     <svg lucideSquare [size]="14"></svg>
                   </button>
+                } @else if(draft.trim()) {
+                  <button class="pill-btn-send" type="button" (click)="send()" title="Send">
+                    <svg lucideArrowUp [size]="17"></svg>
+                  </button>
                 } @else {
-                  <button class="btn-circle-action btn-circle-send" [disabled]="!draft.trim() || !accounts().length" (click)="send()" aria-label="Отправить" title="Отправить">
-                    <svg lucideArrowUp [size]="18"></svg>
+                  <button class="pill-btn-voice" type="button" (click)="toggleVoiceMode()" title="Voice mode">
+                    <div class="equalizer-bars">
+                      <span class="eq-bar"></span>
+                      <span class="eq-bar"></span>
+                      <span class="eq-bar"></span>
+                      <span class="eq-bar"></span>
+                    </div>
                   </button>
                 }
               </div>
             </div>
+
+            <div class="composer-footnote">
+              ChatGPT can make mistakes. Check important info.
+            </div>
           </div>
-          <div class="composer-footnote desktop-only">
-            <span>Ctrl / ⌘ + Enter для отправки · Перетащите файлы или Ctrl/⌘+V для вставки</span>
-          </div>
-        </div>
+        }
       </div>
     } @else if(page()==='projects') {
         <!-- PROJECTS VIEW -->
