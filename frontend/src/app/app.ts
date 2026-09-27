@@ -189,6 +189,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
   draft=''; selectedService=signal<ServiceId>('chatgpt'); selectedAccount='chatgpt'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default');
+  handoffLoading=signal(false);
+  slashCommands=[
+    { cmd: '/codex', label: 'Передать в Codex', desc: 'git diff + ключевые пункты задачи', target: 'codex' as const },
+    { cmd: '/chatgpt', label: 'Обсудить с ChatGPT', desc: 'git diff + ключевые пункты задачи', target: 'chatgpt' as const }
+  ];
+  get filteredSlashCommands(){
+    const d=this.draft.trim().toLowerCase();
+    if(!d.startsWith('/')||d.includes(' '))return [];
+    if(d==='/')return this.slashCommands;
+    return this.slashCommands.filter(c=>c.cmd.startsWith(d));
+  }
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
@@ -700,6 +711,109 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       }
       this.validateReasoning();
     }
+  }
+
+  buildLocalHandoffSummary(target: 'codex' | 'chatgpt', session: ChatSession | null, note?: string): string {
+    const isCodex = target === 'codex';
+    const header = isCodex ? '### 📋 Передача задачи в Codex (Handoff)' : '### 💬 Обсуждение результатов с ChatGPT';
+    const userMsgs = (session?.messages || []).filter(m => m.role === 'user').map(m => m.text);
+    const assistantMsgs = (session?.messages || []).filter(m => m.role === 'assistant').map(m => m.text);
+    const initialGoal = userMsgs[0] ? (userMsgs[0].length > 250 ? userMsgs[0].slice(0, 250) + '…' : userMsgs[0]) : (session?.title !== 'Новый чат' ? (session?.title || 'Текущая задача') : 'Текущая задача');
+    const latestUser = userMsgs.length > 1 ? userMsgs[userMsgs.length - 1] : null;
+    const latestAssistant = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
+
+    const points: string[] = [`- **Основная цель:** ${initialGoal}`];
+    if (latestUser && latestUser !== initialGoal) {
+      points.push(`- **Последний запрос:** ${latestUser.length > 200 ? latestUser.slice(0, 200) + '…' : latestUser}`);
+    }
+    if (latestAssistant) {
+      const brief = latestAssistant.split('\n').filter(Boolean)[0] || latestAssistant;
+      points.push(`- **Текущий статус:** ${brief.length > 250 ? brief.slice(0, 250) + '…' : brief}`);
+    }
+    const instruction = isCodex
+      ? (note || 'Продолжи выполнение задачи, опираясь на контекст и состояние файлов проекта. Проверь код, внеси нужные правки и протестируй результат.')
+      : (note || 'Ознакомься с ключевыми пунктами задачи выше. Проанализируй текущее решение, дай оценку и помоги спланировать дальнейшие шаги.');
+
+    return `${header}\n\n` +
+      `**Ключевые пункты задачи:**\n${points.join('\n')}\n\n` +
+      `**Файлы и состояние Git:**\n- *Контекст передан из сессии «${session?.title || 'диалог'}»*\n\n` +
+      (isCodex ? `**Инструкция для Codex:**\n${instruction}` : `**Вопрос для ChatGPT:**\n${instruction}`);
+  }
+
+  async handoff(target?: 'codex' | 'chatgpt', userNote = '') {
+    if (this.handoffLoading()) return;
+    const currentMode = this.mode();
+    const nextTarget: 'codex' | 'chatgpt' = target || (currentMode === 'chat' ? 'codex' : 'chatgpt');
+    this.handoffLoading.set(true);
+
+    const currentSession = this.current();
+    let summaryText = '';
+    try {
+      if (this.isDemo) {
+        summaryText = this.buildLocalHandoffSummary(nextTarget, currentSession, userNote);
+      } else {
+        const body: any = {
+          target: nextTarget,
+          projectId: this.selectedProjectId() || currentSession?.projectId || undefined,
+          note: userNote || undefined
+        };
+        const url = currentSession?.id
+          ? `/sessions/${encodeURIComponent(currentSession.id)}/handoff-summary`
+          : '/handoff-summary';
+        const res = await this.api<{ ok: boolean; summary: string; projectId?: string }>(url, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        });
+        summaryText = res?.summary || '';
+        if (res?.projectId && !this.selectedProjectId()) {
+          this.selectedProjectId.set(res.projectId);
+        }
+      }
+    } catch {
+      summaryText = this.buildLocalHandoffSummary(nextTarget, currentSession, userNote);
+    } finally {
+      this.handoffLoading.set(false);
+    }
+
+    if (!summaryText.trim()) {
+      summaryText = this.buildLocalHandoffSummary(nextTarget, currentSession, userNote);
+    }
+
+    if (nextTarget === 'codex') {
+      this.setMode('work');
+      this.selectService('codex');
+      if (!this.selectedProjectId() && this.projects().length > 0) {
+        this.selectedProjectId.set(this.projects()[0].id);
+      }
+      this.newSession();
+      this.draft = summaryText;
+      setTimeout(() => {
+        this.adjustTextareaHeight();
+        this.adjustHeroTextareaHeight();
+        this.composerTextareaRef?.nativeElement?.focus();
+        this.heroComposerTextareaRef?.nativeElement?.focus();
+      }, 80);
+      this.notice.set('Выжимка задачи и git diff подготовлены для Codex. Нажмите Отправить или дополните запрос.');
+      setTimeout(() => this.notice.set(''), 6000);
+    } else {
+      this.setMode('chat');
+      this.selectService('chatgpt');
+      this.newSession();
+      this.draft = summaryText;
+      setTimeout(() => {
+        this.adjustTextareaHeight();
+        this.adjustHeroTextareaHeight();
+        this.composerTextareaRef?.nativeElement?.focus();
+        this.heroComposerTextareaRef?.nativeElement?.focus();
+      }, 80);
+      this.notice.set('Выжимка задачи и git diff подготовлены для ChatGPT. Нажмите Отправить или дополните запрос.');
+      setTimeout(() => this.notice.set(''), 6000);
+    }
+  }
+
+  applySlashCommand(target: 'codex' | 'chatgpt') {
+    this.draft = '';
+    void this.handoff(target);
   }
 
   toggleProjectExpand(nameOrId: string) {
@@ -1436,6 +1550,19 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     const prompt=this.draft.trim();
     if(!prompt||this.running())return;
 
+    if(prompt.startsWith('/codex')){
+      const note=prompt.replace(/^\/codex\s*/,'');
+      this.draft='';
+      void this.handoff('codex',note);
+      return;
+    }
+    if(prompt.startsWith('/chatgpt')){
+      const note=prompt.replace(/^\/chatgpt\s*/,'');
+      this.draft='';
+      void this.handoff('chatgpt',note);
+      return;
+    }
+
     let s=this.current();
     if(!s||!s.id){
       if(this.isDemo){
@@ -1744,6 +1871,21 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   onComposerEnter(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
+      const trimmed = this.draft.trim();
+      if (trimmed.startsWith('/codex')) {
+        e.preventDefault();
+        const note = trimmed.replace(/^\/codex\s*/, '');
+        this.draft = '';
+        void this.handoff('codex', note);
+        return;
+      }
+      if (trimmed.startsWith('/chatgpt')) {
+        e.preventDefault();
+        const note = trimmed.replace(/^\/chatgpt\s*/, '');
+        this.draft = '';
+        void this.handoff('chatgpt', note);
+        return;
+      }
       e.preventDefault();
       this.send();
     }

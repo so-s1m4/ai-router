@@ -24,6 +24,14 @@ export async function listWorkspaceFiles(runnerId:string,scope:Scope):Promise<Fi
   const file=row as FileRow;return typeof file?.name==='string'&&typeof file.size==='number'&&typeof file.modified==='string';
  }):[];
 }
+export async function getWorkspaceGitSummary(runnerId:string,scope:Scope):Promise<any>{
+ try{
+  const reply=await ask(runnerId,'workspace:git-summary',scope);
+  return reply?.ok?reply.summary:null;
+ }catch{
+  return null;
+ }
+}
 export async function createFileShare(userId:string,runnerId:string,scope:Scope,name:string){
  const info=await ask(runnerId,'file:info',{...scope,name});
  if(!Number.isSafeInteger(info.size)||info.size<0||info.size>MAX_SIZE||!Number.isFinite(info.modified))throw new Error('Файл недоступен');

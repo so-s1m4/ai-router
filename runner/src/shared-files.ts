@@ -1,8 +1,11 @@
 import { open, readdir, realpath, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import type { Socket } from 'socket.io-client';
 import { z } from 'zod';
 
+const exec = promisify(execFile);
 const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data');
 const request=z.object({sessionId:z.string().uuid(),projectId:z.string().uuid().optional()});
 const fileRequest=request.extend({name:z.string().min(1).max(500)});
@@ -29,6 +32,81 @@ async function checked(input:z.infer<typeof fileRequest>){
  if(!info.isFile()||info.size>MAX_SIZE)throw new Error('Файл недоступен или больше 100 МБ');
  return {actual,size:info.size,modified:info.mtimeMs};
 }
+
+export interface WorkspaceGitSummary {
+  isGitRepo: boolean;
+  branch?: string;
+  status?: string;
+  diffStat?: string;
+  cachedStat?: string;
+  lastLog?: string;
+  diffExcerpt?: string;
+  recentFiles?: { name: string; size: number; modified: string }[];
+  error?: string;
+}
+
+export async function getGitSummary(directory: string): Promise<WorkspaceGitSummary> {
+  try {
+    const isRepo = await exec('git', ['rev-parse', '--is-inside-work-tree'], { cwd: directory, timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!isRepo) {
+      const recent: { name: string; size: number; modified: string }[] = [];
+      const scan = async (dir: string, prefix: string, depth: number) => {
+        if (depth > 3 || recent.length >= 50) return;
+        const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+          if (!allowed(entry.name) || entry.isSymbolicLink()) continue;
+          const name = prefix ? prefix + '/' + entry.name : entry.name, full = path.join(dir, entry.name);
+          if (entry.isDirectory()) await scan(full, name, depth + 1);
+          else if (entry.isFile()) {
+            const info = await stat(full).catch(() => null);
+            if (info && info.size <= MAX_SIZE) recent.push({ name, size: info.size, modified: info.mtime.toISOString() });
+          }
+        }
+      };
+      await scan(directory, '', 0);
+      recent.sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
+      return { isGitRepo: false, recentFiles: recent.slice(0, 8) };
+    }
+
+    const [branch, status, diffStat, cachedStat, lastLog] = await Promise.all([
+      exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: directory, timeout: 5000 }).then(r => r.stdout.trim()).catch(() => 'unknown'),
+      exec('git', ['status', '--short'], { cwd: directory, timeout: 5000 }).then(r => r.stdout.trim()).catch(() => ''),
+      exec('git', ['diff', '--stat'], { cwd: directory, timeout: 5000 }).then(r => r.stdout.trim()).catch(() => ''),
+      exec('git', ['diff', '--cached', '--stat'], { cwd: directory, timeout: 5000 }).then(r => r.stdout.trim()).catch(() => ''),
+      exec('git', ['log', '-1', '--oneline', '--stat'], { cwd: directory, timeout: 5000 }).then(r => r.stdout.trim()).catch(() => '')
+    ]);
+
+    let diffExcerpt = '';
+    if (diffStat) {
+      diffExcerpt = await exec('git', ['diff', '-U2'], { cwd: directory, timeout: 5000 })
+        .then(r => r.stdout.slice(0, 2500).trim())
+        .catch(() => '');
+    } else if (!status && lastLog) {
+      diffExcerpt = await exec('git', ['show', '--oneline', '-U2', 'HEAD'], { cwd: directory, timeout: 5000 })
+        .then(r => r.stdout.slice(0, 2500).trim())
+        .catch(() => '');
+    }
+
+    return {
+      isGitRepo: true,
+      branch,
+      status: status.slice(0, 3000),
+      diffStat: diffStat.slice(0, 2000),
+      cachedStat: cachedStat.slice(0, 2000),
+      lastLog: lastLog.slice(0, 2000),
+      diffExcerpt
+    };
+  } catch (err) {
+    return {
+      isGitRepo: false,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
 export function attachSharedFiles(socket:Socket){
  socket.on('file:list',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверная задача'});
@@ -59,5 +137,15 @@ export function attachSharedFiles(socket:Socket){
    try{const buffer=Buffer.allocUnsafe(Math.min(CHUNK,file.size-parsed.data.offset));const {bytesRead}=await handle.read(buffer,0,buffer.length,parsed.data.offset);ack?.({ok:true,data:buffer.subarray(0,bytesRead)});}
    finally{await handle.close();}
   }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось прочитать файл'});}
+ });
+ socket.on('workspace:git-summary',async(raw:unknown,ack?:(value:unknown)=>void)=>{
+  const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверная задача'});
+  try{
+   const directory=await checkedBase(parsed.data);
+   const summary=await getGitSummary(directory);
+   ack?.({ok:true,summary});
+  }catch(error){
+   ack?.({ok:false,error:error instanceof Error?error.message:'Каталог недоступен'});
+  }
  });
 }

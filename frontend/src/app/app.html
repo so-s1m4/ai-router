@@ -280,6 +280,19 @@
 
         <div class="topbar-right">
           @if(page()==='chat'){
+            @if(mode()==='chat'){
+              <button class="topbar-handoff-btn" (click)="handoff('codex')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и передать в Codex">
+                <svg lucideTerminal [size]="14"></svg>
+                <span>Передать в Codex</span>
+                @if(handoffLoading()){ <span class="handoff-spinner"></span> }
+              </button>
+            } @else {
+              <button class="topbar-handoff-btn" (click)="handoff('chatgpt')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и обсудить с ChatGPT">
+                <svg lucideSparkles [size]="14"></svg>
+                <span>Обсудить с ChatGPT</span>
+                @if(handoffLoading()){ <span class="handoff-spinner"></span> }
+              </button>
+            }
             <button class="topbar-nav-arrow mobile-new-chat" (click)="newSession()" aria-label="Новый чат" title="Новый чат"><svg lucideSquarePen [size]="19"></svg></button>
           }
           @if(page()==='chat') {
@@ -471,6 +484,37 @@
             <div class="hero-view">
               <h1 class="hero-title">What’s on the agenda today?</h1>
 
+              @if(filteredSlashCommands.length) {
+                <div class="slash-commands-bar">
+                  @for(sc of filteredSlashCommands; track sc.cmd) {
+                    <button type="button" class="slash-command-item" (click)="applySlashCommand(sc.target)">
+                      @if(sc.target==='codex'){ <svg lucideTerminal [size]="14"></svg> }
+                      @else { <svg lucideSparkles [size]="14"></svg> }
+                      <strong>{{sc.cmd}}</strong>
+                      <span class="slash-desc">{{sc.desc}}</span>
+                    </button>
+                  }
+                </div>
+              }
+
+              <div class="composer-handoff-quick">
+                @if(mode()==='chat'){
+                  <button type="button" class="handoff-chip-btn" (click)="handoff('codex')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и передать в Codex">
+                    <svg lucideTerminal [size]="13"></svg>
+                    <span>Передать в Codex</span>
+                    <span class="handoff-chip-sub">git diff + контекст</span>
+                    @if(handoffLoading()){ <span class="chip-spinner"></span> }
+                  </button>
+                } @else {
+                  <button type="button" class="handoff-chip-btn" (click)="handoff('chatgpt')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и обсудить с ChatGPT">
+                    <svg lucideSparkles [size]="13"></svg>
+                    <span>Обсудить с ChatGPT</span>
+                    <span class="handoff-chip-sub">git diff + контекст</span>
+                    @if(handoffLoading()){ <span class="chip-spinner"></span> }
+                  </button>
+                }
+              </div>
+
               <div class="hero-pill-bar">
                 <input #filePickerHero type="file" multiple hidden (change)="uploadFile($event)">
                 <button class="pill-btn-icon pill-btn-plus" type="button" (click)="filePickerHero.click()" title="Attach files">
@@ -599,6 +643,15 @@
                           <button class="btn-action-icon" (click)="newSession()" title="Повторить запрос">
                             <svg lucideRotateCcw [size]="14"></svg>
                           </button>
+                          @if(mode() === 'chat') {
+                            <button class="btn-action-icon btn-action-handoff" (click)="handoff('codex')" [disabled]="handoffLoading()" title="Передать задачу и git diff в Codex">
+                              <svg lucideTerminal [size]="14"></svg>
+                            </button>
+                          } @else {
+                            <button class="btn-action-icon btn-action-handoff" (click)="handoff('chatgpt')" [disabled]="handoffLoading()" title="Обсудить результат с ChatGPT">
+                              <svg lucideSparkles [size]="14"></svg>
+                            </button>
+                          }
                         </div>
                       </div>
                     </div>
@@ -675,6 +728,37 @@
                 <svg lucideChevronDown [size]="18"></svg>
               </button>
             }
+
+            @if(filteredSlashCommands.length) {
+              <div class="slash-commands-bar">
+                @for(sc of filteredSlashCommands; track sc.cmd) {
+                  <button type="button" class="slash-command-item" (click)="applySlashCommand(sc.target)">
+                    @if(sc.target==='codex'){ <svg lucideTerminal [size]="14"></svg> }
+                    @else { <svg lucideSparkles [size]="14"></svg> }
+                    <strong>{{sc.cmd}}</strong>
+                    <span class="slash-desc">{{sc.desc}}</span>
+                  </button>
+                }
+              </div>
+            }
+
+            <div class="composer-handoff-quick">
+              @if(mode()==='chat'){
+                <button type="button" class="handoff-chip-btn" (click)="handoff('codex')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и передать в Codex">
+                  <svg lucideTerminal [size]="13"></svg>
+                  <span>Передать в Codex</span>
+                  <span class="handoff-chip-sub">git diff + контекст</span>
+                  @if(handoffLoading()){ <span class="chip-spinner"></span> }
+                </button>
+              } @else {
+                <button type="button" class="handoff-chip-btn" (click)="handoff('chatgpt')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и обсудить с ChatGPT">
+                  <svg lucideSparkles [size]="13"></svg>
+                  <span>Обсудить с ChatGPT</span>
+                  <span class="handoff-chip-sub">git diff + контекст</span>
+                  @if(handoffLoading()){ <span class="chip-spinner"></span> }
+                </button>
+              }
+            </div>
 
             <div class="hero-pill-bar bottom-composer-pill">
               <input #filePickerBottom type="file" multiple hidden (change)="uploadFile($event)">

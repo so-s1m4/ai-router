@@ -11,7 +11,7 @@ import { changeUserPassword, deleteUser, ensureAdmin, findUserById, findUserByNa
 import { createPairing, enroll, listRunners, ownsRunner, revokeRunner, runnerSocket, setConnected, verifyRunner, managerSocket, setManagerConnected, createManagerPairing, enrollManager, verifyManager } from './runners.js';
 import { attachJobHandlers, dispatch, JobError } from './jobs.js';
 import { uploadProjectFile } from './files.js';
-import { createFileShare, downloadSharedFile, listWorkspaceFiles } from './shared-files.js';
+import { createFileShare, downloadSharedFile, getWorkspaceGitSummary, listWorkspaceFiles } from './shared-files.js';
 import { AccountUsageManager } from './usage.js';
 import { attachPreviewHandlers, listPreviews, loadPreviews, setPreviewVisibility, startPreviewServer } from './previews.js';
 import { modelCatalog, resolveAccountModels, type AIEvent, type AIEventType, type Model, type ProviderId } from './types.js';
@@ -85,6 +85,86 @@ app.get('/api/sessions/:id/files',requireAuth,async(req,res)=>{const target=awai
 app.post('/api/sessions/:id/files/share',requireAuth,async(req,res)=>{const parsed=z.object({name:z.string().min(1).max(500)}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Укажите файл'});const target=await sessionFileScope(req.session.userId!,req.params.id);if(!target)return res.status(404).json({error:'Файлы задачи пока недоступны'});try{res.status(201).json(await createFileShare(req.session.userId!,target.runnerId,target.scope,parsed.data.name));}catch(error){res.status(503).json({error:error instanceof Error?error.message:'Не удалось создать ссылку'});}});
 app.get('/api/files/:token',async(req,res)=>{await downloadSharedFile(req.params.token,res);});
 app.patch('/api/sessions/:id',requireAuth,async(req,res)=>{const p=z.object({projectId:z.string().uuid().nullable().optional(),title:z.string().min(1).max(100).optional()}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Неверные параметры'});const session=await getSession(req.session.userId!,req.params.id);if(!session)return res.status(404).json({error:'Чат не найден'});if(p.data.projectId!==undefined){if(p.data.projectId&&!await getProject(req.session.userId!,p.data.projectId))return res.status(404).json({error:'Проект не найден'});if(p.data.projectId===null)delete session.projectId;else session.projectId=p.data.projectId;}if(p.data.title!==undefined)session.title=p.data.title;session.updatedAt=new Date().toISOString();await saveSession(req.session.userId!,session);res.json(session);});
+
+function generateHandoffMarkdown(target:'codex'|'chatgpt',sessionTitle:string,userMsgs:string[],assistantMsgs:string[],git:any,note?:string):string{
+ const isCodex=target==='codex';
+ const header=isCodex?'### 📋 Передача задачи в Codex (Handoff)':'### 💬 Обсуждение результатов с ChatGPT';
+ const initialGoal=userMsgs[0]?userMsgs[0].slice(0,300):(sessionTitle!=='Новый чат'?sessionTitle:'Текущая задача');
+ const latestUser=userMsgs.length>1?userMsgs[userMsgs.length-1].slice(0,300):null;
+ const latestAssistant=assistantMsgs.length>0?assistantMsgs[assistantMsgs.length-1].slice(0,500):null;
+ const points:string[]=[];
+ points.push(`- **Основная цель:** ${initialGoal}`);
+ if(latestUser&&latestUser!==initialGoal)points.push(`- **Последний запрос:** ${latestUser}`);
+ if(latestAssistant){
+  const brief=latestAssistant.split('\n').filter(Boolean).slice(0,3).join(' ');
+  points.push(`- **Статус работы:** ${brief.length>300?brief.slice(0,300)+'…':brief}`);
+ }
+ const gitSection:string[]=[];
+ if(git?.isGitRepo){
+  if(git.branch)gitSection.push(`- **Ветка:** \`${git.branch}\``);
+  if(git.lastLog){
+   const firstLine=git.lastLog.split('\n')[0]||'';
+   gitSection.push(`- **Последний коммит:** \`${firstLine}\``);
+  }
+  if(git.status)gitSection.push(`\n**Изменённые/новые файлы (git status):**\n\`\`\`\n${git.status}\n\`\`\``);
+  if(git.diffStat)gitSection.push(`\n**Сводка изменений (git diff --stat):**\n\`\`\`\n${git.diffStat}\n\`\`\``);
+  else if(git.cachedStat)gitSection.push(`\n**Подготовленные изменения (git diff --cached --stat):**\n\`\`\`\n${git.cachedStat}\n\`\`\``);
+  else if(!git.status&&git.lastLog){
+   const lines=git.lastLog.split('\n').slice(1).join('\n').trim();
+   if(lines)gitSection.push(`\n**Изменения последнего коммита:**\n\`\`\`\n${lines}\n\`\`\``);
+  }
+  if(git.diffExcerpt)gitSection.push(`\n<details><summary>Фрагмент diff</summary>\n\n\`\`\`diff\n${git.diffExcerpt}\n\`\`\`\n</details>`);
+ }else if(git?.recentFiles?.length){
+  const list=git.recentFiles.map((f:any)=>`- \`${f.name}\` (${Math.round(f.size/1024)} KB)`).join('\n');
+  gitSection.push(`**Недавние файлы проекта:**\n${list}`);
+ }else{
+  gitSection.push(`- *Рабочий каталог чист (нет незакоммиченных изменений).*`);
+ }
+ const instruction=isCodex
+  ?(note||'Продолжи выполнение задачи, опираясь на контекст и состояние файлов выше. Проверь код, внеси нужные правки и протестируй результат.')
+  :(note||'Ознакомься с ключевыми пунктами задачи и изменениями в файлах выше. Проанализируй текущее решение, дай оценку и помоги спланировать дальнейшие шаги.');
+ return `${header}\n\n`+
+  `**Ключевые пункты задачи:**\n${points.join('\n')}\n\n`+
+  `**Файлы и состояние Git:**\n${gitSection.join('\n')}\n\n`+
+  (isCodex?`**Инструкция для Codex:**\n${instruction}`:`**Вопрос для ChatGPT:**\n${instruction}`);
+}
+
+async function handleHandoffRequest(userId:string,sessionId:string|undefined,projectId:string|undefined,target:'codex'|'chatgpt',note:string|undefined){
+ const session=sessionId?await getSession(userId,sessionId):null;
+ const pId=projectId||session?.projectId;
+ const project=pId?await getProject(userId,pId):null;
+ let runnerId=project?.runnerId||session?.runnerId;
+ if(!runnerId){
+  const runners=(await listRunners(userId)).filter(r=>!r.revokedAt);
+  if(runners.length===1)runnerId=runners[0].id;
+ }
+ let gitSummary:any=null;
+ if(runnerId&&await ownsRunner(userId,runnerId)){
+  const scope={sessionId:session?.id||sessionId||randomUUID(),...(pId?{projectId:pId}:{})};
+  gitSummary=await getWorkspaceGitSummary(runnerId,scope);
+ }
+ const userMsgs=(session?.messages||[]).filter(m=>m.role==='user').map(m=>m.text);
+ const assistantMsgs=(session?.messages||[]).filter(m=>m.role==='assistant').map(m=>m.text);
+ const summary=generateHandoffMarkdown(target,session?.title||'Новый чат',userMsgs,assistantMsgs,gitSummary,note);
+ return {ok:true,summary,target,projectId:pId,git:gitSummary};
+}
+
+app.post('/api/sessions/:id/handoff-summary',requireAuth,async(req,res)=>{
+ const p=z.object({target:z.enum(['codex','chatgpt']).default('codex'),projectId:z.string().uuid().optional(),note:z.string().max(2000).optional()}).safeParse(req.body||{});
+ if(!p.success)return res.status(400).json({error:'Неверные параметры'});
+ res.json(await handleHandoffRequest(req.session.userId!,req.params.id,p.data.projectId,p.data.target,p.data.note));
+});
+app.get('/api/sessions/:id/handoff-summary',requireAuth,async(req,res)=>{
+ const target=req.query.target==='chatgpt'?'chatgpt':'codex';
+ const projectId=typeof req.query.projectId==='string'&&req.query.projectId?req.query.projectId:undefined;
+ const note=typeof req.query.note==='string'?req.query.note:undefined;
+ res.json(await handleHandoffRequest(req.session.userId!,req.params.id,projectId,target,note));
+});
+app.post('/api/handoff-summary',requireAuth,async(req,res)=>{
+ const p=z.object({sessionId:z.string().uuid().optional(),projectId:z.string().uuid().optional(),target:z.enum(['codex','chatgpt']).default('codex'),note:z.string().max(2000).optional()}).safeParse(req.body||{});
+ if(!p.success)return res.status(400).json({error:'Неверные параметры'});
+ res.json(await handleHandoffRequest(req.session.userId!,p.data.sessionId,p.data.projectId,p.data.target,p.data.note));
+});
 app.get('/api/user/model-blacklist',requireAuth,async(req,res)=>res.json({blacklist:await getUserModelBlacklist(req.session.userId!)}));
 app.put('/api/user/model-blacklist',requireAuth,async(req,res)=>{const p=z.object({blacklist:z.array(z.string().min(1).max(100))}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Неверный формат списка моделей'});const updated=await setUserModelBlacklist(req.session.userId!,p.data.blacklist);res.json({ok:true,blacklist:updated});});
 app.get('/api/providers',requireAuth,async(req,res)=>{const userId=req.session.userId!;const blacklist=await getUserModelBlacklist(userId);const accounts=await listAccounts(userId);const geminiExtra=accounts.filter(a=>a.provider==='antigravity').flatMap(a=>accountModels.get(a.id)||[]);const codexExtra=accounts.filter(a=>a.provider==='codex').flatMap(a=>accountModels.get(a.id)||[]);const chatgptExtra=accounts.filter(a=>a.provider==='chatgpt').flatMap(a=>accountModels.get(a.id)||[]);const geminiModels=resolveAccountModels('antigravity',geminiExtra).filter(m=>m.id!=='default');const codexModels=resolveAccountModels('codex',codexExtra).filter(m=>m.id!=='default');const chatgptModels=resolveAccountModels('chatgpt',chatgptExtra).filter(m=>m.id!=='default');res.json({providers:[{id:'antigravity',name:'Gemini',description:'Google DeepMind / Antigravity CLI',models:geminiModels},{id:'codex',name:'Codex',description:'OpenAI Codex CLI',models:codexModels},{id:'chatgpt',name:'ChatGPT Web',description:'ChatGPT Web (Browser Session)',models:chatgptModels}],blacklist});});

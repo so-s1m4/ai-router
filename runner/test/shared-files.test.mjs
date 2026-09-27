@@ -33,5 +33,11 @@ test('file exchange lists workspace output and rejects private paths and symlink
   await symlink(workspace,path.join(root,'workspaces',linkedSession));
   assert.equal((await ask('file:list',{sessionId:linkedSession})).ok,false);
   assert.equal((await ask('file:info',{sessionId:linkedSession,name:'output/result.txt'})).ok,false);
+
+  const summaryRes = await ask('workspace:git-summary', { sessionId });
+  assert.equal(summaryRes.ok, true);
+  assert.equal(summaryRes.summary.isGitRepo, false);
+  assert.equal(summaryRes.summary.recentFiles.length, 1);
+  assert.equal(summaryRes.summary.recentFiles[0].name, 'output/result.txt');
  }finally{await rm(root,{recursive:true,force:true});}
 });
