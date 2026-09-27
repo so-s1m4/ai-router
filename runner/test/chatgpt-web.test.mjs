@@ -4,8 +4,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 const runnerDataDir = await mkdtemp(path.join(tmpdir(), 'chatgpt-runner-'));
+const previousChromeBin = process.env.CHROME_BIN;
 process.env.RUNNER_DATA_DIR = runnerDataDir;
-after(() => rm(runnerDataDir, { recursive: true, force: true }));
+process.env.CHROME_BIN = path.join(runnerDataDir, 'missing-chromium');
+after(async () => {
+  if (previousChromeBin === undefined) delete process.env.CHROME_BIN;
+  else process.env.CHROME_BIN = previousChromeBin;
+  await rm(runnerDataDir, { recursive: true, force: true });
+});
 
 const { accountStatus, execute } = await import('../dist/cli.js');
 const { saveChatGPTSession, readChatGPTSession } = await import('../dist/chatgpt-web.js');

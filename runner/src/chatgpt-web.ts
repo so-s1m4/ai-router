@@ -29,8 +29,10 @@ export interface ChatGPTSessionData {
 }
 
 export function findChromePath(): string | null {
-  const envBin = process.env.CHROME_BIN || process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (envBin && existsSync(envBin)) return envBin;
+  if (process.env.CHROME_BIN) return existsSync(process.env.CHROME_BIN) ? process.env.CHROME_BIN : null;
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return existsSync(process.env.PUPPETEER_EXECUTABLE_PATH) ? process.env.PUPPETEER_EXECUTABLE_PATH : null;
+  }
 
   const candidates = [
     '/usr/bin/chromium',
