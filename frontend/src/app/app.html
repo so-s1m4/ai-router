@@ -121,6 +121,12 @@
                 <svg lucideServer [size]="16"></svg>
                 <span>Исполнители</span>
               </button>
+              @if(isOwner()) {
+                <button class="popover-item" (click)="showPage('users')">
+                  <svg lucideSettings2 [size]="16"></svg>
+                  <span>Пользователи</span>
+                </button>
+              }
               <button class="popover-item" (click)="logout()">
                 <svg lucideLogOut [size]="16"></svg>
                 <span>Выйти из аккаунта</span>
@@ -166,6 +172,17 @@
           <span>New chat</span>
         </button>
       </div>
+
+      <nav class="mobile-drawer-links" aria-label="Разделы приложения">
+        <button (click)="showPage('chat')">Чаты</button>
+        <button (click)="showPage('projects')">Проекты</button>
+        <button (click)="showPage('providers')">Провайдеры и модели</button>
+        <button (click)="showPage('connections')">Подключения</button>
+        <button (click)="showPage('runners')">Исполнители</button>
+        <button (click)="showPage('sites')">Сайты и превью</button>
+        @if(isOwner()){<button (click)="showPage('users')">Пользователи</button>}
+        <button (click)="logout()">Выйти</button>
+      </nav>
 
       <div class="sidebar-scroll">
         <!-- PINNED SECTION -->
@@ -252,11 +269,14 @@
       <!-- TOPBAR -->
       <header class="topbar">
         <div class="topbar-left">
-          <button class="topbar-nav-arrow" (click)="toggleSidebar()" [title]="sidebarOpen() ? 'Свернуть панель' : 'Развернуть панель'">
+          <button class="topbar-nav-arrow desktop-nav-toggle" (click)="toggleSidebar()" [title]="sidebarOpen() ? 'Свернуть панель' : 'Развернуть панель'">
             <svg lucidePanelLeft [size]="16"></svg>
           </button>
+          <button class="topbar-nav-arrow mobile-menu-toggle" (click)="mobileMenu.set(!mobileMenu())" [attr.aria-expanded]="mobileMenu()" aria-label="Открыть меню">
+            <svg lucideMenu [size]="20"></svg>
+          </button>
           @if(!sidebarOpen()) {
-            <button class="topbar-nav-arrow" (click)="newSession()" title="Новый чат">
+            <button class="topbar-nav-arrow desktop-new-chat" (click)="newSession()" title="Новый чат">
               <svg lucideSquarePen [size]="16"></svg>
             </button>
           }
@@ -267,9 +287,13 @@
             <button class="segmented-btn" [class.active]="page()==='chat'" (click)="setMode('chat')" role="tab">Chat</button>
             <button class="segmented-btn" [class.active]="page()==='projects'" (click)="setMode('work')" role="tab">Work</button>
           </div>
+          <span class="mobile-page-title">{{page()==='chat' ? 'Чаты' : page()==='projects' ? 'Проекты' : page()==='sites' ? 'Сайты' : page()==='providers' ? 'Модели' : page()==='connections' ? 'Подключения' : page()==='users' ? 'Пользователи' : 'Исполнители'}}</span>
         </div>
 
         <div class="topbar-right">
+          @if(page()==='chat'){
+            <button class="topbar-nav-arrow mobile-new-chat" (click)="newSession()" aria-label="Новый чат" title="Новый чат"><svg lucideSquarePen [size]="19"></svg></button>
+          }
           @if(page()==='chat') {
             @if(taskFiles().length) {
               <button class="btn-topbar-files" (click)="toggleTaskFiles()" title="Файлы задачи">
@@ -277,7 +301,7 @@
                 <span>Files ({{taskFiles().length}})</span>
               </button>
             }
-            <button class="topbar-btn" (click)="reloadCurrent()" title="Обновить чат">
+            <button class="topbar-btn desktop-chat-refresh" (click)="reloadCurrent()" title="Обновить чат">
               <svg lucideRotateCcw [size]="15"></svg>
             </button>
           } @else if(page()==='projects') {
@@ -1407,6 +1431,31 @@
               <strong>Интеллектуальная маршрутизация (Auto)</strong>
               <p>AI Router последовательно проверяет ваши подключения. При исчерпании лимитов или сбое провайдера запрос бесшовно передаётся следующему доступному аккаунту с сохранением контекста задачи.</p>
             </div>
+          </div>
+        </div>
+      } @else if(page()==='users') {
+        <div class="page-content users-page">
+          <div class="section-hero"><div><span class="section-tag">НАСТРОЙКИ ДОСТУПА</span><h2>Пользователи</h2><p>Создавайте учётные записи и управляйте доступом к приложению.</p></div></div>
+          @if(userAdminError){<div class="banner banner-error">{{userAdminError}}</div>}
+          @if(userAdminNotice){<div class="banner banner-notice">{{userAdminNotice}}</div>}
+          <form class="card form-card user-create-form" (ngSubmit)="createUser()">
+            <h3>Добавить пользователя</h3>
+            <div class="form-row">
+              <input class="custom-input" name="newUsername" [(ngModel)]="newUsername" autocomplete="off" placeholder="Логин" aria-label="Логин нового пользователя" required>
+              <input class="custom-input" name="newUserPassword" [(ngModel)]="newUserPassword" type="password" autocomplete="new-password" placeholder="Пароль от 12 символов" aria-label="Пароль нового пользователя" required minlength="12">
+              <button class="btn btn-primary" type="submit">Создать</button>
+            </div>
+          </form>
+          <div class="user-list">
+            @for(user of users(); track user.id){
+              <div class="card user-list-item">
+                <div class="user-list-identity"><strong>{{user.username}}</strong><span>{{user.id==='owner' ? 'Владелец' : 'Пользователь'}}</span></div>
+                <div class="user-list-actions">
+                  @if(user.id!=='owner'){<button class="btn btn-outline btn-sm" (click)="resetUserPassword(user.id)">Сменить пароль</button>}
+                  @if(user.id!=='owner'){<button class="btn btn-danger-outline btn-sm" (click)="removeUser(user.id,user.username)">Удалить</button>}
+                </div>
+              </div>
+            }
           </div>
         </div>
       } @else {

@@ -2770,6 +2770,16 @@
    ========================================================================== */
 .mobile-only { display: none; }
 .desktop-only { display: inline-flex; }
+.mobile-menu-toggle, .mobile-new-chat, .mobile-page-title, .mobile-drawer-links { display: none; }
+
+.user-create-form { margin-bottom: 16px; }
+.user-create-form .form-row { display: flex; gap: 10px; }
+.user-create-form .custom-input { min-width: 0; flex: 1; }
+.user-list { display: grid; gap: 10px; }
+.user-list-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.user-list-identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.user-list-identity span { color: var(--text-muted); font-size: 12px; }
+.user-list-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Safe Area Insets defaults */
 .sidebar {
@@ -2799,17 +2809,39 @@
   .mobile-only { display: grid; }
   .desktop-only { display: none; }
 
+  .app-rail { display: none; }
+  .desktop-nav-toggle, .desktop-new-chat, .desktop-chat-refresh, .segmented-toggle { display: none; }
+  .mobile-menu-toggle, .mobile-new-chat { display: grid; place-items: center; width: 40px; height: 40px; }
+  .mobile-page-title { display: block; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+  .topbar-center { position: static; transform: none; }
+  .topbar { min-height: calc(52px + env(safe-area-inset-top)); height: calc(52px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
+  .topbar-right { margin-left: auto; }
+  .btn-topbar-files span { display: none; }
+  .btn-topbar-files { width: 36px; height: 36px; justify-content: center; padding: 0; }
+
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(84vw, 300px);
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
     transform: translateX(-105%);
     box-shadow: 12px 0 32px rgba(0, 0, 0, 0.75);
   }
 
-  .sidebar.drawer-open {
+  .sidebar.drawer-open, .sidebar.collapsed.drawer-open {
     transform: translateX(0);
+    width: min(84vw, 300px) !important;
+    flex: 0 0 auto !important;
+    opacity: 1;
+    pointer-events: auto;
   }
+
+  .mobile-drawer-links { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
+  .mobile-drawer-links button { text-align: left; min-height: 38px; padding: 7px 9px; border-radius: 8px; color: var(--text-secondary); font-size: 12px; }
+  .mobile-drawer-links button:active, .mobile-drawer-links button:hover { background: var(--bg-surface-hover); color: var(--text-main); }
+  .sidebar-scroll { min-height: 0; }
 
   .drawer-overlay {
     position: fixed;
@@ -2836,6 +2868,22 @@
   .form-row .btn {
     width: 100%;
   }
+
+  .user-create-form .form-row, .user-list-item { flex-direction: column; align-items: stretch; }
+  .user-list-actions .btn { flex: 1; }
+
+  .hero-view { min-height: 0; padding: 28px 12px 80px; }
+  .hero-title { font-size: clamp(21px, 6vw, 28px); line-height: 1.2; margin-bottom: 20px; }
+  .hero-pill-bar { display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 3px 4px; border-radius: 20px; padding: 7px 9px; }
+  .hero-pill-bar > .pill-btn-plus { grid-column: 1; grid-row: 1; }
+  .hero-pill-bar > .pill-input-wrap { grid-column: 2; grid-row: 1; padding: 0 2px; }
+  .hero-pill-bar > .pill-controls { grid-column: 1 / -1; grid-row: 2; min-width: 0; display: flex; flex-wrap: wrap; gap: 2px; justify-content: flex-start; }
+  .pill-model-badge { font-size: 11px; padding: 5px 6px; }
+  .truncate-badge { max-width: min(29vw, 115px); }
+  .pill-btn-mic, .pill-controls > .pill-btn-voice { display: none; }
+  .pill-controls > .pill-btn-send, .pill-controls > .btn-circle-stop { margin-left: auto; }
+  .composer-floating-wrap { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
+  .composer-footnote { display: none; }
 }
 
 @media (max-width: 600px) {
@@ -2849,11 +2897,7 @@
     font-size: 16px !important;
   }
 
-  .topbar {
-    padding: env(safe-area-inset-top) 8px 0;
-    height: calc(42px + env(safe-area-inset-top));
-    gap: 6px;
-  }
+  .topbar { padding-left: 8px; padding-right: 8px; gap: 6px; }
 
   .topbar-left {
     gap: 8px;

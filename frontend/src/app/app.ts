@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import {
   LucideArrowUp, LucideArrowUpRight, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
   LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass,
-  LucideCopy, LucideCpu, LucideDownload, LucideEllipsis, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
+  LucideCopy, LucideDownload, LucideEllipsis, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
   LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft,
   LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
@@ -112,7 +112,7 @@ interface FileNodeInternal {
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck,
-    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass, LucideCopy, LucideCpu, LucideDownload, LucideEllipsis,
+    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass, LucideCopy, LucideDownload, LucideEllipsis,
     LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
     LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideUploadCloud, LucideX,
@@ -123,7 +123,10 @@ interface FileNodeInternal {
 })
 export class App implements OnInit,AfterViewInit,OnDestroy {
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
-  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'>('chat');
+  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'>('chat');
+  isOwner=signal(false);
+  users=signal<{id:string;username:string;createdAt:string}[]>([]);
+  newUsername=''; newUserPassword=''; userAdminError=''; userAdminNotice='';
   mobileMenu=signal(false);
   managedRunner=signal<Runner|null>(null);
   modelBlacklist=signal<string[]>([]);
@@ -642,6 +645,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   toggleSidebar() {
     this.sidebarOpen.update(v => !v);
   }
+  async refreshUsers(){if(!this.isOwner()||this.isDemo)return;try{this.users.set(await this.api<{id:string;username:string;createdAt:string}[]>('/users'));this.userAdminError='';}catch(e){this.userAdminError=(e as Error).message;}}
+  async createUser(){this.userAdminError='';this.userAdminNotice='';try{await this.api('/users',{method:'POST',body:JSON.stringify({username:this.newUsername,password:this.newUserPassword})});this.newUsername='';this.newUserPassword='';this.userAdminNotice='Пользователь создан';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
+  async resetUserPassword(id:string){const password=window.prompt('Новый пароль (минимум 12 символов)');if(password===null)return;try{await this.api(`/users/${encodeURIComponent(id)}/password`,{method:'PUT',body:JSON.stringify({password})});this.userAdminNotice='Пароль обновлён';this.userAdminError='';}catch(e){this.userAdminError=(e as Error).message;}}
+  async removeUser(id:string,username:string){if(!window.confirm(`Удалить пользователя ${username}?`))return;try{await this.api(`/users/${encodeURIComponent(id)}`,{method:'DELETE'});this.userAdminNotice='Пользователь удалён';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
 
   setMode(m: 'chat' | 'work') {
     this.mode.set(m);
@@ -822,16 +829,16 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
 
   async restore(){
-    let me:{username:string};
-    try{me=await this.api<{username:string}>('/me');}
+    let me:{username:string;isOwner:boolean};
+    try{me=await this.api<{username:string;isOwner:boolean}>('/me');}
     catch(e){
       return;
     }
-    this.username=me.username;this.loggedIn.set(true);this.connect();
+    this.username=me.username;this.isOwner.set(!!me.isOwner);this.loggedIn.set(true);this.connect();
     try{await this.load();}catch(e){this.error.set((e as Error).message);}
   }
-  async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.isDemo=false;this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){this.stopVoiceInput();if(!this.isDemo)await this.api('/logout',{method:'POST'}).catch(()=>{});this.isDemo=false;this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.loggedIn.set(false);this.current.set(null);}
+  async login(){this.loginError='';try{const me=await this.api<{username:string;isOwner:boolean}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.isDemo=false;this.username=me.username;this.isOwner.set(!!me.isOwner);this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
+  async logout(){this.stopVoiceInput();if(!this.isDemo)await this.api('/logout',{method:'POST'}).catch(()=>{});this.isDemo=false;this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.loggedIn.set(false);this.current.set(null);}
   async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';const cleanSessions=sortSessions(sessions);this.sessions.set(cleanSessions);void this.refreshPreviews();if(cleanSessions.length)await this.openSession(cleanSessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
@@ -1318,7 +1325,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     void this.uploadFiles(files);
     input.value = '';
   }
-  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'){this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='providers')void this.refreshProviders();if(page==='chat')this.ensureChatScrollAttached(true);else this.cleanupResizeObserver();}
+  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'){if(page==='users'&&!this.isOwner())return;this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='providers')void this.refreshProviders();if(page==='users')void this.refreshUsers();if(page==='chat')this.ensureChatScrollAttached(true);else this.cleanupResizeObserver();}
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
