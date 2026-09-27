@@ -864,15 +864,18 @@
   width: 100%;
   height: 100%;
   z-index: 2;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .pill-select-overlay option {
   background: #212121;
   color: #ececec;
-  padding: 6px 10px;
+  padding: 8px 12px;
 }
 
 .pill-model-badge {
+  pointer-events: none;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -883,14 +886,13 @@
   border-radius: 9999px;
   background: transparent;
   border: 1px solid transparent;
-  cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .pill-select-wrapper:hover .pill-model-badge,
-.pill-select-overlay:focus-visible + .pill-model-badge,
-.pill-model-badge:hover {
+.pill-select-overlay:hover + .pill-model-badge,
+.pill-select-overlay:focus-visible + .pill-model-badge {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
@@ -902,8 +904,14 @@
   color: #e5e5e5;
 }
 
+.pill-model-active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+
 .truncate-badge {
-  max-width: 125px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1741,6 +1749,158 @@
 .provider-codex {
   background: rgba(16, 185, 129, 0.12);
   color: #10b981;
+}
+
+.provider-chatgpt {
+  background: rgba(16, 163, 127, 0.15);
+  color: #10a37f;
+}
+
+/* ChatGPT Session Modal */
+.chatgpt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chatgpt-modal-card {
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
+  width: 100%;
+  max-width: 560px;
+  overflow: hidden;
+  animation: modalScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.chatgpt-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+}
+
+.chatgpt-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chatgpt-modal-title h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-main, #f8fafc);
+}
+
+.chatgpt-modal-subtitle {
+  font-size: 13px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.chatgpt-modal-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chatgpt-modal-desc {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-secondary, #cbd5e1);
+  margin: 0;
+}
+
+.chatgpt-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chatgpt-modal-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main, #f1f5f9);
+}
+
+.chatgpt-textarea {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: 12.5px;
+  line-height: 1.4;
+  resize: vertical;
+  background: var(--bg-input, rgba(15, 23, 42, 0.6));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text-main, #f8fafc);
+  outline: none;
+}
+
+.chatgpt-textarea:focus {
+  border-color: var(--primary, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.chatgpt-modal-guide {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted, #94a3b8);
+}
+
+.chatgpt-modal-guide strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.chatgpt-modal-guide ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.chatgpt-modal-guide li {
+  margin-bottom: 4px;
+}
+
+.chatgpt-modal-guide a {
+  color: #10a37f;
+  text-decoration: underline;
+}
+
+.chatgpt-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .account-detail {

@@ -2,11 +2,18 @@
 set -eu
 provider="${1:-}"
 account="${2:-}"
-case "$provider" in codex|antigravity) ;; *) echo "Provider must be codex or antigravity" >&2; exit 2;; esac
+case "$provider" in codex|antigravity|chatgpt) ;; *) echo "Provider must be codex, antigravity or chatgpt" >&2; exit 2;; esac
 case "$account" in *[!a-zA-Z0-9_-]*|'') echo "Invalid account ID" >&2; exit 2;; esac
 home="/runner-data/accounts/$account/home"
 mkdir -p "$home"
 export HOME="$home"
+if [ "$provider" = chatgpt ]; then
+  if [ -f /app/dist/import-chatgpt.js ]; then
+    exec node /app/dist/import-chatgpt.js "$account"
+  else
+    exec node "$(dirname "$0")/../dist/import-chatgpt.js" "$account"
+  fi
+fi
 if [ "$provider" = codex ]; then
   export CODEX_HOME="$home/.codex"
   mkdir -p "$CODEX_HOME"

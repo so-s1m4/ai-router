@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { modelCatalog, resolveAccountModels } from './types.js';
 
-test('modelCatalog contains default models for codex and antigravity/gemini', () => {
+test('modelCatalog contains default models for codex and antigravity/gemini and chatgpt', () => {
   assert.ok(modelCatalog.codex.some(m => m.id === 'default'));
   assert.ok(modelCatalog.codex.some(m => m.id === 'gpt-4o'));
   assert.ok(modelCatalog.codex.some(m => m.id === 'o3'));
@@ -10,6 +10,9 @@ test('modelCatalog contains default models for codex and antigravity/gemini', ()
   assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-3.8-flash'));
   assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-2.5-pro'));
   assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-2.5-flash'));
+  assert.ok(modelCatalog.chatgpt.some(m => m.id === 'default'));
+  assert.ok(modelCatalog.chatgpt.some(m => m.id === 'gpt-4o'));
+  assert.ok(modelCatalog.chatgpt.some(m => m.id === 'o1'));
 });
 
 test('reasoning efforts are configured for models with reasoning support', () => {

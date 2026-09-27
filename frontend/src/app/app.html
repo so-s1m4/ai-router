@@ -144,46 +144,9 @@
     <!-- 2. SECONDARY SIDEBAR (260px COLLAPSIBLE) -->
     <aside class="sidebar" [class.collapsed]="!sidebarOpen()" [class.drawer-open]="mobileMenu()">
       <div class="sidebar-header">
-        <div class="brand-dropdown-wrapper">
-          <button class="sidebar-brand-btn" (click)="brandMenuOpen.set(!brandMenuOpen())">
-            <span>{{brandTitle()}}</span>
-            <svg lucideChevronDown [size]="15" class="brand-chevron"></svg>
-          </button>
-          @if(brandMenuOpen()) {
-            <div class="brand-popover-menu" (click)="brandMenuOpen.set(false)">
-              <div class="popover-header">
-                <strong>Сервис и модель</strong>
-                <span>{{currentModelBadgeLabel()}}</span>
-              </div>
-              <div class="popover-divider"></div>
-              <button class="popover-item" [class.selected]="selectedService()==='auto' && selectedModel==='default'" (click)="selectService('auto')">
-                <svg lucideSparkles [size]="16"></svg>
-                <span>Авто-выбор (Auto)</span>
-              </button>
-              <button class="popover-item" [class.selected]="selectedService()==='gemini'" (click)="selectService('gemini')">
-                <svg lucideCpu [size]="16"></svg>
-                <span>Google Gemini</span>
-              </button>
-              <button class="popover-item" [class.selected]="selectedService()==='codex'" (click)="selectService('codex')">
-                <svg lucideCpu [size]="16"></svg>
-                <span>OpenAI Codex</span>
-              </button>
-              <div class="popover-divider"></div>
-              <div class="popover-section-label">Доступные модели:</div>
-              @for(m of models().slice(0, 10); track m.id) {
-                <button class="popover-item" [class.selected]="selectedModel===m.id" (click)="selectModel(m.id)">
-                  <svg lucideCheck [size]="14" [style.visibility]="selectedModel===m.id ? 'visible' : 'hidden'"></svg>
-                  <span class="truncate">{{m.label}}</span>
-                </button>
-              }
-              <div class="popover-divider"></div>
-              <button class="popover-item" (click)="showPage('providers')">
-                <svg lucideSettings2 [size]="16"></svg>
-                <span>Управление провайдерами…</span>
-              </button>
-            </div>
-          }
-        </div>
+        <button class="sidebar-brand-btn" (click)="newSession()" title="ChatGPT">
+          <span>ChatGPT</span>
+        </button>
         <div class="sidebar-header-actions">
           <button class="sidebar-icon-btn" (click)="notice.set(notice() ? '' : 'Уведомлений нет')" title="Уведомления">
             <svg lucideBell [size]="17"></svg>
@@ -513,8 +476,9 @@
                       <option value="auto">Auto</option>
                       <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
                       <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
+                      <option value="chatgpt">ChatGPT{{hasAccountsFor('chatgpt') ? '' : ' (!)'}}</option>
                     </select>
-                    <button class="pill-model-badge" type="button">
+                    <button class="pill-model-badge" type="button" tabindex="-1">
                       <span>{{currentServiceLabel()}}</span>
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
@@ -522,12 +486,12 @@
 
                   <!-- MODEL PILL -->
                   <div class="pill-select-wrapper" title="Модель">
-                    <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
+                    <select [ngModel]="selectedModel()" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
                       @for(m of models(); track m.id) {
                         <option [value]="m.id">{{m.label}}</option>
                       }
                     </select>
-                    <button class="pill-model-badge pill-model-highlight" type="button">
+                    <button class="pill-model-badge pill-model-highlight" [class.pill-model-active]="selectedModel() !== 'default'" type="button" tabindex="-1">
                       <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
@@ -536,12 +500,12 @@
                   <!-- REASONING PILL -->
                   @if(reasoningOptions().length > 1) {
                     <div class="pill-select-wrapper" title="Рассуждение (Reasoning)">
-                      <select [ngModel]="selectedReasoning" (ngModelChange)="onReasoningChange($event)" class="pill-select-overlay" aria-label="Reasoning">
+                      <select [ngModel]="selectedReasoning()" (ngModelChange)="onReasoningChange($event)" class="pill-select-overlay" aria-label="Reasoning">
                         @for(r of reasoningOptions(); track r.id) {
                           <option [value]="r.id">{{r.label}}</option>
                         }
                       </select>
-                      <button class="pill-model-badge" type="button">
+                      <button class="pill-model-badge" type="button" tabindex="-1">
                         <span>{{currentReasoningBadgeLabel()}}</span>
                         <svg lucideChevronDown [size]="12"></svg>
                       </button>
@@ -706,8 +670,9 @@
                     <option value="auto">Auto</option>
                     <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
                     <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
+                    <option value="chatgpt">ChatGPT{{hasAccountsFor('chatgpt') ? '' : ' (!)'}}</option>
                   </select>
-                  <button class="pill-model-badge" type="button">
+                  <button class="pill-model-badge" type="button" tabindex="-1">
                     <span>{{currentServiceLabel()}}</span>
                     <svg lucideChevronDown [size]="12"></svg>
                   </button>
@@ -715,12 +680,12 @@
 
                 <!-- MODEL PILL -->
                 <div class="pill-select-wrapper" title="Модель">
-                  <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
+                  <select [ngModel]="selectedModel()" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
                     @for(m of models(); track m.id) {
                       <option [value]="m.id">{{m.label}}</option>
                     }
                   </select>
-                  <button class="pill-model-badge pill-model-highlight" type="button">
+                  <button class="pill-model-badge pill-model-highlight" [class.pill-model-active]="selectedModel() !== 'default'" type="button" tabindex="-1">
                     <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
                     <svg lucideChevronDown [size]="12"></svg>
                   </button>
@@ -729,12 +694,12 @@
                 <!-- REASONING PILL -->
                 @if(reasoningOptions().length > 1) {
                   <div class="pill-select-wrapper" title="Рассуждение (Reasoning)">
-                    <select [ngModel]="selectedReasoning" (ngModelChange)="onReasoningChange($event)" class="pill-select-overlay" aria-label="Reasoning">
+                    <select [ngModel]="selectedReasoning()" (ngModelChange)="onReasoningChange($event)" class="pill-select-overlay" aria-label="Reasoning">
                       @for(r of reasoningOptions(); track r.id) {
                         <option [value]="r.id">{{r.label}}</option>
                       }
                     </select>
-                    <button class="pill-model-badge" type="button">
+                    <button class="pill-model-badge" type="button" tabindex="-1">
                       <span>{{currentReasoningBadgeLabel()}}</span>
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
@@ -1134,6 +1099,82 @@
               </div>
             </div>
 
+            <!-- CHATGPT WEB PROVIDER -->
+            <div class="card provider-card">
+              <div class="provider-box-header">
+                <div class="provider-box-title-group">
+                  <div class="provider-badge-icon provider-chatgpt">
+                    <svg lucideGlobe2 [size]="22"></svg>
+                  </div>
+                  <div>
+                    <div class="provider-title-row">
+                      <h3>ChatGPT Web (Браузер)</h3>
+                      <span class="provider-count-pill" [class.has-disabled]="allChatGPTModels().length > chatgptEnabledCount()">
+                        {{chatgptEnabledCount()}} из {{allChatGPTModels().length}} активно
+                      </span>
+                    </div>
+                    <p class="provider-desc">Веб-сессии ChatGPT через Chromium в runner (без API-ключей, подписка ChatGPT)</p>
+                  </div>
+                </div>
+
+                <div class="provider-header-actions">
+                  <button type="button" class="btn btn-outline btn-xs" (click)="enableAllForProvider('chatgpt')" [disabled]="chatgptEnabledCount() === allChatGPTModels().length" title="Включить все модели ChatGPT">
+                    Включить все
+                  </button>
+                  <button type="button" class="btn btn-outline btn-xs" (click)="disableAllForProvider('chatgpt')" [disabled]="chatgptEnabledCount() === 0" title="Отключить все модели ChatGPT">
+                    Отключить все
+                  </button>
+                </div>
+              </div>
+
+              <div class="models-list">
+                @for(m of filteredChatGPTModels(); track m.id){
+                  <div class="model-row" [class.model-disabled]="!isModelEnabled(m.id)" (click)="toggleModel(m.id)">
+                    <div class="model-info">
+                      <div class="model-name-line">
+                        <span class="model-label">{{m.label}}</span>
+                        <code class="model-id-tag">{{m.id}}</code>
+                        @if(m.reasoning?.length){
+                          <span class="feature-tag feature-tag-reasoning" title="Поддерживает уровни рассуждений">
+                            Рассуждения ({{m.reasoning?.length}})
+                          </span>
+                        }
+                      </div>
+                      <div class="model-status-hint">
+                        @if(isModelEnabled(m.id)){
+                          <span class="status-dot status-dot-active"></span>
+                          <span class="status-text-active">Активна в чате</span>
+                        } @else {
+                          <span class="status-dot status-dot-disabled"></span>
+                          <span class="status-text-disabled">В черном списке (скрыта)</span>
+                        }
+                      </div>
+                    </div>
+
+                    <div class="model-action" (click)="$event.stopPropagation()">
+                      <button type="button"
+                              class="toggle-switch"
+                              [class.checked]="isModelEnabled(m.id)"
+                              (click)="toggleModel(m.id)"
+                              [attr.aria-pressed]="isModelEnabled(m.id)"
+                              [title]="isModelEnabled(m.id) ? 'Нажмите, чтобы отключить модель' : 'Нажмите, чтобы включить модель'">
+                        <span class="toggle-track">
+                          <span class="toggle-thumb"></span>
+                        </span>
+                        <span class="toggle-label">{{isModelEnabled(m.id) ? 'ВКЛ' : 'ВЫКЛ'}}</span>
+                      </button>
+                    </div>
+                  </div>
+                }
+                @if(!filteredChatGPTModels().length){
+                  <div class="models-empty-notice">
+                    <svg lucideInfo [size]="16"></svg>
+                    <span>Нет моделей ChatGPT, соответствующих фильтру</span>
+                  </div>
+                }
+              </div>
+            </div>
+
           </div>
         </div>
       } @else if(page()==='connections') {
@@ -1171,11 +1212,13 @@
             @for(a of accounts(); track a.id){
               <div class="card account-card">
                 <div class="account-card-head">
-                  <div class="provider-badge-icon" [class.provider-gemini]="a.provider==='antigravity'">
+                  <div class="provider-badge-icon" [class.provider-gemini]="a.provider==='antigravity'" [class.provider-chatgpt]="a.provider==='chatgpt'">
                     @if(a.provider==='codex'){
                       <svg lucideBot [size]="22"></svg>
-                    } @else {
+                    } @else if(a.provider==='antigravity'){
                       <svg lucideSparkles [size]="22"></svg>
+                    } @else {
+                      <svg lucideGlobe2 [size]="22"></svg>
                     }
                   </div>
                   <span class="badge" [class.badge-ready]="a.mode==='runner'" [class.badge-offline]="a.mode==='offline'">
@@ -1225,10 +1268,19 @@
                     </div>
                   } @else {
                     <div class="quota-unknown">
-                      {{a.provider==='antigravity' ? 'Квота Gemini будет запрошена при обращении' : 'Информация появится после первого запроса CLI'}}
+                      {{a.provider==='antigravity' ? 'Квота Gemini будет запрошена при обращении' : a.provider==='chatgpt' ? 'Сессия браузера ChatGPT' : 'Информация появится после первого запроса CLI'}}
                     </div>
                   }
                 </div>
+
+                @if(a.provider==='chatgpt'){
+                  <div style="margin: 10px 0 0 0;">
+                    <button class="btn btn-outline btn-xs" style="width: 100%; justify-content: center; gap: 6px; padding: 6px 10px;" (click)="openChatGPTSessionModal(a)">
+                      <svg lucideGlobe2 [size]="14"></svg>
+                      <span>Импорт сессии / Cookies</span>
+                    </button>
+                  </div>
+                }
 
                 @if(a.mode==='unassigned'){
                   <div class="assign-box">
@@ -1273,6 +1325,7 @@
               <select class="custom-select" [(ngModel)]="accountProvider" aria-label="Провайдер">
                 <option value="codex">OpenAI Codex</option>
                 <option value="antigravity">Google Antigravity</option>
+                <option value="chatgpt">ChatGPT Web (Браузер)</option>
               </select>
               <select class="custom-select" [(ngModel)]="selectedRunner" aria-label="Исполнитель">
                 <option value="">Выберите контейнер</option>
@@ -1310,6 +1363,91 @@
               <code class="code-snippet">./runner/import-profiles.sh ~/Desktop/*.codexprofile.json</code>
             </div>
           </div>
+
+          <!-- IMPORT CHATGPT SESSION -->
+          <div class="card form-card">
+            <div class="form-card-head">
+              <span class="section-tag">CHATGPT WEB</span>
+              <h3>Импорт сессии ChatGPT в Runner</h3>
+              <p>Для прямого импорта токена сессии <code>__Secure-next-auth.session-token</code> или файла cookies.json через терминал.</p>
+            </div>
+            <div class="command-box">
+              <div class="command-title">
+                <span>Команда для импорта токена или cookies:</span>
+                <button class="btn-copy" (click)="copy('./runner/scripts/import-chatgpt.sh <accountId>', 'import-chatgpt-cmd')">
+                  @if(copiedId() === 'import-chatgpt-cmd'){
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Скопировано</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Копировать</span>
+                  }
+                </button>
+              </div>
+              <code class="code-snippet">./runner/scripts/import-chatgpt.sh &lt;accountId&gt;</code>
+            </div>
+          </div>
+
+          @if(chatgptSessionModal() && selectedChatGPTAccount()){
+            <div class="chatgpt-modal-backdrop" (click)="closeChatGPTSessionModal()">
+              <div class="chatgpt-modal-card" (click)="$event.stopPropagation()">
+                <div class="chatgpt-modal-header">
+                  <div class="chatgpt-modal-title">
+                    <div class="provider-badge-icon provider-chatgpt">
+                      <svg lucideGlobe2 [size]="20"></svg>
+                    </div>
+                    <div>
+                      <h3>Импорт сессии ChatGPT</h3>
+                      <span class="chatgpt-modal-subtitle">Аккаунт: <strong>{{selectedChatGPTAccount()?.name}}</strong></span>
+                    </div>
+                  </div>
+                  <button class="btn-icon" (click)="closeChatGPTSessionModal()" aria-label="Закрыть">
+                    <svg lucideX [size]="18"></svg>
+                  </button>
+                </div>
+
+                <div class="chatgpt-modal-body">
+                  <p class="chatgpt-modal-desc">
+                    Вставьте значение cookie <code>__Secure-next-auth.session-token</code> или полный JSON-массив cookies (например, экспортированный из расширения Cookie-Editor).
+                  </p>
+
+                  <div class="chatgpt-modal-field">
+                    <label for="chatgptSessionInput">Токен сессии или Cookies JSON:</label>
+                    <textarea
+                      id="chatgptSessionInput"
+                      class="custom-textarea chatgpt-textarea"
+                      rows="6"
+                      [(ngModel)]="chatgptSessionInput"
+                      placeholder="eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0... или [{&quot;name&quot;: &quot;__Secure-next-auth.session-token&quot;, ...}]"
+                    ></textarea>
+                  </div>
+
+                  <div class="chatgpt-modal-guide">
+                    <strong>Как получить токен:</strong>
+                    <ol>
+                      <li>Откройте <a href="https://chatgpt.com" target="_blank" rel="noopener">chatgpt.com</a> и войдите в свой аккаунт.</li>
+                      <li>Откройте Developer Tools (F12) → вкладка <em>Application</em> (Хранилище) → <em>Cookies</em> → <code>https://chatgpt.com</code>.</li>
+                      <li>Скопируйте значение cookie <code>__Secure-next-auth.session-token</code>.</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div class="chatgpt-modal-footer">
+                  <button class="btn btn-outline" (click)="closeChatGPTSessionModal()" [disabled]="chatgptImporting()">
+                    Отмена
+                  </button>
+                  <button class="btn btn-primary" (click)="saveChatGPTSession()" [disabled]="!chatgptSessionInput.trim() || chatgptImporting()">
+                    @if(chatgptImporting()){
+                      <span>Сохранение...</span>
+                    } @else {
+                      <svg lucideCheck [size]="16"></svg>
+                      <span>Сохранить сессию</span>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
 
           <div class="helper-box">
             <svg lucideInfo [size]="20" class="helper-icon"></svg>
@@ -1675,6 +1813,20 @@ INSTALL_AGY_CLI=true</code></pre>
                         <pre class="command-code"><code>docker compose exec runner /app/scripts/provider-login.sh antigravity &lt;ID_АККАУНТА&gt;</code></pre>
                         <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose exec runner /app/scripts/provider-login.sh antigravity <ID_АККАУНТА>', 'step5-agy')">
                           @if(copiedId() === 'step5-agy'){
+                            <svg lucideCheck [size]="14"></svg>
+                            <span>Скопировано!</span>
+                          } @else {
+                            <svg lucideCopy [size]="14"></svg>
+                            <span>Копировать</span>
+                          }
+                        </button>
+                      </div>
+
+                      <p><strong>Для ChatGPT Web (Браузер):</strong></p>
+                      <div class="snippet-with-copy">
+                        <pre class="command-code"><code>docker compose exec runner /app/scripts/provider-login.sh chatgpt &lt;ID_АККАУНТА&gt;</code></pre>
+                        <button class="btn btn-outline btn-sm copy-btn-corner" (click)="copy('docker compose exec runner /app/scripts/provider-login.sh chatgpt <ID_АККАУНТА>', 'step5-chatgpt')">
+                          @if(copiedId() === 'step5-chatgpt'){
                             <svg lucideCheck [size]="14"></svg>
                             <span>Скопировано!</span>
                           } @else {

@@ -3,19 +3,19 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import {
-  LucideArrowUp, LucideArrowUpRight, LucideAudioLines, LucideAudioWaveform, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
+  LucideArrowUp, LucideArrowUpRight, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
   LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass,
   LucideCopy, LucideCpu, LucideDownload, LucideEllipsis, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
   LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft,
-  LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
+  LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
   LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideUploadCloud, LucideX, LucideZap
 } from '@lucide/angular';
 import { ManagerPanel } from './manager-panel';
 import { MarkdownPipe } from './markdown.pipe';
 
-type ProviderId = 'codex'|'antigravity';
-export type ServiceId = 'auto' | 'gemini' | 'codex';
+type ProviderId = 'codex' | 'antigravity' | 'chatgpt';
+export type ServiceId = 'auto' | 'gemini' | 'codex' | 'chatgpt';
 type ReasoningEffort = {id:string;label:string};
 type Model = {id:string;label:string;reasoning?:ReasoningEffort[];defaultReasoning?:string};
 
@@ -44,6 +44,15 @@ export const DEFAULT_GEMINI_MODELS: Model[] = [
   { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
   { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
   { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
+];
+
+export const DEFAULT_CHATGPT_MODELS: Model[] = [
+  { id: 'default', label: 'По умолчанию ChatGPT' },
+  { id: 'gpt-4o', label: 'GPT-4o' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
+  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'gpt-4.5', label: 'GPT-4.5' }
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
 type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
@@ -82,10 +91,10 @@ interface FileNodeInternal {
   selector:'app-root',
   standalone:true,
   imports:[
-    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideAudioLines, LucideAudioWaveform, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
+    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
     LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass, LucideCopy, LucideCpu, LucideDownload, LucideEllipsis,
     LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu,
-    LucideMessageSquare, LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft, LucidePaperclip, LucidePencilLine, LucidePlugZap, LucidePlus,
+    LucideMessageSquare, LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
     LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideUploadCloud, LucideX,
     LucideZap, ManagerPanel, MarkdownPipe
   ],
@@ -106,7 +115,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     { id: 'pin-cat', title: 'кот' },
     { id: 'pin-yulia', title: 'юля' }
   ]);
-  brandMenuOpen = signal(false);
   moreMenuOpen = signal(false);
   userMenuOpen = signal(false);
   helpModalOpen = signal(false);
@@ -114,16 +122,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   searchOpen = signal(false);
   sidebarSearch = signal('');
   isDemo = false;
-  brandTitle = computed(() => {
-    if (this.selectedModel !== 'default') {
-      const m = this.models().find(x => x.id === this.selectedModel);
-      if (m) return m.label.replace(/\s*·\s*(Gemini|Codex)$/, '');
-    }
-    const s = this.selectedService();
-    if (s === 'gemini') return 'Gemini';
-    if (s === 'codex') return 'Codex';
-    return 'ChatGPT';
-  });
   currentServiceLabel = computed(() => {
     const s = this.selectedService();
     if (s === 'gemini') return 'Gemini';
@@ -131,22 +129,28 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return 'Auto';
   });
   currentModelBadgeLabel = computed(() => {
-    if (this.selectedModel === 'default') {
+    const modelId = this.selectedModel();
+    if (modelId === 'default') {
       const s = this.selectedService();
-      if (s === 'gemini') return 'Gemini Auto';
-      if (s === 'codex') return 'Codex Auto';
+      if (s === 'gemini') return 'Gemini';
+      if (s === 'codex') return 'Codex';
       return 'Модель';
     }
-    const m = this.models().find(item => item.id === this.selectedModel);
-    if (!m) return this.selectedModel;
+    const m = this.models().find(item => item.id === modelId)
+           || this.allGeminiModels().find(item => item.id === modelId)
+           || this.allCodexModels().find(item => item.id === modelId);
+    if (!m) return modelId;
     return m.label.replace(/\s*·\s*(Gemini|Codex)$/, '');
   });
   currentReasoningBadgeLabel = computed(() => {
-    const r = this.selectedReasoning;
+    const r = this.selectedReasoning();
+    const modelId = this.selectedModel();
     if (!r || r === 'default') {
-      const currentModel = this.models().find(m => m.id === this.selectedModel);
+      const currentModel = this.models().find(m => m.id === modelId)
+                        || this.allGeminiModels().find(m => m.id === modelId)
+                        || this.allCodexModels().find(m => m.id === modelId);
       if (currentModel?.defaultReasoning) {
-        const opt = currentModel.reasoning?.find(o => o.id === currentModel.defaultReasoning);
+        const opt = currentModel.reasoning?.find((o: ReasoningEffort) => o.id === currentModel.defaultReasoning);
         if (opt) return opt.label;
       }
       return 'Reasoning';
@@ -160,7 +164,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return r.charAt(0).toUpperCase() + r.slice(1);
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
-  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default';
+  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default');
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
@@ -357,6 +361,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
     }
 
+    if(service==='chatgpt'){
+      const accModels=scoped.filter(a=>a.provider==='chatgpt').flatMap(a=>a.models||[]);
+      const map=new Map<string,Model>();
+      for(const m of DEFAULT_CHATGPT_MODELS)map.set(m.id,{...m});
+      for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
+      map.set('default',{id:'default',label:'По умолчанию ChatGPT'});
+      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+    }
+
     const map=new Map<string,Model>();
     map.set('default',{id:'default',label:'По умолчанию (Auto)'});
     for(const m of DEFAULT_GEMINI_MODELS)if(m.id!=='default')map.set(m.id,{...m,label:`${m.label} · Gemini`});
@@ -366,6 +379,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     for(const m of DEFAULT_CODEX_MODELS)if(m.id!=='default')map.set(m.id,{...m,label:`${m.label} · Codex`});
     for(const a of scoped.filter(x=>x.provider==='codex')){
       for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · Codex`});
+    }
+    for(const m of DEFAULT_CHATGPT_MODELS)if(m.id!=='default')map.set(m.id,{...m,label:`${m.label} · ChatGPT`});
+    for(const a of scoped.filter(x=>x.provider==='chatgpt')){
+      for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · ChatGPT`});
     }
     return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
   });
@@ -386,6 +403,14 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return [...map.values()];
   });
 
+  allChatGPTModels=computed(()=>{
+    const accModels=this.accounts().filter(a=>a.provider==='chatgpt').flatMap(a=>a.models||[]);
+    const map=new Map<string,Model>();
+    for(const m of DEFAULT_CHATGPT_MODELS)if(m.id!=='default')map.set(m.id,{...m});
+    for(const m of accModels)if(m.id!=='default'&&!map.has(m.id))map.set(m.id,m);
+    return [...map.values()];
+  });
+
   disabledModelsCount=computed(()=>this.modelBlacklist().length);
 
   geminiEnabledCount=computed(()=>{
@@ -398,8 +423,13 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return this.allCodexModels().filter(m=>!blacklist.has(m.id)).length;
   });
 
-  totalModelsCount=computed(()=>this.allGeminiModels().length+this.allCodexModels().length);
-  totalEnabledCount=computed(()=>this.geminiEnabledCount()+this.codexEnabledCount());
+  chatgptEnabledCount=computed(()=>{
+    const blacklist=new Set(this.modelBlacklist());
+    return this.allChatGPTModels().filter(m=>!blacklist.has(m.id)).length;
+  });
+
+  totalModelsCount=computed(()=>this.allGeminiModels().length+this.allCodexModels().length+this.allChatGPTModels().length);
+  totalEnabledCount=computed(()=>this.geminiEnabledCount()+this.codexEnabledCount()+this.chatgptEnabledCount());
   providerModelSearch=signal('');
   providerModelFilter=signal<'all'|'enabled'|'disabled'>('all');
 
@@ -431,6 +461,20 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     });
   });
 
+  filteredChatGPTModels=computed(()=>{
+    const q=this.providerModelSearch().toLowerCase().trim();
+    const filter=this.providerModelFilter();
+    const blacklist=new Set(this.modelBlacklist());
+    return this.allChatGPTModels().filter(m=>{
+      const matchesQuery=!q||m.label.toLowerCase().includes(q)||m.id.toLowerCase().includes(q);
+      if(!matchesQuery)return false;
+      const isEnabled=!blacklist.has(m.id);
+      if(filter==='enabled')return isEnabled;
+      if(filter==='disabled')return !isEnabled;
+      return true;
+    });
+  });
+
   isModelEnabled(id:string):boolean{
     return !this.modelBlacklist().includes(id);
   }
@@ -453,19 +497,19 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
 
   async disableAllModels(){
-    const allIds=[...this.allGeminiModels().map(m=>m.id),...this.allCodexModels().map(m=>m.id)];
+    const allIds=[...this.allGeminiModels().map(m=>m.id),...this.allCodexModels().map(m=>m.id),...this.allChatGPTModels().map(m=>m.id)];
     await this.saveBlacklist(Array.from(new Set(allIds)));
   }
 
   async enableAllForProvider(provider:ProviderId){
-    const models=provider==='antigravity'?this.allGeminiModels():this.allCodexModels();
+    const models=provider==='antigravity'?this.allGeminiModels():provider==='codex'?this.allCodexModels():this.allChatGPTModels();
     const idsToRemove=new Set(models.map(m=>m.id));
     const updated=this.modelBlacklist().filter(id=>!idsToRemove.has(id));
     await this.saveBlacklist(updated);
   }
 
   async disableAllForProvider(provider:ProviderId){
-    const models=provider==='antigravity'?this.allGeminiModels():this.allCodexModels();
+    const models=provider==='antigravity'?this.allGeminiModels():provider==='codex'?this.allCodexModels():this.allChatGPTModels();
     const idsToAdd=models.map(m=>m.id);
     const updated=Array.from(new Set([...this.modelBlacklist(),...idsToAdd]));
     await this.saveBlacklist(updated);
@@ -474,8 +518,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async saveBlacklist(list:string[]){
     const previous=this.modelBlacklist();
     this.modelBlacklist.set(list);
-    if(list.includes(this.selectedModel)){
-      this.selectedModel='default';
+    if(list.includes(this.selectedModel())){
+      this.selectedModel.set('default');
       this.validateReasoning();
     }
     try{
@@ -508,12 +552,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
 
   reasoningOptions = computed(() => {
-    const currentModel = this.models().find(m => m.id === this.selectedModel);
+    const modelId = this.selectedModel();
+    const currentModel = this.models().find(m => m.id === modelId)
+                      || this.allGeminiModels().find(m => m.id === modelId)
+                      || this.allCodexModels().find(m => m.id === modelId);
     const options = currentModel?.reasoning;
     if (options && options.length > 0) {
       return [{ id: 'default', label: 'По умолчанию' }, ...options.filter(r => r.id !== 'default')];
     }
-    if (this.selectedModel === 'default') {
+    if (modelId === 'default') {
       return [
         { id: 'default', label: 'По умолчанию' },
         { id: 'high', label: 'Высокое (High)' },
@@ -525,12 +572,12 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
 
   onReasoningChange(val: string) {
-    this.selectedReasoning = val;
-    if (val !== 'default' && this.selectedModel === 'default') {
+    this.selectedReasoning.set(val);
+    if (val !== 'default' && this.selectedModel() === 'default') {
       if (this.selectedService() === 'codex') {
-        this.selectedModel = 'o3-mini';
+        this.selectedModel.set('o3-mini');
       } else {
-        this.selectedModel = 'gemini-3.8-flash';
+        this.selectedModel.set('gemini-3.8-flash');
       }
     }
     this.validateReasoning();
@@ -745,7 +792,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.isDemo=false;this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
   async logout(){this.stopVoiceInput();if(!this.isDemo)await this.api('/logout',{method:'POST'}).catch(()=>{});this.isDemo=false;this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.loggedIn.set(false);this.current.set(null);}
-  async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
+  async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
   async newSession(){
@@ -1255,7 +1302,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
-  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
+  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
   resetRun(){this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
   syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();void this.refreshTaskFiles();}}
@@ -1292,7 +1339,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
     this.scrollToBottom(true,'auto');
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel,reasoning:this.selectedReasoning,mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel(),reasoning:this.selectedReasoning(),mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
   }
 
   sendDemoMessage(prompt: string, s: ChatSession) {
@@ -1381,37 +1428,50 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.notice.set('Скопировано в буфер обмена');
   }
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
-  providerLabel(id?:ProviderId|string){return id==='codex'?'Codex':(id==='antigravity'||id==='gemini')?'Gemini':'';}
+  providerLabel(id?:ProviderId|string){return id==='codex'?'Codex':(id==='antigravity'||id==='gemini')?'Gemini':id==='chatgpt'?'ChatGPT':'';}
   limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
   windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 ч';if(minutes===10080)return 'Неделя';if(minutes===43200)return 'Месяц';if(minutes&&minutes%60===0)return `${minutes/60} ч`;return 'Окно';}
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Сброс ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
-  hasAccountsFor(service:ServiceId):boolean{if(service==='auto')return this.accounts().length>0;const provider:ProviderId=service==='gemini'?'antigravity':'codex';const pId=this.current()?.projectId;const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?this.accounts().filter(a=>a.runnerId===project.runnerId):this.accounts();return list.some(a=>a.provider===provider);}
-  selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();}
-  selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';this.selectedReasoning='default';}
+  hasAccountsFor(service:ServiceId):boolean{if(service==='auto')return this.accounts().length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId;const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?this.accounts().filter(a=>a.runnerId===project.runnerId):this.accounts();return list.some(a=>a.provider===provider);}
+  selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();}
+  selectAccount(id:string){this.selectedAccount=id;this.selectedModel.set('default');this.selectedReasoning.set('default');}
   selectModel(id:string){
-    this.selectedModel=id;
+    this.selectedModel.set(id);
     if(id!=='default'){
       const isGemini=this.allGeminiModels().some(m=>m.id===id);
       const isCodex=this.allCodexModels().some(m=>m.id===id);
-      if(isGemini && this.selectedService()==='codex'){
+      const isChatGPT=this.allChatGPTModels().some(m=>m.id===id);
+      if(isGemini){
         this.selectedService.set('gemini');
-      } else if(isCodex && this.selectedService()==='gemini'){
+        this.selectedAccount='gemini';
+      } else if(isCodex){
         this.selectedService.set('codex');
+        this.selectedAccount='codex';
+      } else if(isChatGPT){
+        this.selectedService.set('chatgpt');
+        this.selectedAccount='chatgpt';
       }
     }
-    const currentModel=this.models().find(m=>m.id===id);
-    if(currentModel?.defaultReasoning && (!this.selectedReasoning || this.selectedReasoning==='default')){
-      this.selectedReasoning=currentModel.defaultReasoning;
+    const currentModel=this.models().find(m=>m.id===id)
+                    ||this.allGeminiModels().find(m=>m.id===id)
+                    ||this.allCodexModels().find(m=>m.id===id)
+                    ||this.allChatGPTModels().find(m=>m.id===id);
+    if(currentModel?.defaultReasoning && (!this.selectedReasoning() || this.selectedReasoning()==='default')){
+      this.selectedReasoning.set(currentModel.defaultReasoning);
     }
     this.validateReasoning();
   }
   validateReasoning(){
-    const currentModel=this.models().find(m=>m.id===this.selectedModel);
-    const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning);
-    if(this.selectedModel!=='default' && this.selectedReasoning!=='default' && !reasoningExists){
-      this.selectedReasoning=currentModel?.defaultReasoning||'default';
+    const modelId=this.selectedModel();
+    const currentModel=this.models().find(m=>m.id===modelId)
+                    ||this.allGeminiModels().find(m=>m.id===modelId)
+                    ||this.allCodexModels().find(m=>m.id===modelId)
+                    ||this.allChatGPTModels().find(m=>m.id===modelId);
+    const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning());
+    if(modelId!=='default' && this.selectedReasoning()!=='default' && !reasoningExists){
+      this.selectedReasoning.set(currentModel?.defaultReasoning||'default');
     }
   }
   currentRunnerLabel():string{
@@ -1419,12 +1479,65 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if(name)return name;
     const prov=this.activeProvider();
     if(prov)return this.providerLabel(prov);
-    if(this.selectedModel!=='default'){
-      const m=this.models().find(x=>x.id===this.selectedModel);
-      if(m)return m.label.replace(/\s*·\s*(Gemini|Codex)$/,'');
+    const modelId=this.selectedModel();
+    if(modelId!=='default'){
+      const m=this.models().find(x=>x.id===modelId)
+           ||this.allGeminiModels().find(x=>x.id===modelId)
+           ||this.allCodexModels().find(x=>x.id===modelId)
+           ||this.allChatGPTModels().find(x=>x.id===modelId);
+      if(m)return m.label.replace(/\s*·\s*(Gemini|Codex|ChatGPT)$/,'');
     }
     const s=this.selectedService();
     return s==='gemini'?'Gemini':s==='codex'?'Codex':'ChatGPT';
+  }
+
+  chatgptSessionModal = signal(false);
+  selectedChatGPTAccount = signal<Account | null>(null);
+  chatgptSessionInput = '';
+  chatgptImporting = signal(false);
+
+  openChatGPTSessionModal(a: Account) {
+    this.selectedChatGPTAccount.set(a);
+    this.chatgptSessionInput = '';
+    this.chatgptSessionModal.set(true);
+  }
+
+  closeChatGPTSessionModal() {
+    this.chatgptSessionModal.set(false);
+    this.selectedChatGPTAccount.set(null);
+    this.chatgptSessionInput = '';
+  }
+
+  async saveChatGPTSession() {
+    const acc = this.selectedChatGPTAccount();
+    if (!acc) return;
+    const raw = this.chatgptSessionInput.trim();
+    if (!raw) return;
+    this.chatgptImporting.set(true);
+    this.error.set('');
+    try {
+      let payload: { sessionToken?: string; cookies?: any[] };
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) payload = { cookies: parsed };
+        else if (typeof parsed === 'object' && parsed !== null) payload = parsed;
+        else payload = { sessionToken: String(parsed) };
+      } catch {
+        payload = { sessionToken: raw };
+      }
+
+      await this.api(`/accounts/${acc.id}/chatgpt-session`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      this.notice.set('Сессия ChatGPT успешно сохранена!');
+      this.closeChatGPTSessionModal();
+      await this.refreshAccounts();
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.chatgptImporting.set(false);
+    }
   }
 
   handleChatClick(event: MouseEvent) {

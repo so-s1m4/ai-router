@@ -24,6 +24,7 @@ services:
       args:
         INSTALL_CODEX_CLI: ${INSTALL_CODEX_CLI:-false}
         INSTALL_AGY_CLI: ${INSTALL_AGY_CLI:-false}
+        INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-false}
     environment:
       ROUTER_SERVER_URL: http://frontend
       ROUTER_PAIRING_CODE: ${ROUTER_PAIRING_CODE:-}

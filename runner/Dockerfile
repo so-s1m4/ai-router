@@ -8,8 +8,12 @@ RUN npm run build
 FROM node:22-bookworm-slim
 ARG INSTALL_CODEX_CLI=false
 ARG INSTALL_AGY_CLI=false
+ARG INSTALL_CHROMIUM=false
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl bash git openssh-client ripgrep \
+  && if [ "$INSTALL_CHROMIUM" = "true" ]; then \
+       apt-get install -y --no-install-recommends chromium fonts-liberation libasound2 libnss3 libxss1; \
+     fi \
   && rm -rf /var/lib/apt/lists/* \
   && if [ "$INSTALL_CODEX_CLI" = "true" ]; then npm install -g @openai/codex; fi \
   && if [ "$INSTALL_AGY_CLI" = "true" ]; then \

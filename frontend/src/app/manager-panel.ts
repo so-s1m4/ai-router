@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideArrowLeft, LucideCopy, LucideKeyRound, LucidePlus, LucideRefreshCw, LucideSettings2, LucideTrash2, LucideX } from '@lucide/angular';
 
 type Runner = { id: string; name: string; managementOnline: boolean };
-type Account = { id: string; name: string; provider: 'codex' | 'antigravity'; runnerId?: string };
+type Account = { id: string; name: string; provider: 'codex' | 'antigravity' | 'chatgpt'; runnerId?: string };
 type Key = { id: string; label: string; publicKey: string; fingerprint: string };
 type Container = { id: string; name: string; image: string; state: string; status: string; composeProject: string | null };
 type Mount = { type: 'bind' | 'volume'; source: string; target: string; readOnly: boolean };

@@ -1,0 +1,288 @@
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import type { AccountModel, AccountStatus, Event, Job } from './cli.js';
+import { RunnerError } from './cli.js';
+
+export const DEFAULT_CHATGPT_MODELS: AccountModel[] = [
+  { id: 'default', label: 'По умолчанию ChatGPT' },
+  { id: 'gpt-4o', label: 'GPT-4o' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
+  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
+  { id: 'gpt-4.5', label: 'GPT-4.5' }
+];
+
+export interface ChatGPTSessionData {
+  sessionToken?: string;
+  cookies?: Array<{
+    name: string;
+    value: string;
+    domain?: string;
+    path?: string;
+    expires?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: 'Strict' | 'Lax' | 'None';
+  }>;
+}
+
+export function findChromePath(): string | null {
+  const envBin = process.env.CHROME_BIN || process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envBin && existsSync(envBin)) return envBin;
+
+  const candidates = [
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/snap/bin/chromium',
+    '/usr/bin/chrome'
+  ];
+  for (const bin of candidates) {
+    if (existsSync(bin)) return bin;
+  }
+  return null;
+}
+
+export async function saveChatGPTSession(home: string, data: ChatGPTSessionData): Promise<void> {
+  const sessionFile = path.join(home, 'chatgpt-session.json');
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  await writeFile(sessionFile + '.tmp', JSON.stringify(data, null, 2), { mode: 0o600 });
+  await rename(sessionFile + '.tmp', sessionFile);
+}
+
+export async function readChatGPTSession(home: string): Promise<ChatGPTSessionData | null> {
+  const sessionFile = path.join(home, 'chatgpt-session.json');
+  try {
+    const raw = await readFile(sessionFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as ChatGPTSessionData;
+  } catch {
+    return null;
+  }
+}
+
+export async function chatgptAccountStatus(home: string, _signal: AbortSignal): Promise<AccountStatus> {
+  const session = await readChatGPTSession(home);
+  const profileDir = path.join(home, 'chrome-profile');
+  const hasAuth = Boolean((session && (session.sessionToken || session.cookies?.length)) || existsSync(profileDir));
+  
+  return {
+    models: DEFAULT_CHATGPT_MODELS,
+    limits: undefined
+  };
+}
+
+export async function executeChatGPTWeb(
+  job: Job,
+  home: string,
+  cwd: string,
+  signal: AbortSignal,
+  emit: (e: Event) => void
+): Promise<string> {
+  if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+
+  const chromePath = findChromePath();
+  if (!chromePath) {
+    if (process.env.MOCK_MODE !== 'false') {
+      emit({ type: 'status', message: 'Демо-режим: Chromium не установлен' });
+      const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
+      for (const chunk of text.match(/.{1,24}/gu) || [text]) {
+        if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+        emit({ type: 'delta', text: chunk });
+        await new Promise(r => setTimeout(r, 35));
+      }
+      return text;
+    }
+    throw new RunnerError('Chromium не установлен в контейнере runner. Установите Chromium в Dockerfile.', 'unavailable');
+  }
+
+  const profileDir = path.join(home, 'chrome-profile');
+  await mkdir(profileDir, { recursive: true, mode: 0o700 });
+  const session = await readChatGPTSession(home);
+  const hasSavedAuth = Boolean((session && (session.sessionToken || session.cookies?.length)) || existsSync(profileDir));
+
+  if (!hasSavedAuth) {
+    throw new RunnerError('Требуется вход в аккаунт ChatGPT: сохраните session token или cookies в настройках аккаунта', 'auth');
+  }
+
+  emit({ type: 'status', message: 'Запуск браузера ChatGPT Web...' });
+
+  let browser: Browser | null = null;
+  const onAbort = () => {
+    if (browser) {
+      try { void browser.close(); } catch {}
+    }
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    browser = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: true,
+      userDataDir: profileDir,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--window-size=1280,800'
+      ],
+      defaultViewport: { width: 1280, height: 800 }
+    });
+
+    if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+
+    const pages = await browser.pages();
+    const page: Page = pages[0] || await browser.newPage();
+
+    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+
+    // Inject session token / cookies if configured
+    if (session?.cookies && Array.isArray(session.cookies) && session.cookies.length) {
+      for (const cookie of session.cookies) {
+        await page.setCookie({
+          name: cookie.name,
+          value: cookie.value,
+          domain: cookie.domain || '.chatgpt.com',
+          path: cookie.path || '/',
+          httpOnly: cookie.httpOnly ?? true,
+          secure: cookie.secure ?? true,
+          sameSite: cookie.sameSite || 'Lax'
+        });
+      }
+    } else if (session?.sessionToken) {
+      await page.setCookie({
+        name: '__Secure-next-auth.session-token',
+        value: session.sessionToken,
+        domain: '.chatgpt.com',
+        path: '/',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax'
+      });
+    }
+
+    emit({ type: 'status', message: 'Открытие chatgpt.com...' });
+
+    const targetUrl = (job.model && job.model !== 'default')
+      ? `https://chatgpt.com/?model=${encodeURIComponent(job.model)}`
+      : 'https://chatgpt.com/';
+
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+
+    if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+
+    const title = await page.title();
+    const bodyText = await page.evaluate(() => document.body?.innerText || '');
+    if (title.includes('Just a moment...') || bodyText.includes('Cloudflare') || bodyText.includes('Verify you are human')) {
+      throw new RunnerError('Cloudflare заблокировал доступ к chatgpt.com. Для работы на сервере требуется прокси или домашний runner.', 'rate_limit');
+    }
+
+    // Wait for the prompt input or detect logged out state
+    try {
+      await page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 15000 });
+    } catch {
+      const isLoggedOut = await page.evaluate(() => {
+        return Boolean(document.querySelector('a[href*="/login"], button[data-testid="login-button"], [data-testid="welcome-login-button"]'));
+      });
+      if (isLoggedOut) {
+        throw new RunnerError('Сессия ChatGPT истекла или недействительна. Обновите session token / cookies.', 'auth');
+      }
+      throw new RunnerError('Интерфейс ChatGPT не загрузился', 'unavailable');
+    }
+
+    emit({ type: 'status', message: 'Отправка сообщения в ChatGPT...' });
+
+    // Focus and fill prompt
+    await page.evaluate((promptText) => {
+      const el = document.querySelector('#prompt-textarea') || document.querySelector('div[contenteditable="true"]') || document.querySelector('textarea');
+      if (!el) throw new Error('Поле ввода не найдено');
+      if (el.tagName === 'TEXTAREA') {
+        (el as HTMLTextAreaElement).value = promptText;
+      } else {
+        (el as HTMLElement).innerText = promptText;
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, job.prompt);
+
+    await new Promise(r => setTimeout(r, 200));
+
+    // Click send or press Enter
+    const sent = await page.evaluate(() => {
+      const btn = document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"]') as HTMLButtonElement | null;
+      if (btn && !btn.disabled) {
+        btn.click();
+        return true;
+      }
+      return false;
+    });
+
+    if (!sent) {
+      await page.keyboard.press('Enter');
+    }
+
+    emit({ type: 'status', message: 'Генерация ответа ChatGPT...' });
+
+    let fullText = '';
+    let lastLength = 0;
+    const startTime = Date.now();
+    const maxWaitMs = 180000;
+
+    while (!signal.aborted && (Date.now() - startTime < maxWaitMs)) {
+      await new Promise(r => setTimeout(r, 250));
+
+      const assistantText = await page.evaluate(() => {
+        const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+        if (!messages.length) return '';
+        const lastMsg = messages[messages.length - 1];
+        const textContainer = lastMsg.querySelector('.markdown') || lastMsg;
+        return (textContainer as HTMLElement).innerText || '';
+      });
+
+      if (assistantText.length > lastLength) {
+        const delta = assistantText.slice(lastLength);
+        lastLength = assistantText.length;
+        fullText = assistantText;
+        emit({ type: 'delta', text: delta });
+      }
+
+      const isGenerating = await page.evaluate(() => {
+        return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming'));
+      });
+
+      if (fullText.length > 0 && !isGenerating) {
+        await new Promise(r => setTimeout(r, 400));
+        const finalText = await page.evaluate(() => {
+          const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+          if (!messages.length) return '';
+          const lastMsg = messages[messages.length - 1];
+          const textContainer = lastMsg.querySelector('.markdown') || lastMsg;
+          return (textContainer as HTMLElement).innerText || '';
+        });
+        if (finalText.length > lastLength) {
+          emit({ type: 'delta', text: finalText.slice(lastLength) });
+          fullText = finalText;
+        }
+        break;
+      }
+    }
+
+    if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+    if (!fullText.trim()) throw new RunnerError('ChatGPT не вернул ответ', 'failed');
+    return fullText;
+
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    if (browser) {
+      try { await browser.close(); } catch {}
+    }
+  }
+}
