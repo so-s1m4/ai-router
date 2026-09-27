@@ -142,24 +142,28 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   sidebarSearch = signal('');
   isDemo = false;
   currentServiceLabel = computed(() => {
+    if (this.mode() === 'chat') return 'ChatGPT';
     const s = this.selectedService();
     if (s === 'gemini') return 'Gemini';
     if (s === 'codex') return 'Codex';
+    if (s === 'chatgpt') return 'ChatGPT';
     return 'Auto';
   });
   currentModelBadgeLabel = computed(() => {
     const modelId = this.selectedModel();
     if (modelId === 'default') {
       const s = this.selectedService();
+      if (this.mode() === 'chat' || s === 'chatgpt') return 'ChatGPT';
       if (s === 'gemini') return 'Gemini';
       if (s === 'codex') return 'Codex';
       return 'Модель';
     }
     const m = this.models().find(item => item.id === modelId)
            || this.allGeminiModels().find(item => item.id === modelId)
-           || this.allCodexModels().find(item => item.id === modelId);
+           || this.allCodexModels().find(item => item.id === modelId)
+           || this.allChatGPTModels().find(item => item.id === modelId);
     if (!m) return modelId;
-    return m.label.replace(/\s*·\s*(Gemini|Codex)$/, '');
+    return m.label.replace(/\s*·\s*(Gemini|Codex|ChatGPT)$/, '');
   });
   currentReasoningBadgeLabel = computed(() => {
     const r = this.selectedReasoning();
@@ -167,7 +171,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if (!r || r === 'default') {
       const currentModel = this.models().find(m => m.id === modelId)
                         || this.allGeminiModels().find(m => m.id === modelId)
-                        || this.allCodexModels().find(m => m.id === modelId);
+                        || this.allCodexModels().find(m => m.id === modelId)
+                        || this.allChatGPTModels().find(m => m.id === modelId);
       if (currentModel?.defaultReasoning) {
         const opt = currentModel.reasoning?.find((o: ReasoningEffort) => o.id === currentModel.defaultReasoning);
         if (opt) return opt.label;
@@ -183,7 +188,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return r.charAt(0).toUpperCase() + r.slice(1);
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
-  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default');
+  draft=''; selectedService=signal<ServiceId>('chatgpt'); selectedAccount='chatgpt'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default');
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
@@ -355,12 +360,22 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
   models=computed(()=>{
-    const service=this.selectedService();
+    const blacklist=new Set(this.modelBlacklist());
     const allAccounts=this.accounts();
     const pId=this.current()?.projectId;
     const project=pId?this.projects().find(p=>p.id===pId):null;
     const scoped=project?allAccounts.filter(a=>a.runnerId===project.runnerId):allAccounts;
-    const blacklist=new Set(this.modelBlacklist());
+
+    if(this.mode() === 'chat'){
+      const accModels=scoped.filter(a=>a.provider==='chatgpt').flatMap(a=>a.models||[]);
+      const map=new Map<string,Model>();
+      for(const m of DEFAULT_CHATGPT_MODELS)map.set(m.id,{...m});
+      for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
+      map.set('default',{id:'default',label:'По умолчанию ChatGPT'});
+      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+    }
+
+    const service=this.selectedService();
 
     if(service==='gemini'){
       const accModels=scoped.filter(a=>a.provider==='antigravity').flatMap(a=>a.models||[]);
@@ -574,12 +589,16 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     const modelId = this.selectedModel();
     const currentModel = this.models().find(m => m.id === modelId)
                       || this.allGeminiModels().find(m => m.id === modelId)
-                      || this.allCodexModels().find(m => m.id === modelId);
+                      || this.allCodexModels().find(m => m.id === modelId)
+                      || this.allChatGPTModels().find(m => m.id === modelId);
     const options = currentModel?.reasoning;
     if (options && options.length > 0) {
       return [{ id: 'default', label: 'По умолчанию' }, ...options.filter(r => r.id !== 'default')];
     }
     if (modelId === 'default') {
+      if (this.mode() === 'chat') {
+        return [];
+      }
       return [
         { id: 'default', label: 'По умолчанию' },
         { id: 'high', label: 'Высокое (High)' },
@@ -587,7 +606,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         { id: 'low', label: 'Низкое (Low)' }
       ];
     }
-    return [{ id: 'default', label: 'По умолчанию' }];
+    return [];
   });
 
   onReasoningChange(val: string) {
@@ -649,9 +668,37 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   setMode(m: 'chat' | 'work') {
     this.mode.set(m);
     if (m === 'chat') {
-      this.showPage('chat');
+      this.selectedService.set('chatgpt');
+      this.selectedAccount = 'chatgpt';
+      this.selectedProjectId.set('');
+      if (this.current()?.projectId) {
+        const chatSession = this.sessions().find(s => !s.projectId);
+        if (chatSession) {
+          void this.openSession(chatSession.id);
+        } else {
+          this.newSession();
+        }
+      } else {
+        this.showPage('chat');
+      }
+      const available = this.models();
+      if (!available.some(item => item.id === this.selectedModel())) {
+        this.selectedModel.set('default');
+      }
+      this.validateReasoning();
     } else {
-      this.showPage('projects');
+      if (this.selectedService() === 'chatgpt') {
+        this.selectedService.set('auto');
+        this.selectedAccount = 'auto';
+      }
+      if (this.page() === 'chat' && !this.current()?.projectId) {
+        this.showPage('projects');
+      }
+      const available = this.models();
+      if (!available.some(item => item.id === this.selectedModel())) {
+        this.selectedModel.set('default');
+      }
+      this.validateReasoning();
     }
   }
 
@@ -814,7 +861,35 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string;isOwner:boolean}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.isDemo=false;this.username=me.username;this.isOwner.set(!!me.isOwner);this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
   async logout(){this.stopVoiceInput();if(!this.isDemo)await this.api('/logout',{method:'POST'}).catch(()=>{});this.isDemo=false;this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.loggedIn.set(false);this.current.set(null);}
-  async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';const cleanSessions=sortSessions(sessions);this.sessions.set(cleanSessions);void this.refreshPreviews();if(cleanSessions.length)await this.openSession(cleanSessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
+  async load(){
+    const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([
+      this.api<Account[]>('/accounts'),
+      this.api<Runner[]>('/runners'),
+      this.api<Project[]>('/projects'),
+      this.api<ChatSession[]>('/sessions'),
+      this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))
+    ]);
+    this.accounts.set(accounts);
+    this.runners.set(runners);
+    this.projects.set(projects);
+    if(blacklistRes?.blacklist){
+      this.modelBlacklist.set(blacklistRes.blacklist);
+    }
+    this.mode.set('chat');
+    this.selectedService.set('chatgpt');
+    this.selectedAccount='chatgpt';
+    const available=this.models();
+    if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');
+    this.validateReasoning();
+    this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';
+    const cleanSessions=sortSessions(sessions);
+    this.sessions.set(cleanSessions);
+    void this.refreshPreviews();
+    const chatSessions = cleanSessions.filter(s => !s.projectId);
+    if(chatSessions.length) await this.openSession(chatSessions[0].id);
+    else if(cleanSessions.length) await this.openSession(cleanSessions[0].id);
+    else this.newSession();
+  }
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
   newSession(){
@@ -826,6 +901,11 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.collapsedDirs.set(new Set());
     this.filesFilter.set('');
     this.filesOpen.set(false);
+    if (this.mode() === 'chat') {
+      this.selectedProjectId.set('');
+      this.selectedService.set('chatgpt');
+      this.selectedAccount = 'chatgpt';
+    }
     this.page.set('chat');
     this.resetRun();
     this.error.set('');
@@ -844,6 +924,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         this.filesFilter.set('');
         this.filesOpen.set(false);
         this.selectedProjectId.set(s.projectId||'');
+        if (s.projectId) {
+          this.mode.set('work');
+          if (this.selectedService() === 'chatgpt') {
+            this.selectedService.set('auto');
+            this.selectedAccount = 'auto';
+          }
+        } else {
+          this.mode.set('chat');
+          this.selectedService.set('chatgpt');
+          this.selectedAccount = 'chatgpt';
+        }
         this.resetRun();
         this.error.set('');
         this.page.set('chat');
@@ -860,6 +951,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       this.filesFilter.set('');
       this.filesOpen.set(false);
       this.selectedProjectId.set(s.projectId||'');
+      if (s.projectId) {
+        this.mode.set('work');
+        if (this.selectedService() === 'chatgpt') {
+          this.selectedService.set('auto');
+          this.selectedAccount = 'auto';
+        }
+      } else {
+        this.mode.set('chat');
+        this.selectedService.set('chatgpt');
+        this.selectedAccount = 'chatgpt';
+      }
       this.resetRun();
       this.error.set('');
       this.page.set('chat');
@@ -1036,7 +1138,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   filteredRecentSessions = computed(() => {
     const query = this.sidebarSearch().trim().toLowerCase();
-    const all = sortSessions(this.sessions());
+    const isChat = this.mode() === 'chat';
+    const all = sortSessions(this.sessions()).filter(s => isChat ? !s.projectId : Boolean(s.projectId));
     if (!query) return all;
     return all.filter(s => s.title.toLowerCase().includes(query));
   });
@@ -1048,8 +1151,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return all.filter(p => p.name.toLowerCase().includes(query));
   });
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
-  selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
-  newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
+  selectProject(id:string){this.selectedProjectId.set(id);this.setMode('work');this.page.set('projects');this.mobileMenu.set(false);}
+  newSessionFor(projectId:string){this.setMode('work');this.selectedProjectId.set(projectId);this.newSession();}
   async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);this.newSession();}catch(e){this.error.set((e as Error).message);}}
   onDragEnter(event: DragEvent) {
     if (this.page() !== 'chat' || !this.loggedIn()) return;
@@ -1289,7 +1392,26 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     void this.uploadFiles(files);
     input.value = '';
   }
-  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'){if(page==='users'&&!this.isOwner())return;this.stopVoiceInput();this.page.set(page);this.mobileMenu.set(false);if(page==='runners')this.refreshRunners();else this.managedRunner.set(null);if(page==='sites')void this.refreshPreviews();if(page==='providers')void this.refreshProviders();if(page==='users')void this.refreshUsers();if(page==='chat')this.ensureChatScrollAttached(true);else this.cleanupResizeObserver();}
+  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'){
+    if(page==='users'&&!this.isOwner())return;
+    this.stopVoiceInput();
+    this.page.set(page);
+    this.mobileMenu.set(false);
+    if(page!=='chat'){
+      this.mode.set('work');
+      if(this.selectedService()==='chatgpt'){
+        this.selectedService.set('auto');
+        this.selectedAccount='auto';
+      }
+    }
+    if(page==='runners')this.refreshRunners();
+    else this.managedRunner.set(null);
+    if(page==='sites')void this.refreshPreviews();
+    if(page==='providers')void this.refreshProviders();
+    if(page==='users')void this.refreshUsers();
+    if(page==='chat')this.ensureChatScrollAttached(true);
+    else this.cleanupResizeObserver();
+  }
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
@@ -1326,7 +1448,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         this.current.set(s);
       } else {
         try {
-          const projectId=this.selectedProjectId()||undefined;
+          const projectId=this.mode() === 'chat' ? undefined : (this.selectedProjectId()||undefined);
           s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});
           this.current.set(s);
         } catch(e) {
@@ -1362,7 +1484,9 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.sessions.update(list=>sortSessions([updatedSession,...list.filter(x=>x.id!==updatedSession.id)]));
     this.scrollToBottom(true,'auto');
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel(),reasoning:this.selectedReasoning(),mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
+    const targetService = this.mode() === 'chat' ? 'chatgpt' : this.selectedService();
+    const targetMode = this.mode() === 'chat' ? 'chat' : 'task';
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
   }
 
   sendDemoMessage(prompt: string, s: ChatSession) {
@@ -1477,7 +1601,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel.set('default');this.selectedReasoning.set('default');}
   selectModel(id:string){
     this.selectedModel.set(id);
-    if(id!=='default'){
+    if(this.mode() === 'chat'){
+      this.selectedService.set('chatgpt');
+      this.selectedAccount='chatgpt';
+    } else if(id!=='default'){
       const isGemini=this.allGeminiModels().some(m=>m.id===id);
       const isCodex=this.allCodexModels().some(m=>m.id===id);
       const isChatGPT=this.allChatGPTModels().some(m=>m.id===id);

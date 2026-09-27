@@ -62,17 +62,17 @@
     <!-- 1. LEFT MINI RAIL (DOCK) -->
     <nav class="app-rail" aria-label="Quick Rail">
       <div class="rail-group">
-        <button class="rail-btn" [class.active]="page()==='chat'" (click)="setMode('chat')" title="Chat">
+        <button class="rail-btn" [class.active]="mode()==='chat'" (click)="setMode('chat')" title="Chat (ChatGPT)">
           <svg lucideHouse [size]="18"></svg>
         </button>
-        <button class="rail-btn" [class.active]="page()==='projects'" (click)="setMode('work')" title="Проекты (Workspaces)">
+        <button class="rail-btn" [class.active]="mode()==='work' && page()==='projects'" (click)="setMode('work'); showPage('projects')" title="Проекты (Workspaces)">
           <svg lucideLibrary [size]="18"></svg>
         </button>
-        <button class="rail-btn" [class.active]="page()==='providers'" (click)="showPage('providers')" title="Провайдеры и модели">
-          <svg lucideCompass [size]="18"></svg>
-        </button>
-        <button class="rail-btn" [class.active]="page()==='sites'" (click)="showPage('sites')" title="Сайты и превью" aria-label="Сайты и превью">
+        <button class="rail-btn" [class.active]="mode()==='work' && page()==='sites'" (click)="setMode('work'); showPage('sites')" title="Сайты и превью" aria-label="Сайты и превью">
           <svg lucideGlobe2 [size]="18"></svg>
+        </button>
+        <button class="rail-btn" [class.active]="mode()==='work' && page()==='providers'" (click)="setMode('work'); showPage('providers')" title="Провайдеры и модели">
+          <svg lucideCompass [size]="18"></svg>
         </button>
 
         <div class="rail-dropdown-wrapper">
@@ -81,11 +81,11 @@
           </button>
           @if(moreMenuOpen()) {
             <div class="rail-popover-menu" (click)="moreMenuOpen.set(false)">
-              <button class="popover-item" (click)="showPage('connections')">
+              <button class="popover-item" (click)="setMode('work'); showPage('connections')">
                 <svg lucidePlugZap [size]="15"></svg>
                 <span>Подключения</span>
               </button>
-              <button class="popover-item" (click)="showPage('runners')">
+              <button class="popover-item" (click)="setMode('work'); showPage('runners')">
                 <svg lucideServer [size]="15"></svg>
                 <span>Исполнители (Runners)</span>
               </button>
@@ -139,8 +139,8 @@
     <!-- 2. SECONDARY SIDEBAR (260px COLLAPSIBLE) -->
     <aside class="sidebar" [class.collapsed]="!sidebarOpen()" [class.drawer-open]="mobileMenu()">
       <div class="sidebar-header">
-        <button class="sidebar-brand-btn" (click)="newSession()" title="ChatGPT">
-          <span>ChatGPT</span>
+        <button class="sidebar-brand-btn" (click)="newSession()" [title]="mode()==='chat' ? 'ChatGPT' : 'Workspaces'">
+          <span>{{mode()==='chat' ? 'ChatGPT' : 'Workspaces'}}</span>
         </button>
         <div class="sidebar-header-actions">
           <button class="sidebar-icon-btn" (click)="searchOpen.set(!searchOpen())" title="Поиск">
@@ -174,19 +174,19 @@
 
       <div class="mobile-drawer-content">
       <nav class="mobile-drawer-links" aria-label="Разделы приложения">
-        <button [class.active]="page()==='chat'" (click)="showPage('chat')"><svg lucideHouse [size]="21"></svg><span>Чаты</span></button>
-        <button [class.active]="page()==='projects'" (click)="showPage('projects')"><svg lucideFolder [size]="21"></svg><span>Проекты</span></button>
-        <button [class.active]="page()==='providers'" (click)="showPage('providers')"><svg lucideCompass [size]="21"></svg><span>Провайдеры и модели</span></button>
-        <button [class.active]="page()==='connections'" (click)="showPage('connections')"><svg lucidePlugZap [size]="21"></svg><span>Подключения</span></button>
-        <button [class.active]="page()==='runners'" (click)="showPage('runners')"><svg lucideServer [size]="21"></svg><span>Исполнители</span></button>
-        <button [class.active]="page()==='sites'" (click)="showPage('sites')"><svg lucideGlobe2 [size]="21"></svg><span>Сайты и превью</span></button>
+        <button [class.active]="mode()==='chat'" (click)="setMode('chat')"><svg lucideHouse [size]="21"></svg><span>ChatGPT</span></button>
+        <button [class.active]="mode()==='work' && page()==='projects'" (click)="setMode('work'); showPage('projects')"><svg lucideFolder [size]="21"></svg><span>Проекты</span></button>
+        <button [class.active]="mode()==='work' && page()==='sites'" (click)="setMode('work'); showPage('sites')"><svg lucideGlobe2 [size]="21"></svg><span>Сайты и превью</span></button>
+        <button [class.active]="mode()==='work' && page()==='providers'" (click)="setMode('work'); showPage('providers')"><svg lucideCompass [size]="21"></svg><span>Провайдеры и модели</span></button>
+        <button [class.active]="mode()==='work' && page()==='connections'" (click)="setMode('work'); showPage('connections')"><svg lucidePlugZap [size]="21"></svg><span>Подключения</span></button>
+        <button [class.active]="mode()==='work' && page()==='runners'" (click)="setMode('work'); showPage('runners')"><svg lucideServer [size]="21"></svg><span>Исполнители</span></button>
         @if(isOwner()){<button [class.active]="page()==='users'" (click)="showPage('users')"><svg lucideSettings2 [size]="21"></svg><span>Пользователи</span></button>}
       </nav>
 
       <div class="sidebar-scroll">
         <!-- RECENTS SECTION -->
         <div class="sidebar-section">
-          <div class="section-label"><span>Recents</span></div>
+          <div class="section-label"><span>{{mode()==='chat' ? 'Recents' : 'Диалоги'}}</span></div>
           <div class="section-list">
             @for(s of filteredRecentSessions(); track s.id) {
               <button class="sidebar-item" [class.active]="current()?.id === s.id && page() === 'chat'" (click)="openSession(s.id)" [title]="s.title || 'Новый чат'">
@@ -199,48 +199,50 @@
           </div>
         </div>
 
-        <!-- PROJECTS SECTION -->
-        <div class="sidebar-section">
-          <div class="section-label">
-            <span>Projects</span>
-            <button class="btn-subtle-add" (click)="createProject()" title="Новый проект">
-              <svg lucidePlus [size]="14"></svg>
-            </button>
-          </div>
-          <div class="section-list">
-            @for(p of filteredProjects(); track p.id || p.name) {
-              <div class="tree-folder">
-                <button class="tree-folder-head" (click)="toggleProjectExpand(p.id || p.name)">
-                  @if(projectIcon(p) === 'graduation-cap') {
-                    <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
-                  } @else if(projectIcon(p) === 'origami') {
-                    <svg lucideOrigami [size]="16" class="icon-origami"></svg>
-                  } @else if(isProjectExpanded(p)) {
-                    <svg lucideFolderOpen [size]="16" class="item-icon-folder"></svg>
-                  } @else {
-                    <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
-                  }
-                  <span class="truncate">{{p.name}}</span>
-                </button>
+        @if(mode() === 'work') {
+          <!-- PROJECTS SECTION -->
+          <div class="sidebar-section">
+            <div class="section-label">
+              <span>Projects</span>
+              <button class="btn-subtle-add" (click)="createProject()" title="Новый проект">
+                <svg lucidePlus [size]="14"></svg>
+              </button>
+            </div>
+            <div class="section-list">
+              @for(p of filteredProjects(); track p.id || p.name) {
+                <div class="tree-folder">
+                  <button class="tree-folder-head" (click)="toggleProjectExpand(p.id || p.name)">
+                    @if(projectIcon(p) === 'graduation-cap') {
+                      <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
+                    } @else if(projectIcon(p) === 'origami') {
+                      <svg lucideOrigami [size]="16" class="icon-origami"></svg>
+                    } @else if(isProjectExpanded(p)) {
+                      <svg lucideFolderOpen [size]="16" class="item-icon-folder"></svg>
+                    } @else {
+                      <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
+                    }
+                    <span class="truncate">{{p.name}}</span>
+                  </button>
 
-                @if(isProjectExpanded(p)) {
-                  <div class="tree-sub-list">
-                    @for(c of chatsForProject(p).slice(0, 4); track c.id) {
-                      <button class="tree-sub-item truncate" [class.active]="current()?.id === c.id" (click)="openSession(c.id)" [title]="c.title">
-                        {{c.title}}
-                      </button>
-                    }
-                    @if(chatsForProject(p).length > 4) {
-                      <button class="tree-sub-item tree-sub-more" (click)="selectProject(p.id)">
-                        Show more
-                      </button>
-                    }
-                  </div>
-                }
-              </div>
-            }
+                  @if(isProjectExpanded(p)) {
+                    <div class="tree-sub-list">
+                      @for(c of chatsForProject(p).slice(0, 4); track c.id) {
+                        <button class="tree-sub-item truncate" [class.active]="current()?.id === c.id" (click)="openSession(c.id)" [title]="c.title">
+                          {{c.title}}
+                        </button>
+                      }
+                      @if(chatsForProject(p).length > 4) {
+                        <button class="tree-sub-item tree-sub-more" (click)="selectProject(p.id)">
+                          Show more
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
           </div>
-        </div>
+        }
 
       </div>
       </div>
@@ -270,10 +272,10 @@
 
         <div class="topbar-center">
           <div class="segmented-toggle" role="tablist">
-            <button class="segmented-btn" [class.active]="page()==='chat'" (click)="setMode('chat')" role="tab">Chat</button>
-            <button class="segmented-btn" [class.active]="page()==='projects'" (click)="setMode('work')" role="tab">Work</button>
+            <button class="segmented-btn" [class.active]="mode()==='chat'" (click)="setMode('chat')" role="tab">Chat</button>
+            <button class="segmented-btn" [class.active]="mode()==='work'" (click)="setMode('work')" role="tab">Work</button>
           </div>
-          <span class="mobile-page-title">{{page()==='chat' ? 'Чаты' : page()==='projects' ? 'Проекты' : page()==='sites' ? 'Сайты' : page()==='providers' ? 'Модели' : page()==='connections' ? 'Подключения' : page()==='users' ? 'Пользователи' : 'Исполнители'}}</span>
+          <span class="mobile-page-title">{{mode()==='chat' ? 'ChatGPT' : page()==='projects' ? 'Проекты' : page()==='sites' ? 'Сайты' : page()==='providers' ? 'Модели' : page()==='connections' ? 'Подключения' : page()==='users' ? 'Пользователи' : 'Исполнители'}}</span>
         </div>
 
         <div class="topbar-right">
@@ -281,7 +283,7 @@
             <button class="topbar-nav-arrow mobile-new-chat" (click)="newSession()" aria-label="Новый чат" title="Новый чат"><svg lucideSquarePen [size]="19"></svg></button>
           }
           @if(page()==='chat') {
-            @if(taskFiles().length) {
+            @if(mode()==='work' && taskFiles().length) {
               <button class="btn-topbar-files" (click)="toggleTaskFiles()" title="Файлы задачи">
                 <svg lucideDownload [size]="13"></svg>
                 <span>Files ({{taskFiles().length}})</span>
@@ -481,7 +483,7 @@
                             [(ngModel)]="draft"
                             (input)="adjustHeroTextareaHeight()"
                             (paste)="onPaste($event)"
-                            placeholder="Ask ChatGPT"
+                            [placeholder]="mode() === 'chat' ? 'Ask ChatGPT' : 'Ask Codex or Gemini for project...'"
                             rows="1"
                             (keydown)="onComposerEnter($event)"></textarea>
                   @if(!draft) {
@@ -491,18 +493,26 @@
 
                 <div class="pill-controls">
                   <!-- SERVICE / PROVIDER PILL -->
-                  <div class="pill-select-wrapper" title="Провайдер ИИ">
-                    <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" class="pill-select-overlay" aria-label="Провайдер">
-                      <option value="auto">Auto</option>
-                      <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
-                      <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
-                      <option value="chatgpt">ChatGPT{{hasAccountsFor('chatgpt') ? '' : ' (!)'}}</option>
-                    </select>
-                    <button class="pill-model-badge" type="button" tabindex="-1">
-                      <span>{{currentServiceLabel()}}</span>
-                      <svg lucideChevronDown [size]="12"></svg>
-                    </button>
-                  </div>
+                  @if(mode() === 'work') {
+                    <div class="pill-select-wrapper" title="Провайдер ИИ">
+                      <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" class="pill-select-overlay" aria-label="Провайдер">
+                        <option value="auto">Auto</option>
+                        <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
+                        <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
+                        <option value="chatgpt">ChatGPT{{hasAccountsFor('chatgpt') ? '' : ' (!)'}}</option>
+                      </select>
+                      <button class="pill-model-badge" type="button" tabindex="-1">
+                        <span>{{currentServiceLabel()}}</span>
+                        <svg lucideChevronDown [size]="12"></svg>
+                      </button>
+                    </div>
+                  } @else {
+                    <div class="pill-select-wrapper" title="ChatGPT">
+                      <button class="pill-model-badge pill-model-static" type="button" tabindex="-1">
+                        <span>ChatGPT</span>
+                      </button>
+                    </div>
+                  }
 
                   <!-- MODEL PILL -->
                   <div class="pill-select-wrapper" title="Модель">
@@ -678,25 +688,33 @@
                           [(ngModel)]="draft"
                           (input)="adjustTextareaHeight()"
                           (paste)="onPaste($event)"
-                          placeholder="Message ChatGPT"
+                          [placeholder]="mode() === 'chat' ? 'Message ChatGPT' : 'Message project assistant...'"
                           rows="1"
                           (keydown)="onComposerEnter($event)"></textarea>
               </div>
 
               <div class="pill-controls">
                 <!-- SERVICE / PROVIDER PILL -->
-                <div class="pill-select-wrapper" title="Провайдер ИИ">
-                  <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" class="pill-select-overlay" aria-label="Провайдер">
-                    <option value="auto">Auto</option>
-                    <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
-                    <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
-                    <option value="chatgpt">ChatGPT{{hasAccountsFor('chatgpt') ? '' : ' (!)'}}</option>
-                  </select>
-                  <button class="pill-model-badge" type="button" tabindex="-1">
-                    <span>{{currentServiceLabel()}}</span>
-                    <svg lucideChevronDown [size]="12"></svg>
-                  </button>
-                </div>
+                @if(mode() === 'work') {
+                  <div class="pill-select-wrapper" title="Провайдер ИИ">
+                    <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" class="pill-select-overlay" aria-label="Провайдер">
+                      <option value="auto">Auto</option>
+                      <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
+                      <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
+                      <option value="chatgpt">ChatGPT{{hasAccountsFor('chatgpt') ? '' : ' (!)'}}</option>
+                    </select>
+                    <button class="pill-model-badge" type="button" tabindex="-1">
+                      <span>{{currentServiceLabel()}}</span>
+                      <svg lucideChevronDown [size]="12"></svg>
+                    </button>
+                  </div>
+                } @else {
+                  <div class="pill-select-wrapper" title="ChatGPT">
+                    <button class="pill-model-badge pill-model-static" type="button" tabindex="-1">
+                      <span>ChatGPT</span>
+                    </button>
+                  </div>
+                }
 
                 <!-- MODEL PILL -->
                 <div class="pill-select-wrapper" title="Модель">

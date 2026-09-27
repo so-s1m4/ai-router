@@ -923,6 +923,14 @@
   color: #e5e5e5;
 }
 
+.pill-model-static {
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #ececec;
+  font-weight: 600;
+}
+
 .pill-model-active {
   background: rgba(255, 255, 255, 0.1) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
@@ -2824,10 +2832,11 @@
   .desktop-only { display: none; }
 
   .app-rail { display: none; }
-  .desktop-nav-toggle, .desktop-new-chat, .desktop-chat-refresh, .segmented-toggle { display: none; }
+  .desktop-nav-toggle, .desktop-new-chat, .desktop-chat-refresh { display: none; }
+  .segmented-toggle { display: flex; }
+  .mobile-page-title { display: none; }
   .mobile-menu-toggle, .mobile-new-chat { display: grid; place-items: center; width: 40px; height: 40px; }
-  .mobile-page-title { display: block; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
-  .topbar-center { position: static; transform: none; }
+  .topbar-center { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; }
   .topbar { min-height: calc(52px + env(safe-area-inset-top)); height: calc(52px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
   .topbar-right { margin-left: auto; }
   .btn-topbar-files span { display: none; }
