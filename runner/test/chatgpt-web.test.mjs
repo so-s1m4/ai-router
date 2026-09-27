@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { accountStatus, execute } from '../dist/cli.js';
-import { saveChatGPTSession, readChatGPTSession, DEFAULT_CHATGPT_MODELS } from '../dist/chatgpt-web.js';
+const runnerDataDir = await mkdtemp(path.join(tmpdir(), 'chatgpt-runner-'));
+process.env.RUNNER_DATA_DIR = runnerDataDir;
+after(() => rm(runnerDataDir, { recursive: true, force: true }));
+
+const { accountStatus, execute } = await import('../dist/cli.js');
+const { saveChatGPTSession, readChatGPTSession } = await import('../dist/chatgpt-web.js');
 
 test('ChatGPT Web returns default models in accountStatus', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'chatgpt-test-'));

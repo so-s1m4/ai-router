@@ -71,7 +71,9 @@ jobs:
         with:
           context: runner
           push: true
-          build-args: INSTALL_CODEX_CLI=true
+          build-args: |
+            INSTALL_CODEX_CLI=true
+            INSTALL_AGY_CLI=true
           tags: |
             ghcr.io/${{ steps.names.outputs.owner }}/ai-router-runner:latest
             ghcr.io/${{ steps.names.outputs.owner }}/ai-router-runner:${{ github.sha }}
