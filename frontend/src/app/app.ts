@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import {
   LucideArrowUp, LucideArrowUpRight, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
-  LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass,
+  LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideCompass,
   LucideCopy, LucideDownload, LucideEllipsis, LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
   LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft,
@@ -112,7 +112,7 @@ interface FileNodeInternal {
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck,
-    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCompass, LucideCopy, LucideDownload, LucideEllipsis,
+    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideCompass, LucideCopy, LucideDownload, LucideEllipsis,
     LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideHouse, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
     LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideUploadCloud, LucideX,
@@ -1031,18 +1031,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
 
   chatsForProject(p: Project): ChatSession[] {
-    const realChats = this.chatsFor(p.id);
-    if (realChats.length) return realChats;
-    if (p.name === 'CCC-Solutions' || p.id === 'proj-ccc') {
-      return sortSessions(this.sessions().filter(s => s.projectId === 'proj-ccc' || s.title.includes('Lawn Mower') || s.title.includes('Clarify') || s.title.includes('HÜ180926') || s.title.includes('MCP upload')));
-    }
-    if (p.name === 'Quest Control' || p.id === 'proj-quest') {
-      return sortSessions(this.sessions().filter(s => s.projectId === 'proj-quest' || s.title.includes('локальные события')));
-    }
-    if (p.name === 'AI Router' || p.id === 'proj-ai-router') {
-      return sortSessions(this.sessions().filter(s => s.projectId === 'proj-ai-router' || s.title.includes('MVP AI router')));
-    }
-    return [];
+    return this.chatsFor(p.id);
   }
 
   filteredRecentSessions = computed(() => {

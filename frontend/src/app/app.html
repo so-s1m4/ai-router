@@ -71,6 +71,9 @@
         <button class="rail-btn" [class.active]="page()==='providers'" (click)="showPage('providers')" title="Провайдеры и модели">
           <svg lucideCompass [size]="18"></svg>
         </button>
+        <button class="rail-btn" [class.active]="page()==='sites'" (click)="showPage('sites')" title="Сайты и превью" aria-label="Сайты и превью">
+          <svg lucideGlobe2 [size]="18"></svg>
+        </button>
 
         <div class="rail-dropdown-wrapper">
           <button class="rail-btn" (click)="moreMenuOpen.set(!moreMenuOpen())" title="Ещё разделы">
@@ -78,10 +81,6 @@
           </button>
           @if(moreMenuOpen()) {
             <div class="rail-popover-menu" (click)="moreMenuOpen.set(false)">
-              <button class="popover-item" (click)="showPage('sites')">
-                <svg lucideGlobe2 [size]="15"></svg>
-                <span>Сайты и превью</span>
-              </button>
               <button class="popover-item" (click)="showPage('connections')">
                 <svg lucidePlugZap [size]="15"></svg>
                 <span>Подключения</span>
@@ -185,6 +184,21 @@
       </nav>
 
       <div class="sidebar-scroll">
+        <!-- RECENTS SECTION -->
+        <div class="sidebar-section">
+          <div class="section-label"><span>Recents</span></div>
+          <div class="section-list">
+            @for(s of filteredRecentSessions(); track s.id) {
+              <button class="sidebar-item" [class.active]="current()?.id === s.id && page() === 'chat'" (click)="openSession(s.id)" [title]="s.title || 'Новый чат'">
+                <span class="truncate">{{s.title || 'Новый чат'}}</span>
+                @if(running() && current()?.id === s.id) {
+                  <span class="item-running-spinner"></span>
+                }
+              </button>
+            }
+          </div>
+        </div>
+
         <!-- PROJECTS SECTION -->
         <div class="sidebar-section">
           <div class="section-label">
@@ -211,8 +225,8 @@
 
                 @if(isProjectExpanded(p)) {
                   <div class="tree-sub-list">
-                    @for(c of chatsForProject(p); track c.id) {
-                      <button class="tree-sub-item truncate" [class.active]="current()?.id === c.id" (click)="openSession(c.id)">
+                    @for(c of chatsForProject(p).slice(0, 4); track c.id) {
+                      <button class="tree-sub-item truncate" [class.active]="current()?.id === c.id" (click)="openSession(c.id)" [title]="c.title">
                         {{c.title}}
                       </button>
                     }
@@ -228,24 +242,6 @@
           </div>
         </div>
 
-        <!-- RECENTS SECTION -->
-        <div class="sidebar-section">
-          <div class="section-label">
-            <span>Recents</span>
-          </div>
-          <div class="section-list">
-            @for(s of filteredRecentSessions(); track s.id) {
-              <button class="sidebar-item" [class.active]="current()?.id === s.id && page() === 'chat'" (click)="openSession(s.id)">
-                <span class="truncate">{{s.title || 'New chat'}}</span>
-                @if(running() && current()?.id === s.id) {
-                  <span class="item-running-spinner"></span>
-                } @else if(s.title.includes('backup')) {
-                  <svg lucideClock [size]="13" class="item-icon-right"></svg>
-                }
-              </button>
-            }
-          </div>
-        </div>
       </div>
       </div>
       <div class="mobile-drawer-footer">

@@ -515,6 +515,16 @@
   text-overflow: ellipsis;
 }
 
+.sidebar-item .truncate,
+.tree-folder-head .truncate {
+  display: block;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-item:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
@@ -605,6 +615,9 @@
   cursor: pointer;
   text-align: left;
   transition: all 0.12s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree-sub-item:hover {
