@@ -173,15 +173,15 @@
         </button>
       </div>
 
+      <div class="mobile-drawer-content">
       <nav class="mobile-drawer-links" aria-label="Разделы приложения">
-        <button (click)="showPage('chat')">Чаты</button>
-        <button (click)="showPage('projects')">Проекты</button>
-        <button (click)="showPage('providers')">Провайдеры и модели</button>
-        <button (click)="showPage('connections')">Подключения</button>
-        <button (click)="showPage('runners')">Исполнители</button>
-        <button (click)="showPage('sites')">Сайты и превью</button>
-        @if(isOwner()){<button (click)="showPage('users')">Пользователи</button>}
-        <button (click)="logout()">Выйти</button>
+        <button [class.active]="page()==='chat'" (click)="showPage('chat')"><svg lucideHouse [size]="21"></svg><span>Чаты</span></button>
+        <button [class.active]="page()==='projects'" (click)="showPage('projects')"><svg lucideFolder [size]="21"></svg><span>Проекты</span></button>
+        <button [class.active]="page()==='providers'" (click)="showPage('providers')"><svg lucideCompass [size]="21"></svg><span>Провайдеры и модели</span></button>
+        <button [class.active]="page()==='connections'" (click)="showPage('connections')"><svg lucidePlugZap [size]="21"></svg><span>Подключения</span></button>
+        <button [class.active]="page()==='runners'" (click)="showPage('runners')"><svg lucideServer [size]="21"></svg><span>Исполнители</span></button>
+        <button [class.active]="page()==='sites'" (click)="showPage('sites')"><svg lucideGlobe2 [size]="21"></svg><span>Сайты и превью</span></button>
+        @if(isOwner()){<button [class.active]="page()==='users'" (click)="showPage('users')"><svg lucideSettings2 [size]="21"></svg><span>Пользователи</span></button>}
       </nav>
 
       <div class="sidebar-scroll">
@@ -261,6 +261,11 @@
             }
           </div>
         </div>
+      </div>
+      </div>
+      <div class="mobile-drawer-footer">
+        <button class="mobile-drawer-new-chat" (click)="newSession()"><svg lucideSquarePen [size]="20"></svg><span>Новый чат</span></button>
+        <button class="mobile-drawer-logout" (click)="logout()" aria-label="Выйти из аккаунта" title="Выйти из аккаунта"><svg lucideLogOut [size]="20"></svg></button>
       </div>
     </aside>
 
