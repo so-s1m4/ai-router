@@ -32,3 +32,53 @@ test('session can be created and updated with projectId', async () => {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 });
+test('listSessions filters empty chats and sorts by most recent message', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'ai-router-session-list-'));
+  process.env.DATA_DIR = dir;
+  try {
+    const { createSession, listSessions, saveSession } = await import('./store.js');
+    const user = 'test-user-list';
+
+    // 1. Create an empty session
+    const s1 = await createSession(user);
+
+    // Should return 0 sessions because s1 is empty
+    let list = await listSessions(user);
+    assert.equal(list.length, 0);
+
+    // 2. Add message to s1 with earlier timestamp
+    s1.messages = [
+      { id: 'm1', role: 'user', text: 'Hello 1', at: '2026-09-27T10:00:00.000Z' }
+    ];
+    await saveSession(user, s1);
+
+    list = await listSessions(user);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].id, s1.id);
+
+    // 3. Create s2 and add message with later timestamp
+    const s2 = await createSession(user);
+    s2.messages = [
+      { id: 'm2', role: 'user', text: 'Hello 2', at: '2026-09-27T11:00:00.000Z' }
+    ];
+    await saveSession(user, s2);
+
+    list = await listSessions(user);
+    assert.equal(list.length, 2);
+    // s2 must be on top because its message is later (11:00 > 10:00)
+    assert.equal(list[0].id, s2.id);
+    assert.equal(list[1].id, s1.id);
+
+    // 4. Send a new message in s1 at 12:00
+    s1.messages.push({ id: 'm3', role: 'user', text: 'Hello 3', at: '2026-09-27T12:00:00.000Z' });
+    await saveSession(user, s1);
+
+    list = await listSessions(user);
+    assert.equal(list.length, 2);
+    // s1 must now be on top because 12:00 > 11:00
+    assert.equal(list[0].id, s1.id);
+    assert.equal(list[1].id, s2.id);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});

@@ -3,18 +3,18 @@ import test, { after } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-const runnerDataDir = await mkdtemp(path.join(tmpdir(), 'chatgpt-runner-'));
-const previousChromeBin = process.env.CHROME_BIN;
-process.env.RUNNER_DATA_DIR = runnerDataDir;
-process.env.CHROME_BIN = path.join(runnerDataDir, 'missing-chromium');
-after(async () => {
-  if (previousChromeBin === undefined) delete process.env.CHROME_BIN;
-  else process.env.CHROME_BIN = previousChromeBin;
-  await rm(runnerDataDir, { recursive: true, force: true });
-});
-
+// cli.js reads RUNNER_DATA_DIR when imported, so configure an isolated writable root first.
+const dataRoot = await mkdtemp(path.join(tmpdir(), 'chatgpt-runner-data-'));
+const previousDataRoot = process.env.RUNNER_DATA_DIR;
+process.env.RUNNER_DATA_DIR = dataRoot;
 const { accountStatus, execute } = await import('../dist/cli.js');
 const { saveChatGPTSession, readChatGPTSession } = await import('../dist/chatgpt-web.js');
+
+after(async () => {
+  if (previousDataRoot === undefined) delete process.env.RUNNER_DATA_DIR;
+  else process.env.RUNNER_DATA_DIR = previousDataRoot;
+  await rm(dataRoot, { recursive: true, force: true });
+});
 
 test('ChatGPT Web returns default models in accountStatus', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'chatgpt-test-'));
@@ -82,7 +82,9 @@ test('ChatGPT Web execution in mock mode returns demo response with streaming de
 
 test('ChatGPT Web execution when MOCK_MODE=false throws unavailable when Chromium missing', async () => {
   const previous = process.env.MOCK_MODE;
+  const previousChrome = process.env.CHROME_BIN;
   process.env.MOCK_MODE = 'false';
+  process.env.CHROME_BIN = path.join(dataRoot, 'missing-chromium');
   try {
     const controller = new AbortController();
     const job = {
@@ -102,5 +104,7 @@ test('ChatGPT Web execution when MOCK_MODE=false throws unavailable when Chromiu
     );
   } finally {
     process.env.MOCK_MODE = previous;
+    if (previousChrome === undefined) delete process.env.CHROME_BIN;
+    else process.env.CHROME_BIN = previousChrome;
   }
 });

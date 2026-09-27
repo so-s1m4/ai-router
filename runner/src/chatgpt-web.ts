@@ -87,6 +87,17 @@ export async function executeChatGPTWeb(
 ): Promise<string> {
   if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
 
+  if (process.env.MOCK_MODE === 'true') {
+    emit({ type: 'status', message: 'Демо-режим: Chromium эмулируется' });
+    const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
+    for (const chunk of text.match(/.{1,24}/gu) || [text]) {
+      if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+      emit({ type: 'delta', text: chunk });
+      await new Promise(r => setTimeout(r, 10));
+    }
+    return text;
+  }
+
   const chromePath = findChromePath();
   if (!chromePath) {
     if (process.env.MOCK_MODE !== 'false') {
@@ -95,7 +106,7 @@ export async function executeChatGPTWeb(
       for (const chunk of text.match(/.{1,24}/gu) || [text]) {
         if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
         emit({ type: 'delta', text: chunk });
-        await new Promise(r => setTimeout(r, 35));
+        await new Promise(r => setTimeout(r, 10));
       }
       return text;
     }
@@ -187,9 +198,21 @@ export async function executeChatGPTWeb(
       throw new RunnerError('Cloudflare заблокировал доступ к chatgpt.com. Для работы на сервере требуется прокси или домашний runner.', 'rate_limit');
     }
 
+    // Dismiss cookie consent banner if present
+    try {
+      await page.evaluate(() => {
+        const allButtons = Array.from(document.querySelectorAll('button'));
+        const cookieBtn = allButtons.find(b => {
+          const t = (b.innerText || '').toLowerCase();
+          return t.includes('accept all') || t.includes('reject non-essential') || t.includes('принять все') || t.includes('отклонить');
+        });
+        if (cookieBtn) cookieBtn.click();
+      });
+    } catch {}
+
     // Wait for the prompt input or detect logged out state
     try {
-      await page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 15000 });
+      await page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 20000 });
     } catch {
       const isLoggedOut = await page.evaluate(() => {
         return Boolean(document.querySelector('a[href*="/login"], button[data-testid="login-button"], [data-testid="welcome-login-button"]'));
@@ -200,26 +223,45 @@ export async function executeChatGPTWeb(
       throw new RunnerError('Интерфейс ChatGPT не загрузился', 'unavailable');
     }
 
+    if (job.model && job.model !== 'default') {
+      const isLoggedOut = await page.evaluate(() => {
+        return Boolean(document.querySelector('a[href*="/login"], button[data-testid="login-button"], [data-testid="welcome-login-button"]'));
+      });
+      if (isLoggedOut) {
+        throw new RunnerError(`Для использования модели ${job.model} требуется авторизация в ChatGPT. Обновите session token или cookies в настройках аккаунта.`, 'auth');
+      }
+    }
+
     emit({ type: 'status', message: 'Отправка сообщения в ChatGPT...' });
 
-    // Focus and fill prompt
-    await page.evaluate((promptText) => {
+    // Focus and fill prompt with ProseMirror compatibility
+    const promptInputSelector = '#prompt-textarea, div[contenteditable="true"], textarea';
+    await page.focus(promptInputSelector).catch(() => {});
+
+    const inserted = await page.evaluate((promptText) => {
       const el = document.querySelector('#prompt-textarea') || document.querySelector('div[contenteditable="true"]') || document.querySelector('textarea');
-      if (!el) throw new Error('Поле ввода не найдено');
+      if (!el) return false;
       if (el.tagName === 'TEXTAREA') {
         (el as HTMLTextAreaElement).value = promptText;
-      } else {
-        (el as HTMLElement).innerText = promptText;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
       }
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
+      (el as HTMLElement).focus();
+      return document.execCommand('insertText', false, promptText);
     }, job.prompt);
 
-    await new Promise(r => setTimeout(r, 200));
+    if (!inserted) {
+      await page.keyboard.type(job.prompt, { delay: 0 });
+    }
+
+    await new Promise(r => setTimeout(r, 400));
 
     // Click send or press Enter
     const sent = await page.evaluate(() => {
-      const btn = document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"]') as HTMLButtonElement | null;
+      const btn = document.querySelector(
+        'button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"], #composer-submit-button'
+      ) as HTMLButtonElement | null;
       if (btn && !btn.disabled) {
         btn.click();
         return true;
@@ -228,6 +270,7 @@ export async function executeChatGPTWeb(
     });
 
     if (!sent) {
+      await page.focus(promptInputSelector).catch(() => {});
       await page.keyboard.press('Enter');
     }
 
@@ -257,8 +300,17 @@ export async function executeChatGPTWeb(
       }
 
       const isGenerating = await page.evaluate(() => {
-        return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming'));
+        return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming, button[aria-label="Stop generating"]'));
       });
+
+      // Check if page displays an error banner
+      const pageError = await page.evaluate(() => {
+        const alert = document.querySelector('[role="alert"], [data-testid*="error"], .text-red-500');
+        return alert ? (alert as HTMLElement).innerText : null;
+      });
+      if (pageError && !fullText) {
+        throw new RunnerError(`ChatGPT: ${pageError}`, 'failed');
+      }
 
       if (fullText.length > 0 && !isGenerating) {
         await new Promise(r => setTimeout(r, 400));

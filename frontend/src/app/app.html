@@ -71,9 +71,6 @@
         <button class="rail-btn" [class.active]="page()==='projects'" (click)="setMode('work')" title="Проекты (Workspaces)">
           <svg lucideLibrary [size]="20"></svg>
         </button>
-        <button class="rail-btn" (click)="setMode('chat')" title="Сообщения">
-          <svg lucideMessageSquare [size]="20"></svg>
-        </button>
         <button class="rail-btn" [class.active]="page()==='providers'" (click)="showPage('providers')" title="Провайдеры и модели">
           <svg lucideCompass [size]="20"></svg>
         </button>
@@ -148,9 +145,6 @@
           <span>ChatGPT</span>
         </button>
         <div class="sidebar-header-actions">
-          <button class="sidebar-icon-btn" (click)="notice.set(notice() ? '' : 'Уведомлений нет')" title="Уведомления">
-            <svg lucideBell [size]="17"></svg>
-          </button>
           <button class="sidebar-icon-btn" (click)="searchOpen.set(!searchOpen())" title="Поиск">
             <svg lucideSearch [size]="17"></svg>
           </button>
@@ -268,12 +262,6 @@
           <button class="topbar-nav-arrow" (click)="toggleSidebar()" [title]="sidebarOpen() ? 'Свернуть панель' : 'Развернуть панель'">
             <svg lucidePanelLeft [size]="18"></svg>
           </button>
-          <button class="topbar-nav-arrow desktop-only" (click)="newSession()" title="Назад">
-            <svg lucideChevronLeft [size]="18"></svg>
-          </button>
-          <button class="topbar-nav-arrow desktop-only" title="Вперёд">
-            <svg lucideChevronRight [size]="18"></svg>
-          </button>
         </div>
 
         <div class="topbar-center">
@@ -292,9 +280,6 @@
           }
           <button class="topbar-btn" (click)="newSession()" title="Новый чат">
             <svg lucidePlus [size]="18"></svg>
-          </button>
-          <button class="topbar-btn" (click)="newSession()" title="Обновить / Перезапустить">
-            <svg lucideRotateCcw [size]="17"></svg>
           </button>
         </div>
       </header>

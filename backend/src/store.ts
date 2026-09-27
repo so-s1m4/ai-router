@@ -29,7 +29,24 @@ export async function listSessions(userId: string): Promise<ChatSession[]> {
   await prepareUser(userId);
   const files = (await readdir(path.join(userDir(userId),'sessions'))).filter(x => x.endsWith('.json'));
   const sessions = await Promise.all(files.map(async f => { try { return JSON.parse(await readFile(path.join(userDir(userId),'sessions',f),'utf8')) as ChatSession; } catch { return null; } }));
-  return sessions.filter((s): s is ChatSession => !!s).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+  return sessions
+    .filter((s): s is ChatSession => !!s && Array.isArray(s.messages) && s.messages.length > 0)
+    .sort((a,b) => {
+      const getMsgTime = (sess: ChatSession) => {
+        if (sess.messages && sess.messages.length > 0) {
+          for (let i = sess.messages.length - 1; i >= 0; i--) {
+            const at = sess.messages[i]?.at;
+            if (at) {
+              const t = new Date(at).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+          }
+        }
+        const fallback = new Date(sess.updatedAt || sess.createdAt || 0).getTime();
+        return isNaN(fallback) ? 0 : fallback;
+      };
+      return getMsgTime(b) - getMsgTime(a);
+    });
 }
 export async function createSession(userId: string,projectId?:string): Promise<ChatSession> {
   await prepareUser(userId); const now = new Date().toISOString();
