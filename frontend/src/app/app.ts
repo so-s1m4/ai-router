@@ -114,13 +114,52 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   searchOpen = signal(false);
   sidebarSearch = signal('');
   isDemo = false;
-  currentReasoningOrModelLabel = computed(() => {
-    if (this.selectedReasoning && this.selectedReasoning !== 'default') {
-      const r = this.selectedReasoning;
-      return r.charAt(0).toUpperCase() + r.slice(1);
+  brandTitle = computed(() => {
+    if (this.selectedModel !== 'default') {
+      const m = this.models().find(x => x.id === this.selectedModel);
+      if (m) return m.label.replace(/\s*·\s*(Gemini|Codex)$/, '');
     }
-    return 'High';
+    const s = this.selectedService();
+    if (s === 'gemini') return 'Gemini';
+    if (s === 'codex') return 'Codex';
+    return 'ChatGPT';
   });
+  currentServiceLabel = computed(() => {
+    const s = this.selectedService();
+    if (s === 'gemini') return 'Gemini';
+    if (s === 'codex') return 'Codex';
+    return 'Auto';
+  });
+  currentModelBadgeLabel = computed(() => {
+    if (this.selectedModel === 'default') {
+      const s = this.selectedService();
+      if (s === 'gemini') return 'Gemini Auto';
+      if (s === 'codex') return 'Codex Auto';
+      return 'Модель';
+    }
+    const m = this.models().find(item => item.id === this.selectedModel);
+    if (!m) return this.selectedModel;
+    return m.label.replace(/\s*·\s*(Gemini|Codex)$/, '');
+  });
+  currentReasoningBadgeLabel = computed(() => {
+    const r = this.selectedReasoning;
+    if (!r || r === 'default') {
+      const currentModel = this.models().find(m => m.id === this.selectedModel);
+      if (currentModel?.defaultReasoning) {
+        const opt = currentModel.reasoning?.find(o => o.id === currentModel.defaultReasoning);
+        if (opt) return opt.label;
+      }
+      return 'Reasoning';
+    }
+    const opt = this.reasoningOptions().find(o => o.id === r);
+    if (opt && opt.id !== 'default') return opt.label;
+    if (r === 'high') return 'Высокое';
+    if (r === 'medium') return 'Среднее';
+    if (r === 'low') return 'Низкое';
+    if (r === 'max') return 'Макс';
+    return r.charAt(0).toUpperCase() + r.slice(1);
+  });
+  currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
   draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel='default'; selectedReasoning='default';
   accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
@@ -468,11 +507,34 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     }
   }
 
-  reasoningOptions=computed(()=>{
-    const currentModel=this.models().find(m=>m.id===this.selectedModel);
-    const options=currentModel?.reasoning||[];
-    return [{id:'default',label:'По умолчанию'},...options.filter(r=>r.id!=='default')];
+  reasoningOptions = computed(() => {
+    const currentModel = this.models().find(m => m.id === this.selectedModel);
+    const options = currentModel?.reasoning;
+    if (options && options.length > 0) {
+      return [{ id: 'default', label: 'По умолчанию' }, ...options.filter(r => r.id !== 'default')];
+    }
+    if (this.selectedModel === 'default') {
+      return [
+        { id: 'default', label: 'По умолчанию' },
+        { id: 'high', label: 'Высокое (High)' },
+        { id: 'medium', label: 'Среднее (Medium)' },
+        { id: 'low', label: 'Низкое (Low)' }
+      ];
+    }
+    return [{ id: 'default', label: 'По умолчанию' }];
   });
+
+  onReasoningChange(val: string) {
+    this.selectedReasoning = val;
+    if (val !== 'default' && this.selectedModel === 'default') {
+      if (this.selectedService() === 'codex') {
+        this.selectedModel = 'o3-mini';
+      } else {
+        this.selectedModel = 'gemini-3.8-flash';
+      }
+    }
+    this.validateReasoning();
+  }
   private preventWindowDrop = (e: DragEvent) => {
     if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes('Files')) {
       e.preventDefault();
@@ -662,6 +724,13 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       }
     ];
     this.sessions.set(demoSessions);
+    this.accounts.set([
+      { id: 'acc-gemini', name: 'Gemini Pro Account', provider: 'antigravity', runnerId: 'r1', models: DEFAULT_GEMINI_MODELS, mode: 'runner', auth: 'ok', detail: 'Исполнитель подключён', limit: { source: 'provider', primary: { usedPercent: 12, remainingPercent: 88, windowMinutes: 300, resetAt: null }, secondary: null, cooldownUntil: null, updatedAt: null } },
+      { id: 'acc-codex', name: 'Codex Account', provider: 'codex', runnerId: 'r1', models: DEFAULT_CODEX_MODELS, mode: 'runner', auth: 'ok', detail: 'Исполнитель подключён', limit: { source: 'provider', primary: { usedPercent: 35, remainingPercent: 65, windowMinutes: 300, resetAt: null }, secondary: null, cooldownUntil: null, updatedAt: null } }
+    ]);
+    this.runners.set([
+      { id: 'r1', name: 'Мой компьютер', online: true, managementOnline: true, createdAt: new Date().toISOString() }
+    ]);
     this.current.set(null);
   }
 
@@ -1321,9 +1390,42 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   hasAccountsFor(service:ServiceId):boolean{if(service==='auto')return this.accounts().length>0;const provider:ProviderId=service==='gemini'?'antigravity':'codex';const pId=this.current()?.projectId;const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?this.accounts().filter(a=>a.runnerId===project.runnerId):this.accounts();return list.some(a=>a.provider===provider);}
   selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel))this.selectedModel='default';this.validateReasoning();}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel='default';this.selectedReasoning='default';}
-  selectModel(id:string){this.selectedModel=id;this.validateReasoning();}
-  validateReasoning(){const currentModel=this.models().find(m=>m.id===this.selectedModel);const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning);if(this.selectedReasoning!=='default'&&!reasoningExists)this.selectedReasoning='default';}
-  currentRunnerLabel():string{const name=this.accountLabel(this.activeAccount());if(name)return name;const prov=this.activeProvider();if(prov)return this.providerLabel(prov);const s=this.selectedService();return s==='gemini'?'Gemini':s==='codex'?'Codex':'AI Router';}
+  selectModel(id:string){
+    this.selectedModel=id;
+    if(id!=='default'){
+      const isGemini=this.allGeminiModels().some(m=>m.id===id);
+      const isCodex=this.allCodexModels().some(m=>m.id===id);
+      if(isGemini && this.selectedService()==='codex'){
+        this.selectedService.set('gemini');
+      } else if(isCodex && this.selectedService()==='gemini'){
+        this.selectedService.set('codex');
+      }
+    }
+    const currentModel=this.models().find(m=>m.id===id);
+    if(currentModel?.defaultReasoning && (!this.selectedReasoning || this.selectedReasoning==='default')){
+      this.selectedReasoning=currentModel.defaultReasoning;
+    }
+    this.validateReasoning();
+  }
+  validateReasoning(){
+    const currentModel=this.models().find(m=>m.id===this.selectedModel);
+    const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning);
+    if(this.selectedModel!=='default' && this.selectedReasoning!=='default' && !reasoningExists){
+      this.selectedReasoning=currentModel?.defaultReasoning||'default';
+    }
+  }
+  currentRunnerLabel():string{
+    const name=this.accountLabel(this.activeAccount());
+    if(name)return name;
+    const prov=this.activeProvider();
+    if(prov)return this.providerLabel(prov);
+    if(this.selectedModel!=='default'){
+      const m=this.models().find(x=>x.id===this.selectedModel);
+      if(m)return m.label.replace(/\s*·\s*(Gemini|Codex)$/,'');
+    }
+    const s=this.selectedService();
+    return s==='gemini'?'Gemini':s==='codex'?'Codex':'ChatGPT';
+  }
 
   handleChatClick(event: MouseEvent) {
     const target = event.target as HTMLElement | null;

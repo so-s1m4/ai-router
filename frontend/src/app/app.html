@@ -144,10 +144,46 @@
     <!-- 2. SECONDARY SIDEBAR (260px COLLAPSIBLE) -->
     <aside class="sidebar" [class.collapsed]="!sidebarOpen()" [class.drawer-open]="mobileMenu()">
       <div class="sidebar-header">
-        <button class="sidebar-brand-btn" (click)="brandMenuOpen.set(!brandMenuOpen())">
-          <span>ChatGPT</span>
-          <svg lucideChevronDown [size]="15" class="brand-chevron"></svg>
-        </button>
+        <div class="brand-dropdown-wrapper">
+          <button class="sidebar-brand-btn" (click)="brandMenuOpen.set(!brandMenuOpen())">
+            <span>{{brandTitle()}}</span>
+            <svg lucideChevronDown [size]="15" class="brand-chevron"></svg>
+          </button>
+          @if(brandMenuOpen()) {
+            <div class="brand-popover-menu" (click)="brandMenuOpen.set(false)">
+              <div class="popover-header">
+                <strong>Сервис и модель</strong>
+                <span>{{currentModelBadgeLabel()}}</span>
+              </div>
+              <div class="popover-divider"></div>
+              <button class="popover-item" [class.selected]="selectedService()==='auto' && selectedModel==='default'" (click)="selectService('auto')">
+                <svg lucideSparkles [size]="16"></svg>
+                <span>Авто-выбор (Auto)</span>
+              </button>
+              <button class="popover-item" [class.selected]="selectedService()==='gemini'" (click)="selectService('gemini')">
+                <svg lucideCpu [size]="16"></svg>
+                <span>Google Gemini</span>
+              </button>
+              <button class="popover-item" [class.selected]="selectedService()==='codex'" (click)="selectService('codex')">
+                <svg lucideCpu [size]="16"></svg>
+                <span>OpenAI Codex</span>
+              </button>
+              <div class="popover-divider"></div>
+              <div class="popover-section-label">Доступные модели:</div>
+              @for(m of models().slice(0, 10); track m.id) {
+                <button class="popover-item" [class.selected]="selectedModel===m.id" (click)="selectModel(m.id)">
+                  <svg lucideCheck [size]="14" [style.visibility]="selectedModel===m.id ? 'visible' : 'hidden'"></svg>
+                  <span class="truncate">{{m.label}}</span>
+                </button>
+              }
+              <div class="popover-divider"></div>
+              <button class="popover-item" (click)="showPage('providers')">
+                <svg lucideSettings2 [size]="16"></svg>
+                <span>Управление провайдерами…</span>
+              </button>
+            </div>
+          }
+        </div>
         <div class="sidebar-header-actions">
           <button class="sidebar-icon-btn" (click)="notice.set(notice() ? '' : 'Уведомлений нет')" title="Уведомления">
             <svg lucideBell [size]="17"></svg>
@@ -471,18 +507,46 @@
                 </div>
 
                 <div class="pill-controls">
-                  <!-- MODEL / REASONING PILL -->
-                  <div class="pill-select-wrapper" title="Reasoning effort & model">
-                    <select [ngModel]="selectedReasoning" (ngModelChange)="selectedReasoning = $event" class="pill-select-overlay" aria-label="Reasoning effort">
-                      @for(r of reasoningOptions(); track r.id) {
-                        <option [value]="r.id">{{r.label}}</option>
-                      }
+                  <!-- SERVICE / PROVIDER PILL -->
+                  <div class="pill-select-wrapper" title="Провайдер ИИ">
+                    <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" class="pill-select-overlay" aria-label="Провайдер">
+                      <option value="auto">Auto</option>
+                      <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
+                      <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
                     </select>
                     <button class="pill-model-badge" type="button">
-                      <span>{{currentReasoningOrModelLabel()}}</span>
-                      <svg lucideChevronDown [size]="13"></svg>
+                      <span>{{currentServiceLabel()}}</span>
+                      <svg lucideChevronDown [size]="12"></svg>
                     </button>
                   </div>
+
+                  <!-- MODEL PILL -->
+                  <div class="pill-select-wrapper" title="Модель">
+                    <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
+                      @for(m of models(); track m.id) {
+                        <option [value]="m.id">{{m.label}}</option>
+                      }
+                    </select>
+                    <button class="pill-model-badge pill-model-highlight" type="button">
+                      <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
+                      <svg lucideChevronDown [size]="12"></svg>
+                    </button>
+                  </div>
+
+                  <!-- REASONING PILL -->
+                  @if(reasoningOptions().length > 1) {
+                    <div class="pill-select-wrapper" title="Рассуждение (Reasoning)">
+                      <select [ngModel]="selectedReasoning" (ngModelChange)="onReasoningChange($event)" class="pill-select-overlay" aria-label="Reasoning">
+                        @for(r of reasoningOptions(); track r.id) {
+                          <option [value]="r.id">{{r.label}}</option>
+                        }
+                      </select>
+                      <button class="pill-model-badge" type="button">
+                        <span>{{currentReasoningBadgeLabel()}}</span>
+                        <svg lucideChevronDown [size]="12"></svg>
+                      </button>
+                    </div>
+                  }
 
                   <!-- MIC BUTTON -->
                   <button class="pill-btn-icon pill-btn-mic"
@@ -548,7 +612,7 @@
                 </div>
               }
 
-              @if(running() && stream()){
+              @if(running()){
                 <div class="message-row">
                   <div class="assistant-row">
                     <div class="assistant-avatar stream-avatar">
@@ -557,13 +621,51 @@
                     <div class="assistant-content">
                       <div class="assistant-meta">
                         <span class="sender-name">{{currentRunnerLabel() || 'ChatGPT'}}</span>
-                        <span class="streaming-status">печатает...</span>
+                        <span class="streaming-time">{{elapsed()}}</span>
                       </div>
-                      <div class="message-text markdown-body streaming-wrapper">
-                        <div class="streaming-content" [innerHTML]="stream() | markdown"></div>
-                        <span class="typing-cursor"></span>
-                      </div>
+
+                      @if(notice()){
+                        <div class="chat-status-pill">
+                          <span class="run-pulse" aria-hidden="true"></span>
+                          <span class="chat-status-text">{{notice()}}</span>
+                        </div>
+                      } @else if(!stream()){
+                        <div class="chat-status-pill">
+                          <span class="run-pulse" aria-hidden="true"></span>
+                          <span class="chat-status-text">Думает…</span>
+                        </div>
+                      }
+
+                      @if(activity().length > 1 && !stream()){
+                        <div class="chat-activity-feed">
+                          @for(row of activity().slice(-3); track $index){
+                            <div class="chat-activity-item">
+                              <span class="chat-activity-chevron">›</span>
+                              <span class="chat-activity-text">{{row.message}}</span>
+                            </div>
+                          }
+                        </div>
+                      }
+
+                      @if(stream()){
+                        <div class="message-text markdown-body streaming-wrapper">
+                          <div class="streaming-content" [innerHTML]="stream() | markdown"></div>
+                          <span class="typing-cursor"></span>
+                        </div>
+                      }
                     </div>
+                  </div>
+                </div>
+              }
+
+              @if(error()){
+                <div class="message-row">
+                  <div class="chat-error-card">
+                    <svg lucideInfo [size]="16"></svg>
+                    <span class="chat-error-msg">{{error()}}</span>
+                    <button type="button" class="btn-chat-error-dismiss" (click)="error.set('')" title="Закрыть">
+                      <svg lucideX [size]="14"></svg>
+                    </button>
                   </div>
                 </div>
               }
@@ -578,17 +680,6 @@
               <button type="button" class="scroll-bottom-btn" (click)="scrollToBottom(true, 'smooth')" aria-label="Прокрутить вниз" title="Вниз">
                 <svg lucideChevronDown [size]="18"></svg>
               </button>
-            }
-
-            @if(running()){
-              <div class="run-progress" role="status" aria-live="polite">
-                <div class="run-progress-head">
-                  <span class="run-pulse" aria-hidden="true"></span>
-                  <strong>{{currentRunnerLabel()}} работает</strong>
-                  <time>{{elapsed()}}</time>
-                </div>
-                <div class="run-progress-current">{{notice() || 'Ожидаем ответа…'}}</div>
-              </div>
             }
 
             <div class="hero-pill-bar bottom-composer-pill">
@@ -609,18 +700,46 @@
               </div>
 
               <div class="pill-controls">
-                <!-- MODEL / REASONING PILL -->
-                <div class="pill-select-wrapper" title="Reasoning effort & model">
-                  <select [ngModel]="selectedReasoning" (ngModelChange)="selectedReasoning = $event" class="pill-select-overlay" aria-label="Reasoning effort">
-                    @for(r of reasoningOptions(); track r.id) {
-                      <option [value]="r.id">{{r.label}}</option>
-                    }
+                <!-- SERVICE / PROVIDER PILL -->
+                <div class="pill-select-wrapper" title="Провайдер ИИ">
+                  <select [ngModel]="selectedService()" (ngModelChange)="selectService($event)" class="pill-select-overlay" aria-label="Провайдер">
+                    <option value="auto">Auto</option>
+                    <option value="gemini">Gemini{{hasAccountsFor('gemini') ? '' : ' (!)'}}</option>
+                    <option value="codex">Codex{{hasAccountsFor('codex') ? '' : ' (!)'}}</option>
                   </select>
                   <button class="pill-model-badge" type="button">
-                    <span>{{currentReasoningOrModelLabel()}}</span>
-                    <svg lucideChevronDown [size]="13"></svg>
+                    <span>{{currentServiceLabel()}}</span>
+                    <svg lucideChevronDown [size]="12"></svg>
                   </button>
                 </div>
+
+                <!-- MODEL PILL -->
+                <div class="pill-select-wrapper" title="Модель">
+                  <select [ngModel]="selectedModel" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
+                    @for(m of models(); track m.id) {
+                      <option [value]="m.id">{{m.label}}</option>
+                    }
+                  </select>
+                  <button class="pill-model-badge pill-model-highlight" type="button">
+                    <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
+                    <svg lucideChevronDown [size]="12"></svg>
+                  </button>
+                </div>
+
+                <!-- REASONING PILL -->
+                @if(reasoningOptions().length > 1) {
+                  <div class="pill-select-wrapper" title="Рассуждение (Reasoning)">
+                    <select [ngModel]="selectedReasoning" (ngModelChange)="onReasoningChange($event)" class="pill-select-overlay" aria-label="Reasoning">
+                      @for(r of reasoningOptions(); track r.id) {
+                        <option [value]="r.id">{{r.label}}</option>
+                      }
+                    </select>
+                    <button class="pill-model-badge" type="button">
+                      <span>{{currentReasoningBadgeLabel()}}</span>
+                      <svg lucideChevronDown [size]="12"></svg>
+                    </button>
+                  </div>
+                }
 
                 <!-- MIC BUTTON -->
                 <button class="pill-btn-icon pill-btn-mic"
