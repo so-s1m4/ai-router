@@ -60,8 +60,28 @@ type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;cre
 type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string};
 type Preview = {subdomain:string;runnerId:string;visible:boolean;online:boolean;expired:boolean;url:string;createdAt:string;updatedAt:string;expiresAt:string};
 type Pairing = {code:string;expiresAt:string};
-type Message = {id:string;role:'user'|'assistant';text:string;at:string;provider?:ProviderId};
+type Message = {id:string;role:'user'|'assistant'|'system';text:string;at?:string;provider?:ProviderId|string;steps?:any[];[key:string]:any};
 type ChatSession = {id:string;title:string;updatedAt:string;messages:Message[];projectId?:string};
+
+export function getSessionLastMessageTime(sess: ChatSession): number {
+  if (sess.messages && sess.messages.length > 0) {
+    for (let i = sess.messages.length - 1; i >= 0; i--) {
+      const at = sess.messages[i]?.at;
+      if (at) {
+        const t = new Date(at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+      }
+    }
+  }
+  const fallback = new Date(sess.updatedAt || 0).getTime();
+  return isNaN(fallback) ? 0 : fallback;
+}
+
+export function sortSessions(list: ChatSession[]): ChatSession[] {
+  return [...list]
+    .filter(s => !!s && Array.isArray(s.messages) && s.messages.length > 0)
+    .sort((a, b) => getSessionLastMessageTime(b) - getSessionLastMessageTime(a));
+}
 type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:ProviderId;message?:string;text?:string;data?:{accountId?:string;state?:string}};
 type RunActivity = {type:string;message:string;at:string;provider?:ProviderId;accountId?:string};
 type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[]} | {runId:string;sessionId:string;type:'completed'|'error';message:string;finishedAt:number};
@@ -655,16 +675,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if (s) {
       void this.openSession(s.id);
     } else {
+      const now = new Date().toISOString();
       const newS: ChatSession = {
         id: 'pinned-' + Date.now(),
         title,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
         messages: [
-          { id: 'p1', role: 'user', text: `Привет, ${title}!`, at: '12:00' },
-          { id: 'p2', role: 'assistant', text: `Привет! Чем могу помочь по теме «${title}»?`, at: '12:00' }
+          { id: 'p1', role: 'user', text: `Привет, ${title}!`, at: now },
+          { id: 'p2', role: 'assistant', text: `Привет! Чем могу помочь по теме «${title}»?`, at: now }
         ]
       };
-      this.sessions.update(list => [newS, ...list]);
+      this.sessions.update(list => sortSessions([newS, ...list]));
       this.current.set(newS);
       this.page.set('chat');
     }
@@ -689,88 +710,107 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     ];
     this.projects.set(demoProjects);
 
+    const now = Date.now();
     const demoSessions: ChatSession[] = [
       {
         id: 'sess-krampus',
         title: 'Промо для Krampus Haus',
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date(now - 10 * 60000).toISOString(),
         messages: [
-          { id: 'm1', role: 'user', text: 'Сделай промо-текст для Krampus Haus', at: '11:15' },
-          { id: 'm2', role: 'assistant', text: 'Готовлю промо-материалы для мероприятия Krampus Haus...\n\n### 🔥 Krampus Haus: Зимний фестиваль\n* Погружение в атмосферу альпийского фольклора\n* Интерактивные зоны и шоу программа\n* Тематическая музыка и угощения', at: '11:16' }
+          { id: 'm1', role: 'user', text: 'Сделай промо-текст для Krampus Haus', at: new Date(now - 11 * 60000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Готовлю промо-материалы для мероприятия Krampus Haus...\n\n### 🔥 Krampus Haus: Зимний фестиваль\n* Погружение в атмосферу альпийского фольклора\n* Интерактивные зоны и шоу программа\n* Тематическая музыка и угощения', at: new Date(now - 10 * 60000).toISOString() }
         ]
       },
       {
         id: 'sess-backup-1',
         title: 'Daily Documents backup',
-        updatedAt: new Date(Date.now() - 3600000).toISOString(),
+        updatedAt: new Date(now - 3600000).toISOString(),
         messages: [
-          { id: 'm1', role: 'user', text: 'Проверь статус ежедневного бэкапа документов', at: '10:00' },
-          { id: 'm2', role: 'assistant', text: 'Все документы успешно синхронизированы в хранилище. Ошибок не обнаружено.', at: '10:01' }
+          { id: 'm1', role: 'user', text: 'Проверь статус ежедневного бэкапа документов', at: new Date(now - 3660000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Все документы успешно синхронизированы в хранилище. Ошибок не обнаружено.', at: new Date(now - 3600000).toISOString() }
         ]
       },
       {
         id: 'sess-backup-2',
         title: 'Daily Documents backup',
-        updatedAt: new Date(Date.now() - 86400000).toISOString(),
-        messages: []
+        updatedAt: new Date(now - 7200000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Сделай внеплановый снапшот документов', at: new Date(now - 7260000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Внеплановый снапшот успешно создан в /backup/documents-snap.tar.gz.', at: new Date(now - 7200000).toISOString() }
+        ]
       },
       {
         id: 'sess-mower-1',
         title: 'Solve Classic Lawn Mower',
         projectId: 'proj-ccc',
-        updatedAt: new Date(Date.now() - 172800000).toISOString(),
+        updatedAt: new Date(now - 18000000).toISOString(),
         messages: [
-          { id: 'm1', role: 'user', text: 'Реши задачу Classic Lawn Mower для тура Cloudflight Coding Contest', at: '14:20' },
-          { id: 'm2', role: 'assistant', text: 'Для задачи Classic Lawn Mower оптимальный алгоритм использует имитацию движения газонокосилки по сетке с отслеживанием скошенных клеток:\n\n```python\ndef solve_lawn_mower(grid, moves):\n    x, y = 0, 0\n    mowed = {(0, 0)}\n    directions = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}\n    for move in moves:\n        dx, dy = directions[move]\n        x += dx\n        y += dy\n        mowed.add((x, y))\n    return len(mowed)\n```\nСложность: O(N) по времени и O(N) по памяти.', at: '14:21' }
+          { id: 'm1', role: 'user', text: 'Реши задачу Classic Lawn Mower для тура Cloudflight Coding Contest', at: new Date(now - 18060000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Для задачи Classic Lawn Mower оптимальный алгоритм использует имитацию движения газонокосилки по сетке с отслеживанием скошенных клеток:\n\n```python\ndef solve_lawn_mower(grid, moves):\n    x, y = 0, 0\n    mowed = {(0, 0)}\n    directions = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}\n    for move in moves:\n        dx, dy = directions[move]\n        x += dx\n        y += dy\n        mowed.add((x, y))\n    return len(mowed)\n```\nСложность: O(N) по времени и O(N) по памяти.', at: new Date(now - 18000000).toISOString() }
         ]
       },
       {
         id: 'sess-mower-2',
         title: 'Solve Classic Lawn Mower',
         projectId: 'proj-ccc',
-        updatedAt: new Date(Date.now() - 259200000).toISOString(),
-        messages: []
+        updatedAt: new Date(now - 86400000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Оптимизируй алгоритм для больших сеток 10000x10000', at: new Date(now - 86460000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Для больших сеток заменяем хэш-таблицу кортежей на одномерную битовую маску или разреженную матрицу сжатия координат.', at: new Date(now - 86400000).toISOString() }
+        ]
       },
       {
         id: 'sess-clarify',
         title: 'Clarify the issue',
         projectId: 'proj-ccc',
-        updatedAt: new Date(Date.now() - 300000000).toISOString(),
-        messages: []
+        updatedAt: new Date(now - 172800000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Clarify the issue with timeout on runner sync', at: new Date(now - 172860000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'The sync issue was caused by pingTimeout exceeding websocket threshold. Adjusted heartbeat to 15s.', at: new Date(now - 172800000).toISOString() }
+        ]
       },
       {
         id: 'sess-hu-pdf',
         title: 'Improve HÜ180926 PDF',
         projectId: 'proj-ccc',
-        updatedAt: new Date(Date.now() - 320000000).toISOString(),
-        messages: []
+        updatedAt: new Date(now - 259200000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Improve HÜ180926 PDF layout and typography', at: new Date(now - 259260000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Updated margins to 24mm, increased line-height to 1.45, and applied modern sans-serif headings.', at: new Date(now - 259200000).toISOString() }
+        ]
       },
       {
         id: 'sess-mcp-upload',
         title: 'Ускорить MCP upload и Tele...',
         projectId: 'proj-ccc',
-        updatedAt: new Date(Date.now() - 340000000).toISOString(),
-        messages: []
+        updatedAt: new Date(now - 345600000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Ускорить MCP upload и Telegram bridge', at: new Date(now - 345660000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Включили сжатие gzip для полезной нагрузки и пул потоков для параллельной отправки чанков.', at: new Date(now - 345600000).toISOString() }
+        ]
       },
       {
         id: 'sess-quest-check',
         title: 'Проверить локальные события',
         projectId: 'proj-quest',
-        updatedAt: new Date(Date.now() - 350000000).toISOString(),
-        messages: []
+        updatedAt: new Date(now - 432000000).toISOString(),
+        messages: [
+          { id: 'm1', role: 'user', text: 'Проверить локальные события в Quest Control', at: new Date(now - 432060000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Все события верифицированы. Триггеры переходов между локациями отрабатывают корректно.', at: new Date(now - 432000000).toISOString() }
+        ]
       },
       {
         id: 'sess-router-mvp',
         title: 'Создать MVP AI router',
         projectId: 'proj-ai-router',
-        updatedAt: new Date(Date.now() - 360000000).toISOString(),
+        updatedAt: new Date(now - 518400000).toISOString(),
         messages: [
-          { id: 'm1', role: 'user', text: 'Создай структуру проекта и маршрутизатор моделей', at: '09:30' },
-          { id: 'm2', role: 'assistant', text: 'Архитектура AI Router разделена на:\n- `backend`: Express / WebSocket хаб\n- `runner`: изолированный процесс на клиенте с прямым доступом к Codex и Antigravity\n- `frontend`: Angular веб-интерфейс', at: '09:31' }
+          { id: 'm1', role: 'user', text: 'Создай структуру проекта и маршрутизатор моделей', at: new Date(now - 518460000).toISOString() },
+          { id: 'm2', role: 'assistant', text: 'Архитектура AI Router разделена на:\n- `backend`: Express / WebSocket хаб\n- `runner`: изолированный процесс на клиенте с прямым доступом к Codex и Antigravity\n- `frontend`: Angular веб-интерфейс', at: new Date(now - 518400000).toISOString() }
         ]
       }
     ];
-    this.sessions.set(demoSessions);
+    this.sessions.set(sortSessions(demoSessions));
     this.accounts.set([
       { id: 'acc-gemini', name: 'Gemini Pro Account', provider: 'antigravity', runnerId: 'r1', models: DEFAULT_GEMINI_MODELS, mode: 'runner', auth: 'ok', detail: 'Исполнитель подключён', limit: { source: 'provider', primary: { usedPercent: 12, remainingPercent: 88, windowMinutes: 300, resetAt: null }, secondary: null, cooldownUntil: null, updatedAt: null } },
       { id: 'acc-codex', name: 'Codex Account', provider: 'codex', runnerId: 'r1', models: DEFAULT_CODEX_MODELS, mode: 'runner', auth: 'ok', detail: 'Исполнитель подключён', limit: { source: 'provider', primary: { usedPercent: 35, remainingPercent: 65, windowMinutes: 300, resetAt: null }, secondary: null, cooldownUntil: null, updatedAt: null } }
@@ -792,42 +832,22 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.isDemo=false;this.username=me.username;this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
   async logout(){this.stopVoiceInput();if(!this.isDemo)await this.api('/logout',{method:'POST'}).catch(()=>{});this.isDemo=false;this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.loggedIn.set(false);this.current.set(null);}
-  async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';this.sessions.set(sessions);void this.refreshPreviews();if(sessions.length)await this.openSession(sessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);await this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
+  async load(){const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([this.api<Account[]>('/accounts'),this.api<Runner[]>('/runners'),this.api<Project[]>('/projects'),this.api<ChatSession[]>('/sessions'),this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))]);this.accounts.set(accounts);this.runners.set(runners);this.projects.set(projects);if(blacklistRes?.blacklist){this.modelBlacklist.set(blacklistRes.blacklist);}const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();this.selectedRunner=runners.find(r=>!r.revokedAt)?.id||'';const cleanSessions=sortSessions(sessions);this.sessions.set(cleanSessions);void this.refreshPreviews();if(cleanSessions.length)await this.openSession(cleanSessions[0].id);else {if(projects.length)this.selectedProjectId.set(projects[0].id);this.newSession();}if(!runners.some(r=>!r.revokedAt))this.page.set('runners');}
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
-  async newSession(){
+  newSession(){
     this.stopVoiceInput();
     this.mobileMenu.set(false);
-    if(this.isDemo){
-      this.current.set(null);
-      this.taskFiles.set([]);
-      this.sharedFileLinks.set({});
-      this.collapsedDirs.set(new Set());
-      this.filesFilter.set('');
-      this.filesOpen.set(false);
-      this.page.set('chat');
-      this.resetRun();
-      this.error.set('');
-      this.ensureChatScrollAttached(true);
-      return;
-    }
-    try{
-      const projectId=this.selectedProjectId()||undefined;
-      const s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});
-      this.sessions.update(v=>[s,...v]);
-      this.current.set(s);
-      this.taskFiles.set([]);
-      this.sharedFileLinks.set({});
-      this.collapsedDirs.set(new Set());
-      this.filesFilter.set('');
-      this.filesOpen.set(false);
-      this.selectedProjectId.set(s.projectId||'');
-      this.page.set('chat');
-      this.resetRun();
-      this.error.set('');
-      this.syncRun(s.id);
-      this.ensureChatScrollAttached(true);
-    }catch(e){this.error.set((e as Error).message);}
+    this.current.set(null);
+    this.taskFiles.set([]);
+    this.sharedFileLinks.set({});
+    this.collapsedDirs.set(new Set());
+    this.filesFilter.set('');
+    this.filesOpen.set(false);
+    this.page.set('chat');
+    this.resetRun();
+    this.error.set('');
+    this.ensureChatScrollAttached(true);
   }
   async openSession(id:string){
     this.stopVoiceInput();
@@ -1014,7 +1034,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   expandAllFolders() {
     this.collapsedDirs.set(new Set());
   }
-  chatsFor(projectId?:string){return this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId);}
+  chatsFor(projectId?:string){return sortSessions(this.sessions().filter(s=>projectId?s.projectId===projectId:!s.projectId));}
   projectIcon(p: Project | string): 'folder' | 'graduation-cap' | 'origami' {
     const name = typeof p === 'string' ? p : p.name;
     if (name === 'HTLink') return 'graduation-cap';
@@ -1032,20 +1052,20 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     const realChats = this.chatsFor(p.id);
     if (realChats.length) return realChats;
     if (p.name === 'CCC-Solutions' || p.id === 'proj-ccc') {
-      return this.sessions().filter(s => s.projectId === 'proj-ccc' || s.title.includes('Lawn Mower') || s.title.includes('Clarify') || s.title.includes('HÜ180926') || s.title.includes('MCP upload'));
+      return sortSessions(this.sessions().filter(s => s.projectId === 'proj-ccc' || s.title.includes('Lawn Mower') || s.title.includes('Clarify') || s.title.includes('HÜ180926') || s.title.includes('MCP upload')));
     }
     if (p.name === 'Quest Control' || p.id === 'proj-quest') {
-      return this.sessions().filter(s => s.projectId === 'proj-quest' || s.title.includes('локальные события'));
+      return sortSessions(this.sessions().filter(s => s.projectId === 'proj-quest' || s.title.includes('локальные события')));
     }
     if (p.name === 'AI Router' || p.id === 'proj-ai-router') {
-      return this.sessions().filter(s => s.projectId === 'proj-ai-router' || s.title.includes('MVP AI router'));
+      return sortSessions(this.sessions().filter(s => s.projectId === 'proj-ai-router' || s.title.includes('MVP AI router')));
     }
     return [];
   }
 
   filteredRecentSessions = computed(() => {
     const query = this.sidebarSearch().trim().toLowerCase();
-    const all = this.sessions();
+    const all = sortSessions(this.sessions());
     if (!query) return all;
     return all.filter(s => s.title.toLowerCase().includes(query));
   });
@@ -1059,7 +1079,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
   selectProject(id:string){this.selectedProjectId.set(id);this.page.set('projects');this.mobileMenu.set(false);}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
-  async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);await this.newSession();}catch(e){this.error.set((e as Error).message);}}
+  async createProject(){const name=window.prompt('Название проекта');if(!name?.trim())return;const runnerId=this.selectedRunner||this.runners().find(r=>!r.revokedAt)?.id;if(!runnerId){this.error.set('Сначала подключите исполнитель');return;}try{const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name:name.trim(),runnerId})});this.projects.update(v=>[project,...v]);this.selectedProjectId.set(project.id);this.notice.set(`Проект «${project.name}» создан`);this.newSession();}catch(e){this.error.set((e as Error).message);}}
   onDragEnter(event: DragEvent) {
     if (this.page() !== 'chat' || !this.loggedIn()) return;
     if (!event.dataTransfer?.types || !Array.from(event.dataTransfer.types).includes('Files')) return;
@@ -1306,26 +1326,47 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   resetRun(){this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
   syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();void this.refreshTaskFiles();}}
-  async reloadCurrent(){const id=this.current()?.id;if(!id)return;const s=await this.api<ChatSession>('/sessions/'+id);this.current.set(s);this.sessions.update(list=>[s,...list.filter(x=>x.id!==s.id)]);this.requestScrollToBottom();}
-  send(){
+  async reloadCurrent(){
+    const id=this.current()?.id;
+    if(!id)return;
+    const s=await this.api<ChatSession>('/sessions/'+id);
+    this.current.set(s);
+    this.sessions.update(list=>{
+      const next=list.map(x=>x.id===s.id?s:x);
+      if(!next.some(x=>x.id===s.id)&&s.messages&&s.messages.length>0){next.push(s);}
+      return sortSessions(next);
+    });
+    this.requestScrollToBottom();
+  }
+  async send(){
     if(this.isRecording())this.stopVoiceInput();
     const prompt=this.draft.trim();
     if(!prompt||this.running())return;
 
     let s=this.current();
-    if(!s && this.isDemo){
-      s = {
-        id: 'sess-' + Date.now(),
-        title: prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt,
-        updatedAt: new Date().toISOString(),
-        messages: []
-      };
-      this.sessions.update(list => [s!, ...list]);
-      this.current.set(s);
+    if(!s||!s.id){
+      if(this.isDemo){
+        s = {
+          id: 'sess-' + Date.now(),
+          title: prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt,
+          updatedAt: new Date().toISOString(),
+          messages: []
+        };
+        this.current.set(s);
+      } else {
+        try {
+          const projectId=this.selectedProjectId()||undefined;
+          s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});
+          this.current.set(s);
+        } catch(e) {
+          this.error.set((e as Error).message);
+          return;
+        }
+      }
     }
 
     if(!s){
-      this.error.set('Создайте новый чат и повторите запрос');
+      this.error.set('Не удалось создать чат');
       return;
     }
     if(this.isDemo){
@@ -1336,10 +1377,21 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       this.error.set('Соединение с сервером потеряно');
       return;
     }
-    this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);this.runStartedAt.set(new Date().toISOString());this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;this.current.update(x=>x?{...x,messages:[...x.messages,{id:'pending',role:'user',text:prompt,at:new Date().toISOString()}]}:x);
+    this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);
+    const now=new Date().toISOString();
+    this.runStartedAt.set(now);this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;
+    const userMsg:Message={id:'pending',role:'user',text:prompt,at:now};
+    const updatedSession:ChatSession={
+      ...s,
+      title:s.title==='Новый чат'?(prompt.length>28?prompt.slice(0,28)+'...':prompt):s.title,
+      messages:[...(s.messages||[]),userMsg],
+      updatedAt:now
+    };
+    this.current.set(updatedSession);
+    this.sessions.update(list=>sortSessions([updatedSession,...list.filter(x=>x.id!==updatedSession.id)]));
     this.scrollToBottom(true,'auto');
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel(),reasoning:this.selectedReasoning(),mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:this.selectedService(),accountId:this.selectedService(),model:this.selectedModel(),reasoning:this.selectedReasoning(),mode:'task'},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
   }
 
   sendDemoMessage(prompt: string, s: ChatSession) {
@@ -1347,7 +1399,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.notice.set('');
     this.stream.set('');
     this.activity.set([]);
-    this.runStartedAt.set(new Date().toISOString());
+    const now = new Date().toISOString();
+    this.runStartedAt.set(now);
     this.running.set(true);
     this.draft = '';
     setTimeout(() => this.adjustTextareaHeight(), 0);
@@ -1359,9 +1412,16 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       id: 'u-' + Date.now(),
       role: 'user',
       text: prompt,
-      at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      at: now
     };
-    this.current.update(x => x ? { ...x, messages: [...x.messages, userMsg] } : x);
+    const updated: ChatSession = {
+      ...s,
+      title: s.title === 'Новый чат' ? (prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt) : s.title,
+      messages: [...s.messages, userMsg],
+      updatedAt: now
+    };
+    this.current.set(updated);
+    this.sessions.update(list => sortSessions([updated, ...list.filter(x => x.id !== updated.id)]));
     this.scrollToBottom(true, 'auto');
 
     const responses = [
@@ -1377,13 +1437,20 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         clearInterval(interval);
         this.stream.set('');
         this.running.set(false);
+        const assistantNow = new Date().toISOString();
         const assistantMsg: Message = {
           id: 'a-' + Date.now(),
           role: 'assistant',
           text: fullText,
-          at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          at: assistantNow
         };
-        this.current.update(x => x ? { ...x, messages: [...x.messages, assistantMsg] } : x);
+        const finalSession: ChatSession = {
+          ...this.current()!,
+          messages: [...(this.current()?.messages || []), assistantMsg],
+          updatedAt: assistantNow
+        };
+        this.current.set(finalSession);
+        this.sessions.update(list => sortSessions([finalSession, ...list.filter(x => x.id !== finalSession.id)]));
         this.scrollToBottom(true, 'smooth');
       } else {
         this.stream.set(fullText.slice(0, index));

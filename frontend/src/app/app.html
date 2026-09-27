@@ -63,38 +63,31 @@
     <nav class="app-rail" aria-label="Quick Rail">
       <div class="rail-group">
         <button class="rail-btn" [class.active]="page()==='chat'" (click)="setMode('chat')" title="Chat">
-          <svg lucideHouse [size]="20"></svg>
-        </button>
-        <button class="rail-btn" (click)="searchOpen.set(!searchOpen())" title="Поиск чатов">
-          <svg lucideClock [size]="20"></svg>
+          <svg lucideHouse [size]="18"></svg>
         </button>
         <button class="rail-btn" [class.active]="page()==='projects'" (click)="setMode('work')" title="Проекты (Workspaces)">
-          <svg lucideLibrary [size]="20"></svg>
+          <svg lucideLibrary [size]="18"></svg>
         </button>
         <button class="rail-btn" [class.active]="page()==='providers'" (click)="showPage('providers')" title="Провайдеры и модели">
-          <svg lucideCompass [size]="20"></svg>
+          <svg lucideCompass [size]="18"></svg>
         </button>
 
         <div class="rail-dropdown-wrapper">
           <button class="rail-btn" (click)="moreMenuOpen.set(!moreMenuOpen())" title="Ещё разделы">
-            <svg lucideEllipsis [size]="20"></svg>
+            <svg lucideEllipsis [size]="18"></svg>
           </button>
           @if(moreMenuOpen()) {
             <div class="rail-popover-menu" (click)="moreMenuOpen.set(false)">
               <button class="popover-item" (click)="showPage('sites')">
-                <svg lucideGlobe2 [size]="16"></svg>
+                <svg lucideGlobe2 [size]="15"></svg>
                 <span>Сайты и превью</span>
               </button>
-              <button class="popover-item" (click)="showPage('providers')">
-                <svg lucideCpu [size]="16"></svg>
-                <span>Провайдеры моделей</span>
-              </button>
               <button class="popover-item" (click)="showPage('connections')">
-                <svg lucidePlugZap [size]="16"></svg>
+                <svg lucidePlugZap [size]="15"></svg>
                 <span>Подключения</span>
               </button>
               <button class="popover-item" (click)="showPage('runners')">
-                <svg lucideServer [size]="16"></svg>
+                <svg lucideServer [size]="15"></svg>
                 <span>Исполнители (Runners)</span>
               </button>
             </div>
@@ -106,7 +99,7 @@
 
       <div class="rail-group">
         <button class="rail-btn" (click)="helpModalOpen.set(!helpModalOpen())" title="Справка">
-          <svg lucideCircleQuestionMark [size]="20"></svg>
+          <svg lucideCircleQuestionMark [size]="18"></svg>
         </button>
 
         <div class="rail-avatar-wrapper">
@@ -260,8 +253,13 @@
       <header class="topbar">
         <div class="topbar-left">
           <button class="topbar-nav-arrow" (click)="toggleSidebar()" [title]="sidebarOpen() ? 'Свернуть панель' : 'Развернуть панель'">
-            <svg lucidePanelLeft [size]="18"></svg>
+            <svg lucidePanelLeft [size]="16"></svg>
           </button>
+          @if(!sidebarOpen()) {
+            <button class="topbar-nav-arrow" (click)="newSession()" title="Новый чат">
+              <svg lucideSquarePen [size]="16"></svg>
+            </button>
+          }
         </div>
 
         <div class="topbar-center">
@@ -272,15 +270,42 @@
         </div>
 
         <div class="topbar-right">
-          @if(taskFiles().length) {
-            <button class="btn-topbar-files" (click)="toggleTaskFiles()" title="Файлы задачи">
-              <svg lucideDownload [size]="14"></svg>
-              <span>Files ({{taskFiles().length}})</span>
+          @if(page()==='chat') {
+            @if(taskFiles().length) {
+              <button class="btn-topbar-files" (click)="toggleTaskFiles()" title="Файлы задачи">
+                <svg lucideDownload [size]="13"></svg>
+                <span>Files ({{taskFiles().length}})</span>
+              </button>
+            }
+            <button class="topbar-btn" (click)="reloadCurrent()" title="Обновить чат">
+              <svg lucideRotateCcw [size]="15"></svg>
+            </button>
+          } @else if(page()==='projects') {
+            <button class="btn btn-primary btn-sm" (click)="createProject()">
+              <svg lucidePlus [size]="14"></svg>
+              <span>Новый проект</span>
+            </button>
+          } @else if(page()==='sites') {
+            <button class="btn btn-outline btn-sm" (click)="refreshPreviews()">
+              <svg lucideRefreshCw [size]="14"></svg>
+              <span>Обновить</span>
+            </button>
+          } @else if(page()==='providers') {
+            <button class="btn btn-outline btn-sm" (click)="refreshProviders()" title="Обновить список моделей">
+              <svg lucideRefreshCw [size]="14"></svg>
+              <span>Обновить</span>
+            </button>
+          } @else if(page()==='connections') {
+            <button class="btn btn-outline btn-sm" (click)="refreshAccounts()">
+              <svg lucideRefreshCw [size]="14"></svg>
+              <span>Обновить</span>
+            </button>
+          } @else if(page()==='runners') {
+            <button class="btn btn-outline btn-sm" (click)="refreshRunners()">
+              <svg lucideRefreshCw [size]="14"></svg>
+              <span>Обновить</span>
             </button>
           }
-          <button class="topbar-btn" (click)="newSession()" title="Новый чат">
-            <svg lucidePlus [size]="18"></svg>
-          </button>
         </div>
       </header>
 
@@ -734,23 +759,6 @@
       </div>
     } @else if(page()==='projects') {
         <!-- PROJECTS VIEW -->
-        <header class="topbar">
-          <div class="topbar-left">
-            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
-              <svg lucideMenu [size]="20"></svg>
-            </button>
-            <div class="topbar-info">
-              <h1 class="chat-title">Проекты</h1>
-            </div>
-          </div>
-          <div class="topbar-right">
-            <button class="btn btn-primary btn-sm" (click)="createProject()">
-              <svg lucidePlus [size]="16"></svg>
-              <span>Новый проект</span>
-            </button>
-          </div>
-        </header>
-
         <div class="page-content">
           <div class="section-hero">
             <div>
@@ -816,13 +824,6 @@
           </div>
         </div>
       } @else if(page()==='sites') {
-        <header class="topbar">
-          <div class="topbar-left">
-            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню"><svg lucideMenu [size]="20"></svg></button>
-            <div class="topbar-info"><h1 class="chat-title">Сайты</h1></div>
-          </div>
-          <button class="btn btn-outline btn-sm" (click)="refreshPreviews()"><svg lucideRefreshCw [size]="16"></svg><span>Обновить</span></button>
-        </header>
         <div class="page-content">
           <div class="section-hero"><div><span class="section-tag">ПРЕВЬЮ НА ВАШИХ RUNNER</span><h2>Опубликованные сайты</h2><p>Файлы остаются на runner. Здесь можно скрыть сайт или снова открыть его публичный адрес.</p></div></div>
           @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
@@ -841,23 +842,6 @@
         </div>
       } @else if(page()==='providers') {
         <!-- PROVIDERS & MODELS VIEW -->
-        <header class="topbar">
-          <div class="topbar-left">
-            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
-              <svg lucideMenu [size]="20"></svg>
-            </button>
-            <div class="topbar-info">
-              <h1 class="chat-title">Провайдеры и модели</h1>
-            </div>
-          </div>
-          <div class="topbar-right">
-            <button class="btn btn-outline btn-sm" (click)="refreshProviders()" title="Обновить список моделей">
-              <svg lucideRefreshCw [size]="15"></svg>
-              <span>Обновить</span>
-            </button>
-          </div>
-        </header>
-
         <div class="page-content">
           <div class="section-hero">
             <div>
@@ -1164,23 +1148,6 @@
         </div>
       } @else if(page()==='connections') {
         <!-- CONNECTIONS VIEW -->
-        <header class="topbar">
-          <div class="topbar-left">
-            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
-              <svg lucideMenu [size]="20"></svg>
-            </button>
-            <div class="topbar-info">
-              <h1 class="chat-title">Подключения</h1>
-            </div>
-          </div>
-          <div class="topbar-right">
-            <button class="btn btn-outline btn-sm" (click)="refreshAccounts()">
-              <svg lucideRefreshCw [size]="15"></svg>
-              <span>Обновить статусы</span>
-            </button>
-          </div>
-        </header>
-
         <div class="page-content">
           <div class="section-hero">
             <div>
@@ -1444,23 +1411,6 @@
         </div>
       } @else {
         <!-- RUNNERS VIEW -->
-        <header class="topbar">
-          <div class="topbar-left">
-            <button class="btn-icon mobile-menu-btn" (click)="mobileMenu.set(true)" aria-label="Открыть меню">
-              <svg lucideMenu [size]="20"></svg>
-            </button>
-            <div class="topbar-info">
-              <h1 class="chat-title">Исполнители (Runners)</h1>
-            </div>
-          </div>
-          <div class="topbar-right">
-            <button class="btn btn-outline btn-sm" (click)="refreshRunners()">
-              <svg lucideRefreshCw [size]="15"></svg>
-              <span>Обновить</span>
-            </button>
-          </div>
-        </header>
-
         <div class="page-content">
           <div class="section-hero">
             <div>

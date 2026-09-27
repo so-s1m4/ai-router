@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ChatSession, ProviderId } from './types.js';
 
@@ -28,7 +28,19 @@ async function saveProject(userId:string,project:Project){await writeFile(projec
 export async function listSessions(userId: string): Promise<ChatSession[]> {
   await prepareUser(userId);
   const files = (await readdir(path.join(userDir(userId),'sessions'))).filter(x => x.endsWith('.json'));
-  const sessions = await Promise.all(files.map(async f => { try { return JSON.parse(await readFile(path.join(userDir(userId),'sessions',f),'utf8')) as ChatSession; } catch { return null; } }));
+  const sessions = await Promise.all(files.map(async f => {
+    const full = path.join(userDir(userId),'sessions',f);
+    try {
+      const s = JSON.parse(await readFile(full,'utf8')) as ChatSession;
+      if (!s || !Array.isArray(s.messages) || s.messages.length === 0) {
+        await rm(full).catch(() => {});
+        return null;
+      }
+      return s;
+    } catch {
+      return null;
+    }
+  }));
   return sessions
     .filter((s): s is ChatSession => !!s && Array.isArray(s.messages) && s.messages.length > 0)
     .sort((a,b) => {
