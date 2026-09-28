@@ -1064,11 +1064,13 @@
 }
 
 .message-row.user-row {
+  display: flex;
   justify-content: flex-end;
 }
 
 .user-bubble {
   max-width: 80%;
+  margin-left: auto;
   background: #2f2f2f;
   border-radius: 20px 20px 6px 20px;
   padding: 12px 18px;
@@ -1076,6 +1078,22 @@
   font-size: 15px;
   line-height: 1.55;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.user-bubble .message-text {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .assistant-row {
@@ -2984,46 +3002,58 @@
 
   /* Chat Feed & Messages */
   .chat-scroll-area {
-    padding: 10px 8px 20px;
+    padding: 0;
   }
 
   .message-feed {
-    gap: 14px;
+    gap: 16px;
+    padding: 14px 12px 140px;
   }
 
   .message-row {
-    gap: 8px;
-  }
-
-  .message-avatar {
-    width: 28px;
-    height: 28px;
-    font-size: 11px;
-    border-radius: var(--radius-xs);
-  }
-
-  /* User Message as sleek bubble on mobile */
-  .message-row.user-row {
-    flex-direction: row-reverse;
-  }
-
-  .message-row.user-row .message-bubble {
+    width: 100%;
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
   }
 
-  .message-row.user-row .message-meta {
-    flex-direction: row-reverse;
+  /* User Message on mobile: clearly aligned to the right */
+  .message-row.user-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    width: 100%;
   }
 
-  .message-row.user-row .message-text {
-    background: var(--bg-surface-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: 14px 4px 14px 14px;
-    padding: 8px 12px;
-    max-width: 90%;
-    color: var(--text-main);
+  .user-bubble {
+    max-width: 85%;
+    margin-left: auto;
+    margin-right: 0;
+    padding: 10px 14px;
+    font-size: 14.5px;
+    line-height: 1.5;
+    background: #2f2f2f;
+    border-radius: 18px 18px 4px 18px;
+    color: #ececec;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .user-bubble .message-text {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    max-width: 100%;
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .assistant-row {
+    gap: 10px;
   }
 
   .message-text {
