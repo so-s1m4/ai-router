@@ -9,7 +9,7 @@ type Key = { id: string; label: string; publicKey: string; fingerprint: string }
 type Container = { id: string; name: string; image: string; state: string; status: string; composeProject: string | null };
 type Mount = { type: 'bind' | 'volume'; source: string; target: string; readOnly: boolean };
 type Details = { id: string; name: string; image: string; state: string; envNames: string[]; mounts: Mount[]; ports: Record<string, unknown>; labels: Record<string, string> };
-type Mcp = { name: string; url: string | null; command: string | null; args: string[]; envNames: string[]; enabled: boolean };
+type Mcp = { name: string; url: string | null; command: string | null; args: string[]; envNames: string[]; headerNames?: string[]; enabled: boolean };
 type Auth = { sessionId: string; running: boolean; code?: number; output: string; accountId: string };
 type Overview = { keys: Key[]; containers: Container[]; dockerError: string | null };
 type Pairing = { code: string; expiresAt: string };
@@ -29,7 +29,7 @@ export class ManagerPanel implements OnDestroy {
   keyLabel = ''; githubResult = signal('');
   image = ''; envRows: { key: string; value: string }[] = []; envUnset = new Set<string>();
   mountRows: { type: 'bind' | 'volume'; source: string; target: string; readOnly: boolean }[] = []; mountRemove = new Set<string>();
-  selectedAccountId = ''; mcp = signal<Mcp[]>([]); mcpName = ''; mcpKind: 'url' | 'command' = 'url'; mcpUrl = ''; mcpCommand = ''; mcpArgs = ''; mcpEnvRows: { key: string; value: string }[] = [];
+  selectedAccountId = ''; mcp = signal<Mcp[]>([]); mcpName = ''; mcpKind: 'url' | 'command' = 'url'; mcpUrl = ''; mcpCommand = ''; mcpArgs = ''; mcpHeaderRows: { key: string; value: string }[] = []; mcpEnvRows: { key: string; value: string }[] = [];
   loginSession = signal<Auth | null>(null); private pollTimer?: ReturnType<typeof setTimeout>;
   get localAccounts() { return this.accounts.filter(account => account.runnerId === this.runner.id); }
   get selectedAccount() { return this.localAccounts.find(account => account.id === this.selectedAccountId); }
@@ -90,10 +90,15 @@ export class ManagerPanel implements OnDestroy {
   async loadMcp() { this.mcp.set([]); const value = await this.operation<Mcp[]>('mcp.list', {}); if (value) this.mcp.set(value); }
   async addMcp() {
     const payload: Record<string, unknown> = { name: this.mcpName.trim() };
-    if (this.mcpKind === 'url') payload['url'] = this.mcpUrl.trim();
+    if (this.mcpKind === 'url') {
+      const rows = this.mcpHeaderRows.filter(row => row.key.trim() || row.value);
+      if (rows.some(row => !row.key.trim()) || new Set(rows.map(row => row.key.trim().toLowerCase())).size !== rows.length) { this.error.set('Укажите уникальное имя для каждого header'); return; }
+      payload['url'] = this.mcpUrl.trim();
+      payload['headers'] = Object.fromEntries(rows.map(row => [row.key.trim(), row.value]));
+    }
     else { payload['command'] = this.mcpCommand.trim(); payload['args'] = this.mcpArgs.split('\n').map(value => value.trim()).filter(Boolean); payload['env'] = Object.fromEntries(this.mcpEnvRows.filter(row => row.key.trim()).map(row => [row.key.trim(), row.value])); }
     const value = await this.operation<Mcp[]>('mcp.add', payload, 'MCP-сервер добавлен');
-    if (value) { this.mcp.set(value); this.mcpName = ''; this.mcpUrl = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpEnvRows = []; }
+    if (value) { this.mcp.set(value); this.mcpName = ''; this.mcpUrl = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpEnvRows = []; this.mcpHeaderRows = []; }
   }
   async removeMcp(name: string) { if (!confirm(`Удалить MCP «${name}»?`)) return; const value = await this.operation<Mcp[]>('mcp.remove', { name }, 'MCP-сервер удалён'); if (value) this.mcp.set(value); }
   async addBrowser() {

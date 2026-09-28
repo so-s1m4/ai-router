@@ -1,3 +1,4 @@
+import { parse, stringify } from 'smol-toml';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -23,8 +24,8 @@ async function run(bin: string, args: string[], home: string) {
 const agyFile = (home: string) => path.join(home, '.gemini', 'config', 'mcp_config.json');
 async function readAgy(home: string): Promise<{ mcpServers: Record<string, any> }> { try { const raw = JSON.parse(await readFile(agyFile(home), 'utf8')); return { ...raw, mcpServers: raw.mcpServers && typeof raw.mcpServers === 'object' ? raw.mcpServers : {} }; } catch (error: any) { if (error?.code === 'ENOENT') return { mcpServers: {} }; throw new Error('Не удалось прочитать конфигурацию Antigravity MCP'); } }
 async function writeAgy(home: string, value: { mcpServers: Record<string, any> }) { const file = agyFile(home); await mkdir(path.dirname(file), { recursive: true, mode: 0o700 }); const temp = file + '.tmp'; await writeFile(temp, JSON.stringify(value, null, 2), { mode: 0o600 }); await rename(temp, file); }
-export type McpInput = { accountId?: string; provider?: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string> };
-function sanitized(name: string, item: any) { const value = item?.transport || item; return { name, url: value?.url || value?.serverUrl || null, command: value?.command || null, args: value?.args || [], envNames: Object.keys(value?.env || {}), enabled: item?.enabled !== false && item?.disabled !== true }; }
+export type McpInput = { accountId?: string; provider?: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string> };
+function sanitized(name: string, item: any) { const value = item?.transport || item; return { name, url: value?.url || value?.serverUrl || null, command: value?.command || null, args: value?.args || [], envNames: Object.keys(value?.env || {}), headerNames: Object.keys(value?.headers || {}), enabled: item?.enabled !== false && item?.disabled !== true }; }
 export async function listMcp(_input: McpInput = {}) {
   const home = path.join(root, 'global-mcp');
   const config = await readAgy(home); return Object.entries(config.mcpServers).map(([name, item]) => sanitized(name, item));
@@ -36,7 +37,12 @@ export async function addMcp(input: McpInput) {
   if (input.url && !/^https:\/\//.test(input.url)) throw new Error('MCP URL должен использовать HTTPS');
   if (input.command && (input.command.length > 200 || /[\r\n]/.test(input.command))) throw new Error('Неверная команда MCP');
   if ((input.args || []).some(arg => arg.length > 500) || Object.entries(input.env || {}).some(([key, value]) => !/^[A-Z_][A-Z0-9_]*$/.test(key) || value.length > 2000)) throw new Error('Неверные параметры MCP');
-  const config = await readAgy(home); config.mcpServers[name] = input.url ? { serverUrl: input.url } : { command: input.command, args: input.args || [], env: input.env || {} }; await writeAgy(home, config);
+  const headers = input.headers || {};
+  const names = Object.keys(headers);
+  if (names.length && !input.url) throw new Error('Headers доступны только для HTTPS MCP');
+  if (names.length > 30 || new Set(names.map(name => name.toLowerCase())).size !== names.length || Object.entries(headers).some(([key, value]) => !/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,100}$/.test(key) || typeof value !== 'string' || value.length > 4000 || /[^\t\x20-\x7e\x80-\xff]/.test(value))) throw new Error('Неверные HTTP headers MCP');
+  if (JSON.stringify(headers).length > 16000) throw new Error('Слишком большой размер headers');
+  const config = await readAgy(home); config.mcpServers[name] = input.url ? { serverUrl: input.url, headers } : { command: input.command, args: input.args || [], env: input.env || {} }; await writeAgy(home, config);
 
   return listMcp(input);
 }
@@ -88,6 +94,17 @@ export async function syncGlobalMcp(home: string, provider: Provider) {
           args.push('--', item.command, ...(item.args || []));
         }
         await run('codex', args, home);
+        // Persist headers separately: the CLI has no header flag, and secrets
+        // must not be exposed in process arguments.
+        if (item.serverUrl) {
+          const file = path.join(home, '.codex', 'config.toml');
+          const config = parse(await readFile(file, 'utf8')) as any;
+          const server = config.mcp_servers[name];
+          delete server.http_headers;
+          if (Object.keys(item.headers || {}).length) server.http_headers = item.headers;
+          await writeFile(file + '.tmp', stringify(config), { mode: 0o600 });
+          await rename(file + '.tmp', file);
+        }
       }
     }
     await mkdir(home, { recursive: true, mode: 0o700 });

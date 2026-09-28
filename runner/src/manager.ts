@@ -91,7 +91,7 @@ async function perform(op: string, payload: Record<string, unknown>) {
       return recreateContainer(value.id, value);
     }
     case 'mcp.list': return runAccountHelper(op, {});
-    case 'mcp.add': return runAccountHelper(op, z.object({}).extend({ name: z.string(), url: z.string().optional(), command: z.string().optional(), args: z.array(z.string()).max(30).optional(), env: z.record(z.string()).optional() }).parse(payload));
+    case 'mcp.add': return runAccountHelper(op, z.object({}).extend({ name: z.string(), url: z.string().optional(), command: z.string().optional(), args: z.array(z.string()).max(30).optional(), env: z.record(z.string()).optional(), headers: z.record(z.string()).optional() }).parse(payload));
     case 'mcp.remove': return runAccountHelper(op, z.object({}).extend({ name: z.string() }).parse(payload));
     case 'auth.start': { const value = accountInput.parse(payload); if (value.provider !== 'codex') throw new Error('Вход Google пока выполняется в терминале runner'); return startCodexLogin(value.accountId); }
     case 'auth.status': return authStatus(z.object({ sessionId: uuid }).parse(payload).sessionId);

@@ -19,6 +19,19 @@ test('global MCP reaches existing and new accounts, redacts secrets and removes 
       await Promise.all([syncGlobalMcp(home, 'antigravity'), syncGlobalMcp(home, 'antigravity')]);
       assert.equal(JSON.parse(await readFile(configFile(home))).mcpServers.browser.env.TOKEN, 'secret');
     }
+    await addMcp({ name: 'remote', url: 'https://example.com/mcp', headers: { Authorization: 'Bearer secret', 'X-API-Key': 'test-key' } });
+    const remote = (await listMcp()).find(item => item.name === 'remote');
+    assert.deepEqual(remote.headerNames, ['Authorization', 'X-API-Key']);
+    assert.equal(JSON.stringify(remote).includes('secret'), false);
+    await syncGlobalMcp(homes[0], 'antigravity');
+    assert.equal(JSON.parse(await readFile(configFile(homes[0]))).mcpServers.remote.headers.Authorization, 'Bearer secret');
+    for (const headers of [{ 'Bad Name': 'x' }, { Good: 'x\r\nInjected: true' }, { Token: 'a', token: 'b' }]) {
+      await assert.rejects(addMcp({ name: 'invalid', url: 'https://example.com', headers }));
+    }
+    await assert.rejects(addMcp({ name: 'invalid', command: 'echo', headers: { Token: 'x' } }));
+    await addMcp({ name: 'remote', url: 'https://example.com/mcp' });
+    await syncGlobalMcp(homes[0], 'antigravity');
+    assert.deepEqual(JSON.parse(await readFile(configFile(homes[0]))).mcpServers.remote.headers, {});
     await removeMcp({ name: 'browser' });
     for (const home of homes) {
       await syncGlobalMcp(home, 'antigravity');
