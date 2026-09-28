@@ -6,12 +6,7 @@ import type { AccountModel, AccountStatus, Event, Job } from './cli.js';
 import { RunnerError } from './cli.js';
 
 export const DEFAULT_CHATGPT_MODELS: AccountModel[] = [
-  { id: 'default', label: 'По умолчанию ChatGPT' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
-  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gpt-4.5', label: 'GPT-4.5' }
+  { id: 'default', label: 'По умолчанию ChatGPT' }
 ];
 
 export interface ChatGPTSessionData {
@@ -67,26 +62,63 @@ export async function readChatGPTSession(home: string): Promise<ChatGPTSessionDa
   }
 }
 
-export async function chatgptAccountStatus(home: string, _signal: AbortSignal): Promise<AccountStatus> {
-  const session = await readChatGPTSession(home);
-  const profileDir = path.join(home, 'chrome-profile');
-  const hasAuth = Boolean((session && (session.sessionToken || session.cookies?.length)) || existsSync(profileDir));
-  
-  return {
-    models: DEFAULT_CHATGPT_MODELS,
-    limits: undefined
-  };
+
+const profileLocks = new Map<string, Promise<void>>();
+async function withProfile<T>(home: string, run: () => Promise<T>): Promise<T> {
+  const previous = profileLocks.get(home) || Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  profileLocks.set(home, current);
+  await previous;
+  try { return await run(); }
+  finally { release(); if (profileLocks.get(home) === current) profileLocks.delete(home); }
 }
 
-export async function executeChatGPTWeb(
+export function parseChatGPTModels(payload: unknown): AccountModel[] {
+  const rows = (payload as { models?: unknown })?.models;
+  if (!Array.isArray(rows)) throw new RunnerError('ChatGPT не вернул список моделей', 'unavailable');
+  const models = new Map<string, AccountModel>();
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || row.enabled === false || row.disabled === true) continue;
+    const id = row.slug, label = row.title;
+    if (typeof id !== 'string' || !id.trim() || id.length > 100 || typeof label !== 'string' || !label.trim() || label.length > 160) continue;
+    models.set(id, { id, label });
+  }
+  if (!models.size) throw new RunnerError('В сессии ChatGPT нет доступных моделей', 'unavailable');
+  models.delete('default');
+  return [...DEFAULT_CHATGPT_MODELS, ...models.values()];
+}
+
+const statusRequests = new Map<string, Promise<AccountStatus>>();
+
+export async function chatgptAccountStatus(home: string, signal: AbortSignal): Promise<AccountStatus> {
+  const pending = statusRequests.get(home);
+  if (pending) return pending;
+  const request = withProfile(home, async () => {
+    let models: AccountModel[] = [];
+    await executeChatGPTWebInternal({ model: 'default' } as Job, home, '', signal, () => {}, value => { models = value; });
+    return { models };
+  });
+  statusRequests.set(home, request);
+  try { return await request; }
+  finally { if (statusRequests.get(home) === request) statusRequests.delete(home); }
+}
+
+export async function executeChatGPTWeb(job: Job, home: string, cwd: string, signal: AbortSignal, emit: (e: Event) => void): Promise<string> {
+  return withProfile(home, () => executeChatGPTWebInternal(job, home, cwd, signal, emit));
+}
+
+async function executeChatGPTWebInternal(
   job: Job,
   home: string,
   cwd: string,
   signal: AbortSignal,
-  emit: (e: Event) => void
+  emit: (e: Event) => void,
+  onModels?: (models: AccountModel[]) => void
 ): Promise<string> {
   if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
 
+  if (onModels && process.env.MOCK_MODE === 'true') { onModels(DEFAULT_CHATGPT_MODELS); return ''; }
   if (process.env.MOCK_MODE === 'true') {
     emit({ type: 'status', message: 'Демо-режим: Chromium эмулируется' });
     const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
@@ -100,7 +132,7 @@ export async function executeChatGPTWeb(
 
   const chromePath = findChromePath();
   if (!chromePath) {
-    if (process.env.MOCK_MODE !== 'false') {
+    if (!onModels && process.env.MOCK_MODE !== 'false') {
       emit({ type: 'status', message: 'Демо-режим: Chromium не установлен' });
       const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
       for (const chunk of text.match(/.{1,24}/gu) || [text]) {
@@ -114,7 +146,6 @@ export async function executeChatGPTWeb(
   }
 
   const profileDir = path.join(home, 'chrome-profile');
-  await mkdir(profileDir, { recursive: true, mode: 0o700 });
   const session = await readChatGPTSession(home);
   const hasSavedAuth = Boolean((session && (session.sessionToken || session.cookies?.length)) || existsSync(profileDir));
 
@@ -122,6 +153,7 @@ export async function executeChatGPTWeb(
     throw new RunnerError('Требуется вход в аккаунт ChatGPT: сохраните session token или cookies в настройках аккаунта', 'auth');
   }
 
+  await mkdir(profileDir, { recursive: true, mode: 0o700 });
   emit({ type: 'status', message: 'Запуск браузера ChatGPT Web...' });
 
   let browser: Browser | null = null;
@@ -232,6 +264,26 @@ export async function executeChatGPTWeb(
       }
     }
 
+
+    // Web-internal endpoint: fail explicitly if the session or contract changes.
+    const catalog = await page.evaluate(async () => {
+      const auth = await fetch('/api/auth/session', { credentials: 'include', signal: AbortSignal.timeout(15000) });
+      if (!auth.ok) return { error: 'auth' };
+      const session = await auth.json();
+      if (!session.accessToken) return { error: 'auth' };
+      const response = await fetch('/backend-api/models', {
+        credentials: 'include', headers: { Authorization: 'Bearer ' + session.accessToken },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) return { error: response.status === 401 || response.status === 403 ? 'auth' : 'unavailable' };
+      return { payload: await response.json() };
+    });
+    if (catalog.error) throw new RunnerError('Не удалось получить модели сессии ChatGPT. Проверьте подключение и авторизацию.', catalog.error === 'auth' ? 'auth' : 'unavailable');
+    const availableModels = parseChatGPTModels(catalog.payload);
+    if (onModels) { onModels(availableModels); return ''; }
+    if (job.model && !availableModels.some(m => m.id === job.model)) {
+      throw new RunnerError('Выбранная модель больше недоступна в сессии ChatGPT. Обновите список моделей.', 'unavailable');
+    }
     emit({ type: 'status', message: 'Отправка сообщения в ChatGPT...' });
 
     // Focus and fill prompt with ProseMirror compatibility

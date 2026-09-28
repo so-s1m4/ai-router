@@ -8,7 +8,7 @@ const dataRoot = await mkdtemp(path.join(tmpdir(), 'chatgpt-runner-data-'));
 const previousDataRoot = process.env.RUNNER_DATA_DIR;
 process.env.RUNNER_DATA_DIR = dataRoot;
 const { accountStatus, execute } = await import('../dist/cli.js');
-const { saveChatGPTSession, readChatGPTSession } = await import('../dist/chatgpt-web.js');
+const { saveChatGPTSession, readChatGPTSession, parseChatGPTModels } = await import('../dist/chatgpt-web.js');
 
 after(async () => {
   if (previousDataRoot === undefined) delete process.env.RUNNER_DATA_DIR;
@@ -16,16 +16,17 @@ after(async () => {
   await rm(dataRoot, { recursive: true, force: true });
 });
 
-test('ChatGPT Web returns default models in accountStatus', async () => {
+test('ChatGPT mock status only exposes the default choice', async () => {
+  const previous = process.env.MOCK_MODE;
+  process.env.MOCK_MODE = 'true';
   const dir = await mkdtemp(path.join(tmpdir(), 'chatgpt-test-'));
   try {
     const controller = new AbortController();
     const status = await accountStatus('chatgpt', dir, controller.signal);
     assert.ok(status.models.some(m => m.id === 'default'));
-    assert.ok(status.models.some(m => m.id === 'gpt-4o'));
-    assert.ok(status.models.some(m => m.id === 'o1'));
-    assert.ok(status.models.some(m => m.id === 'o3-mini'));
+    assert.equal(status.models.length, 1);
   } finally {
+    if (previous === undefined) delete process.env.MOCK_MODE; else process.env.MOCK_MODE = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -108,3 +109,15 @@ test('ChatGPT Web execution when MOCK_MODE=false throws unavailable when Chromiu
     else process.env.CHROME_BIN = previousChrome;
   }
 });
+
+ test('session catalog filters unavailable and malformed models without static fallback', () => {
+   assert.deepEqual(parseChatGPTModels({models:[
+     {slug:'session-model',title:'Session model'},
+     {slug:'session-model',title:'Session model'},
+     {slug:'disabled',title:'Disabled',enabled:false},
+     {slug:'broken'}, null
+   ]}).map(m=>m.id), ['default','session-model']);
+   for (const payload of [null, {}, {models:[]}, {models:[{slug:'x',title:'X',disabled:true}]}]) {
+     assert.throws(()=>parseChatGPTModels(payload), {code:'unavailable'});
+   }
+ });

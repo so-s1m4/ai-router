@@ -11,8 +11,8 @@ test('modelCatalog contains default models for codex and antigravity/gemini and 
   assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-2.5-pro'));
   assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-2.5-flash'));
   assert.ok(modelCatalog.chatgpt.some(m => m.id === 'default'));
-  assert.ok(modelCatalog.chatgpt.some(m => m.id === 'gpt-4o'));
-  assert.ok(modelCatalog.chatgpt.some(m => m.id === 'o1'));
+  assert.deepEqual(modelCatalog.chatgpt.map(m => m.id), ['default']);
+  assert.deepEqual(resolveAccountModels('chatgpt', [{id:'session-model',label:'Session model'}]).map(m => m.id), ['default', 'session-model']);
 });
 
 test('reasoning efforts are configured for models with reasoning support', () => {

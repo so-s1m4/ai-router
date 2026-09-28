@@ -35,12 +35,7 @@ export const DEFAULT_GEMINI_MODELS: Model[] = [
 ];
 
 export const DEFAULT_CHATGPT_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию ChatGPT' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
-  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gpt-4.5', label: 'GPT-4.5' }
+  { id: 'default', label: 'По умолчанию ChatGPT' }
 ];
 
 function parseCustomModels(raw: string | undefined): Model[] {
@@ -59,7 +54,7 @@ function mergeModelCatalog(defaults: Model[], custom: Model[]): Model[] {
 export const modelCatalog: Record<ProviderId, Model[]> = {
   codex: mergeModelCatalog(DEFAULT_CODEX_MODELS, parseCustomModels(process.env.CODEX_MODELS)),
   antigravity: mergeModelCatalog(DEFAULT_GEMINI_MODELS, parseCustomModels(process.env.AGY_MODELS)),
-  chatgpt: mergeModelCatalog(DEFAULT_CHATGPT_MODELS, parseCustomModels(process.env.CHATGPT_MODELS))
+  chatgpt: DEFAULT_CHATGPT_MODELS
 };
 
 export function resolveAccountModels(provider: ProviderId, reportedModels?: Model[]): Model[] {
