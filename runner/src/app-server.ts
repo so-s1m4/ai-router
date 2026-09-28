@@ -1,3 +1,4 @@
+import { syncGlobalMcp } from './manager-mcp.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { access, constants, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -201,6 +202,7 @@ async function configVersion(home: string) {
 }
 
 async function currentConnection(home: string) {
+  await syncGlobalMcp(home, 'codex');
   const version = await configVersion(home);
   let connection = processes.get(home);
   if (connection && configVersions.get(home) !== version) {

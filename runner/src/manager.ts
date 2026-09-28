@@ -15,7 +15,13 @@ const gate = new ManagementPasswordGate(process.env.RUNNER_MANAGER_PASSWORD || '
 const dataRoot = process.env.MANAGER_DATA_DIR || '/manager-data';
 const deviceFile = path.join(dataRoot, 'device.json');
 function accountEnv(): NodeJS.ProcessEnv { return { PATH: process.env.PATH, HOME: '/home/node', RUNNER_DATA_DIR: process.env.RUNNER_DATA_DIR || '/runner-data', SSL_CERT_FILE: process.env.SSL_CERT_FILE, HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY }; }
-async function runAccountHelper(op: string, payload: Record<string, unknown>): Promise<any> {
+let helperQueue: Promise<unknown> = Promise.resolve();
+function runAccountHelper(op: string, payload: Record<string, unknown>): Promise<any> {
+  const result = helperQueue.catch(() => {}).then(() => executeAccountHelper(op, payload));
+  helperQueue = result;
+  return result;
+}
+async function executeAccountHelper(op: string, payload: Record<string, unknown>): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(import.meta.dirname, 'manager-mcp.js')], { uid: 1000, gid: 1000, env: accountEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '', finished = false;
@@ -84,9 +90,9 @@ async function perform(op: string, payload: Record<string, unknown>) {
       if (Object.keys(value.envSet || {}).some(key => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))) throw new Error('Неверное имя переменной окружения');
       return recreateContainer(value.id, value);
     }
-    case 'mcp.list': return runAccountHelper(op, accountInput.parse(payload));
-    case 'mcp.add': return runAccountHelper(op, accountInput.extend({ name: z.string(), url: z.string().optional(), command: z.string().optional(), args: z.array(z.string()).max(30).optional(), env: z.record(z.string()).optional() }).parse(payload));
-    case 'mcp.remove': return runAccountHelper(op, accountInput.extend({ name: z.string() }).parse(payload));
+    case 'mcp.list': return runAccountHelper(op, {});
+    case 'mcp.add': return runAccountHelper(op, z.object({}).extend({ name: z.string(), url: z.string().optional(), command: z.string().optional(), args: z.array(z.string()).max(30).optional(), env: z.record(z.string()).optional() }).parse(payload));
+    case 'mcp.remove': return runAccountHelper(op, z.object({}).extend({ name: z.string() }).parse(payload));
     case 'auth.start': { const value = accountInput.parse(payload); if (value.provider !== 'codex') throw new Error('Вход Google пока выполняется в терминале runner'); return startCodexLogin(value.accountId); }
     case 'auth.status': return authStatus(z.object({ sessionId: uuid }).parse(payload).sessionId);
     case 'auth.cancel': return authCancel(z.object({ sessionId: uuid }).parse(payload).sessionId);

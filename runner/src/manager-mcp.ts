@@ -23,28 +23,27 @@ async function run(bin: string, args: string[], home: string) {
 const agyFile = (home: string) => path.join(home, '.gemini', 'config', 'mcp_config.json');
 async function readAgy(home: string): Promise<{ mcpServers: Record<string, any> }> { try { const raw = JSON.parse(await readFile(agyFile(home), 'utf8')); return { ...raw, mcpServers: raw.mcpServers && typeof raw.mcpServers === 'object' ? raw.mcpServers : {} }; } catch (error: any) { if (error?.code === 'ENOENT') return { mcpServers: {} }; throw new Error('Не удалось прочитать конфигурацию Antigravity MCP'); } }
 async function writeAgy(home: string, value: { mcpServers: Record<string, any> }) { const file = agyFile(home); await mkdir(path.dirname(file), { recursive: true, mode: 0o700 }); const temp = file + '.tmp'; await writeFile(temp, JSON.stringify(value, null, 2), { mode: 0o600 }); await rename(temp, file); }
-export type McpInput = { accountId: string; provider: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string> };
+export type McpInput = { accountId?: string; provider?: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string> };
 function sanitized(name: string, item: any) { const value = item?.transport || item; return { name, url: value?.url || value?.serverUrl || null, command: value?.command || null, args: value?.args || [], envNames: Object.keys(value?.env || {}), enabled: item?.enabled !== false && item?.disabled !== true }; }
-export async function listMcp(input: McpInput) {
-  const home = homeFor(input.accountId);
-  if (input.provider === 'antigravity') { const config = await readAgy(home); return Object.entries(config.mcpServers).map(([name, item]) => sanitized(name, item)); }
-  const raw = JSON.parse(await run('codex', ['mcp', 'list', '--json'], home));
-  return Array.isArray(raw) ? raw.map(item => sanitized(item.name, item)) : Object.entries(raw).map(([name, item]) => sanitized(name, item));
+export async function listMcp(_input: McpInput = {}) {
+  const home = path.join(root, 'global-mcp');
+  const config = await readAgy(home); return Object.entries(config.mcpServers).map(([name, item]) => sanitized(name, item));
+
 }
 export async function addMcp(input: McpInput) {
-  const home = homeFor(input.accountId), name = safeName(input.name || '');
+  const home = path.join(root, 'global-mcp'), name = safeName(input.name || '');
   if (!!input.url === !!input.command) throw new Error('Укажите URL или команду MCP');
   if (input.url && !/^https:\/\//.test(input.url)) throw new Error('MCP URL должен использовать HTTPS');
   if (input.command && (input.command.length > 200 || /[\r\n]/.test(input.command))) throw new Error('Неверная команда MCP');
   if ((input.args || []).some(arg => arg.length > 500) || Object.entries(input.env || {}).some(([key, value]) => !/^[A-Z_][A-Z0-9_]*$/.test(key) || value.length > 2000)) throw new Error('Неверные параметры MCP');
-  if (input.provider === 'antigravity') { const config = await readAgy(home); config.mcpServers[name] = input.url ? { serverUrl: input.url } : { command: input.command, args: input.args || [], env: input.env || {} }; await writeAgy(home, config); }
-  else { const args = ['mcp', 'add', name]; if (input.url) args.push('--url', input.url); else { for (const [key, value] of Object.entries(input.env || {})) args.push('--env', `${key}=${value}`); args.push('--', input.command!, ...(input.args || [])); } await run('codex', args, home); }
+  const config = await readAgy(home); config.mcpServers[name] = input.url ? { serverUrl: input.url } : { command: input.command, args: input.args || [], env: input.env || {} }; await writeAgy(home, config);
+
   return listMcp(input);
 }
 export async function removeMcp(input: McpInput) {
-  const home = homeFor(input.accountId), name = safeName(input.name || '');
-  if (input.provider === 'antigravity') { const config = await readAgy(home); delete config.mcpServers[name]; await writeAgy(home, config); }
-  else await run('codex', ['mcp', 'remove', name], home);
+  const home = path.join(root, 'global-mcp'), name = safeName(input.name || '');
+  const config = await readAgy(home); delete config.mcpServers[name]; await writeAgy(home, config);
+
   return listMcp(input);
 }
 
@@ -55,7 +54,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.stdin.on('end', async () => {
     try {
       const { op, payload } = JSON.parse(input) as { op: string; payload: McpInput };
-      const result = op === 'ensureHome' ? await ensureHome(payload.accountId)
+      const result = op === 'ensureHome' ? await ensureHome(payload.accountId || '')
         : op === 'mcp.list' ? await listMcp(payload)
         : op === 'mcp.add' ? await addMcp(payload)
         : op === 'mcp.remove' ? await removeMcp(payload)
@@ -63,4 +62,38 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.stdout.write(JSON.stringify(result));
     } catch (error) { process.stderr.write(error instanceof Error ? error.message : 'Ошибка настройки аккаунта'); process.exitCode = 1; }
   });
+}
+
+const syncing = new Map<string, Promise<void>>();
+export async function syncGlobalMcp(home: string, provider: Provider) {
+  const key = home + ':' + provider;
+  const next = (syncing.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
+    const { mcpServers: servers } = await readAgy(path.join(root, 'global-mcp'));
+    const marker = path.join(home, '.global-mcp-' + provider + '.json');
+    let old: Record<string, any> = {};
+    try { old = JSON.parse(await readFile(marker, 'utf8')); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    if (JSON.stringify(old) === JSON.stringify(servers)) return;
+    if (provider === 'antigravity') {
+      const local = await readAgy(home);
+      for (const name of Object.keys(old)) delete local.mcpServers[name];
+      Object.assign(local.mcpServers, servers);
+      await writeAgy(home, local);
+    } else {
+      for (const name of Object.keys(old)) if (!(name in servers)) await run('codex', ['mcp', 'remove', name], home);
+      for (const [name, item] of Object.entries(servers)) {
+        const args = ['mcp', 'add', name];
+        if (item.serverUrl) args.push('--url', item.serverUrl);
+        else {
+          for (const [key, value] of Object.entries(item.env || {})) args.push('--env', key + '=' + value);
+          args.push('--', item.command, ...(item.args || []));
+        }
+        await run('codex', args, home);
+      }
+    }
+    await mkdir(home, { recursive: true, mode: 0o700 });
+    await writeFile(marker + '.tmp', JSON.stringify(servers), { mode: 0o600 });
+    await rename(marker + '.tmp', marker);
+  });
+  syncing.set(key, next);
+  try { await next; } finally { if (syncing.get(key) === next) syncing.delete(key); }
 }
