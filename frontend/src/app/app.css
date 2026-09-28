@@ -993,8 +993,8 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: #ffffff;
-  color: #000000;
+  background: #3a3a3a;
+  color: #ffffff;
   border: none;
   display: flex;
   align-items: center;
@@ -1005,7 +1005,7 @@
 
 .pill-btn-send:hover {
   transform: scale(1.05);
-  background: #ececec;
+  background: #4a4a4a;
 }
 
 .btn-circle-stop {

@@ -22,7 +22,7 @@ async function run(bin: string, args: string[], home: string) {
   });
 }
 const agyFile = (home: string) => path.join(home, '.gemini', 'config', 'mcp_config.json');
-async function readAgy(home: string): Promise<{ mcpServers: Record<string, any> }> { try { const raw = JSON.parse(await readFile(agyFile(home), 'utf8')); return { ...raw, mcpServers: raw.mcpServers && typeof raw.mcpServers === 'object' ? raw.mcpServers : {} }; } catch (error: any) { if (error?.code === 'ENOENT') return { mcpServers: {} }; throw new Error('Не удалось прочитать конфигурацию Antigravity MCP'); } }
+async function readAgy(home: string): Promise<{ mcpServers: Record<string, any> }> { try { const content = await readFile(agyFile(home), 'utf8'); if (!content.trim()) return { mcpServers: {} }; const raw = JSON.parse(content); return { ...raw, mcpServers: raw.mcpServers && typeof raw.mcpServers === 'object' ? raw.mcpServers : {} }; } catch (error: any) { if (error?.code === 'ENOENT') return { mcpServers: {} }; throw new Error('Не удалось прочитать конфигурацию Antigravity MCP'); } }
 async function writeAgy(home: string, value: { mcpServers: Record<string, any> }) { const file = agyFile(home); await mkdir(path.dirname(file), { recursive: true, mode: 0o700 }); const temp = file + '.tmp'; await writeFile(temp, JSON.stringify(value, null, 2), { mode: 0o600 }); await rename(temp, file); }
 export type McpInput = { accountId?: string; provider?: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string> };
 function sanitized(name: string, item: any) { const value = item?.transport || item; return { name, url: value?.url || value?.serverUrl || null, command: value?.command || null, args: value?.args || [], envNames: Object.keys(value?.env || {}), headerNames: Object.keys(value?.headers || {}), enabled: item?.enabled !== false && item?.disabled !== true }; }
@@ -78,7 +78,11 @@ export async function syncGlobalMcp(home: string, provider: Provider) {
     const marker = path.join(home, '.global-mcp-' + provider + '.json');
     let old: Record<string, any> = {};
     try { old = JSON.parse(await readFile(marker, 'utf8')); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
-    if (JSON.stringify(old) === JSON.stringify(servers)) return;
+    if (JSON.stringify(old) === JSON.stringify(servers)) {
+      if (provider !== 'antigravity') return;
+      try { if ((await readFile(agyFile(home), 'utf8')).trim()) return; }
+      catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
+    }
     if (provider === 'antigravity') {
       const local = await readAgy(home);
       for (const name of Object.keys(old)) delete local.mcpServers[name];

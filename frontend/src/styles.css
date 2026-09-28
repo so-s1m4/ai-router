@@ -35,8 +35,8 @@
   --border-focus: rgba(255, 255, 255, 0.35);
 
   /* Brand Accents */
-  --primary: #ececec;
-  --primary-hover: #ffffff;
+  --primary: #3a3a3a;
+  --primary-hover: #4a4a4a;
   --primary-glow: rgba(255, 255, 255, 0.15);
   --primary-subtle: rgba(255, 255, 255, 0.08);
   --primary-text: #ececec;

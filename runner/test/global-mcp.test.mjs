@@ -15,6 +15,15 @@ test('global MCP reaches existing and new accounts, redacts secrets and removes 
     await writeFile(configFile(homes[0]), JSON.stringify({ mcpServers: { local: { command: 'local' } } }));
     await addMcp({ name: 'browser', command: 'playwright-mcp', env: { TOKEN: 'secret' } });
     assert.equal(JSON.stringify(await listMcp()).includes('secret'), false);
+    for (const [index, content] of ['', ' \n '].entries()) {
+      const home = path.join(root, `empty-${index}`);
+      const file = configFile(home);
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, content);
+      if (index === 1) await writeFile(path.join(home, '.global-mcp-antigravity.json'), JSON.stringify({ browser: { command: 'playwright-mcp', args: [], env: { TOKEN: 'secret' } } }));
+      await syncGlobalMcp(home, 'antigravity');
+      assert.equal(JSON.parse(await readFile(file, 'utf8')).mcpServers.browser.env.TOKEN, 'secret');
+    }
     for (const home of homes) {
       await Promise.all([syncGlobalMcp(home, 'antigravity'), syncGlobalMcp(home, 'antigravity')]);
       assert.equal(JSON.parse(await readFile(configFile(home))).mcpServers.browser.env.TOKEN, 'secret');
