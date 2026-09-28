@@ -32,7 +32,9 @@ export class ManagerPanel implements OnDestroy {
   selectedAccountId = ''; mcp = signal<Mcp[]>([]); mcpName = ''; mcpKind: 'url' | 'command' = 'url'; mcpUrl = ''; mcpCommand = ''; mcpArgs = ''; mcpEnvRows: { key: string; value: string }[] = [];
   loginSession = signal<Auth | null>(null); private pollTimer?: ReturnType<typeof setTimeout>;
   get localAccounts() { return this.accounts.filter(account => account.runnerId === this.runner.id); }
+  get mcpAccounts() { return this.localAccounts.filter(account => account.provider !== 'chatgpt'); }
   get selectedAccount() { return this.localAccounts.find(account => account.id === this.selectedAccountId); }
+  get browserEnabled() { return this.mcp().some(server => server.name === 'browser'); }
   ngOnDestroy() { this.password = ''; if (this.pollTimer) clearTimeout(this.pollTimer); }
 
   private async api<T>(suffix: string, body: unknown): Promise<T> {
@@ -86,7 +88,7 @@ export class ManagerPanel implements OnDestroy {
   }
   toggleEnv(name: string, checked: boolean) { checked ? this.envUnset.add(name) : this.envUnset.delete(name); }
   toggleMount(target: string, checked: boolean) { checked ? this.mountRemove.add(target) : this.mountRemove.delete(target); }
-  async loadMcp() { const account = this.selectedAccount; if (!account) return; const value = await this.operation<Mcp[]>('mcp.list', { accountId: account.id, provider: account.provider }); if (value) this.mcp.set(value); }
+  async loadMcp() { this.mcp.set([]); const account = this.selectedAccount; if (!account || account.provider === 'chatgpt') return; const value = await this.operation<Mcp[]>('mcp.list', { accountId: account.id, provider: account.provider }); if (value && this.selectedAccountId === account.id) this.mcp.set(value); }
   async addMcp() {
     const account = this.selectedAccount; if (!account) return;
     const payload: Record<string, unknown> = { accountId: account.id, provider: account.provider, name: this.mcpName.trim() };
@@ -96,6 +98,14 @@ export class ManagerPanel implements OnDestroy {
     if (value) { this.mcp.set(value); this.mcpName = ''; this.mcpUrl = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpEnvRows = []; }
   }
   async removeMcp(name: string) { const account = this.selectedAccount; if (!account || !confirm(`Удалить MCP «${name}»?`)) return; const value = await this.operation<Mcp[]>('mcp.remove', { accountId: account.id, provider: account.provider, name }, 'MCP-сервер удалён'); if (value) this.mcp.set(value); }
+  async addBrowser() {
+    const account = this.selectedAccount; if (!account || account.provider === 'chatgpt') return;
+    const value = await this.operation<Mcp[]>('mcp.add', {
+      accountId: account.id, provider: account.provider, name: 'browser', command: 'playwright-mcp',
+      args: ['--headless', '--no-sandbox', '--executable-path', '/usr/bin/chromium', '--isolated']
+    }, 'Браузер подключён к аккаунту');
+    if (value) this.mcp.set(value);
+  }
   async startLogin() { const account = this.selectedAccount; if (!account) return; const value = await this.operation<{ sessionId: string }>('auth.start', { accountId: account.id, provider: account.provider }); if (value) { this.loginSession.set({ sessionId: value.sessionId, accountId: account.id, running: true, output: '' }); this.schedulePoll(); } }
   private schedulePoll() { if (this.pollTimer) clearTimeout(this.pollTimer); this.pollTimer = setTimeout(() => void this.pollLogin(), 1500); }
   private async pollLogin() { const session = this.loginSession(); if (!session) return; try { const value = await this.signed<Auth>('auth.status', { sessionId: session.sessionId }); this.loginSession.set(value); if (value.running) this.schedulePoll(); else if (value.code === 0) this.notice.set('Вход выполнен. Статус аккаунта обновится в течение минуты.'); } catch (error) { this.error.set((error as Error).message); } }

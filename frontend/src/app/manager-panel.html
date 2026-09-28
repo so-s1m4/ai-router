@@ -55,9 +55,12 @@
       </div>}
     }
     @if(tab()==='mcp'){
-      <div class="manager-card"><h3>MCP-серверы</h3><p>Настройки сохраняются в домашнем каталоге выбранного аккаунта runner.</p>
-        <select [(ngModel)]="selectedAccountId" (change)="loadMcp()" aria-label="Аккаунт для MCP"><option value="">Выберите аккаунт</option>@for(account of localAccounts;track account.id){<option [value]="account.id">{{account.name}} · {{account.provider}}</option>}</select>
-        @if(selectedAccount){@for(server of mcp();track server.name){<div class="mcp-row"><div><strong>{{server.name}}</strong><small>{{server.url||server.command}} {{server.args.join(' ')}}</small></div><button class="icon-button danger" (click)="removeMcp(server.name)" aria-label="Удалить MCP"><svg lucideTrash2 [size]="16"></svg></button></div>}
+      <div class="manager-card"><h3>MCP-серверы и браузер</h3><p>Инструменты доступны задачам выбранного аккаунта на runner. Команды MCP выполняются в контейнере runner; добавляйте только доверенные серверы.</p>
+        <select [(ngModel)]="selectedAccountId" (change)="loadMcp()" aria-label="Аккаунт для MCP"><option value="">Выберите аккаунт</option>@for(account of mcpAccounts;track account.id){<option [value]="account.id">{{account.name}} · {{account.provider}}</option>}</select>
+        @if(selectedAccount && selectedAccount.provider !== 'chatgpt'){
+          <h4>Браузер</h4><p>Chromium на runner: страницы, клики и скриншоты через Playwright MCP. Профиль браузера изолирован от входа ChatGPT.</p>
+          @if(!browserEnabled){<button class="action full-action" [disabled]="busy()" (click)="addBrowser()">Подключить браузер</button>}
+          @for(server of mcp();track server.name){<div class="mcp-row"><div><strong>{{server.name === 'browser' ? 'Браузер (Playwright)' : server.name}}</strong><small>{{server.url||server.command}} {{server.args.join(' ')}}</small></div><button class="icon-button danger" (click)="removeMcp(server.name)" aria-label="Удалить MCP"><svg lucideTrash2 [size]="16"></svg></button></div>}
           <h4>Добавить сервер</h4><input [(ngModel)]="mcpName" placeholder="Название MCP" aria-label="Название MCP"><select [(ngModel)]="mcpKind" aria-label="Тип MCP"><option value="url">Удалённый HTTPS</option><option value="command">Команда в контейнере</option></select>
           @if(mcpKind==='url'){<input [(ngModel)]="mcpUrl" placeholder="https://example.com/mcp" aria-label="URL MCP">}
           @else{<input [(ngModel)]="mcpCommand" placeholder="Команда, например npx" aria-label="Команда MCP"><textarea [(ngModel)]="mcpArgs" placeholder="Аргументы, по одному на строке" aria-label="Аргументы MCP"></textarea>@for(row of mcpEnvRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="ENV NAME"><input [(ngModel)]="row.value" placeholder="Значение"><button class="icon-button" (click)="mcpEnvRows.splice(i,1)" aria-label="Удалить"><svg lucideX [size]="15"></svg></button></div>}<button class="quiet" (click)="mcpEnvRows.push({key:'',value:''})">Добавить переменную</button>}

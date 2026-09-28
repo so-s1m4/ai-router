@@ -75,6 +75,10 @@ process.stdin.on('data', chunk => {
       assert.equal(second.text, 'answer 2');
       assert.equal(events.filter(event => event.type === 'checkpoint').length, 2);
       await assert.rejects(runCodexAppServer({ ...job, prompt: 'LIMIT' }, home, cwd, new AbortController().signal, () => {}, first.threadId), error => error.code === 'rate_limit');
+      await mkdir(path.join(home, '.codex'), { recursive: true });
+      await writeFile(path.join(home, '.codex', 'config.toml'), '[mcp_servers.browser]\ncommand = "playwright-mcp"\n');
+      const updated = await runCodexAppServer(job, home, cwd, new AbortController().signal, () => {}, first.threadId);
+      assert.equal(updated.text, 'answer 1', 'changing MCP config starts a fresh App Server');
     } finally { closeCodexAppServers(); }
   } finally {
     if (prior === undefined) delete process.env.CODEX_BIN; else process.env.CODEX_BIN = prior;

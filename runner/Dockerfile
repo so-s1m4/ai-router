@@ -23,6 +23,7 @@ RUN apt-get update \
        libxss1 \
   && chromium --version \
   && rm -rf /var/lib/apt/lists/* \
+  && npm install -g @playwright/mcp@0.0.82 \
   && if [ "$INSTALL_CODEX_CLI" = "true" ]; then npm install -g @openai/codex; fi \
   && if [ "$INSTALL_AGY_CLI" = "true" ]; then \
        curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh \

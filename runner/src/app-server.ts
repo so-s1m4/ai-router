@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { access, constants } from 'node:fs/promises';
+import { access, constants, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import type { Job, Event } from './cli.js';
 import { RunnerError } from './cli.js';
 import { cliTimeoutSeconds } from './timeouts.js';
@@ -9,6 +10,7 @@ type Pending = { resolve: (value: Json) => void; reject: (error: Error) => void 
 type NotificationHandler = (value: Json) => void;
 
 const processes = new Map<string, AppServerConnection>();
+const configVersions = new Map<string, string>();
 const codexBin = process.env.CODEX_BIN || 'codex';
 const taskSandbox = process.env.CODEX_TASK_SANDBOX === 'workspace-write' ? 'workspace-write' : 'danger-full-access';
 
@@ -33,6 +35,8 @@ class AppServerConnection {
   private initialized: Promise<void>;
   private threads = new Map<string, string>();
   private closed = false;
+  private activeRuns = 0;
+  private retired = false;
 
   constructor(private readonly home: string) {
     this.child = spawn(codexBin, ['app-server', '--listen', 'stdio://', '--disable', 'apps', '--disable', 'enable_mcp_apps'], { env: envFor(home), stdio: ['pipe', 'pipe', 'pipe'] });
@@ -91,7 +95,15 @@ class AppServerConnection {
   async ready() { await this.initialized; }
   close() { this.child.kill('SIGTERM'); this.fail(new RunnerError('App Server остановлен', 'unavailable')); }
 
-  async run(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string): Promise<{ text: string; threadId: string }> {
+  retire() { this.retired = true; if (!this.activeRuns) this.close(); }
+
+  async run(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string) {
+    this.activeRuns++;
+    try { return await this.runCurrent(job, cwd, signal, emit, existingThreadId); }
+    finally { this.activeRuns--; if (this.retired && !this.activeRuns) this.close(); }
+  }
+
+  private async runCurrent(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string): Promise<{ text: string; threadId: string }> {
     const cached = this.threads.get(job.taskId) || existingThreadId;
     let threadId = cached;
     if (threadId) {
@@ -183,18 +195,38 @@ class AppServerConnection {
   }
 }
 
+async function configVersion(home: string) {
+  try { return createHash('sha256').update(await readFile(`${home}/.codex/config.toml`)).digest('hex'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''; throw error; }
+}
+
+async function currentConnection(home: string) {
+  const version = await configVersion(home);
+  let connection = processes.get(home);
+  if (connection && configVersions.get(home) !== version) {
+    processes.delete(home);
+    configVersions.delete(home);
+    connection.retire();
+    connection = undefined;
+  }
+  if (!connection) {
+    connection = new AppServerConnection(home);
+    processes.set(home, connection);
+    configVersions.set(home, version);
+  }
+  return connection;
+}
+
 export async function runCodexAppServer(job: Job, home: string, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string) {
   if (!(await commandExists(codexBin))) throw new RunnerError('CLI не установлен', 'unavailable');
-  let connection = processes.get(home);
-  if (!connection) { connection = new AppServerConnection(home); processes.set(home, connection); }
+  const connection = await currentConnection(home);
   return connection.run(job, cwd, signal, emit, existingThreadId);
 }
 
 export async function prewarmCodexAppServer(home: string) {
   if (!(await commandExists(codexBin))) return;
-  let connection = processes.get(home);
-  if (!connection) { connection = new AppServerConnection(home); processes.set(home, connection); }
+  const connection = await currentConnection(home);
   await connection.ready();
 }
 
-export function closeCodexAppServers() { for (const connection of processes.values()) connection.close(); processes.clear(); }
+export function closeCodexAppServers() { for (const connection of processes.values()) connection.close(); processes.clear(); configVersions.clear(); }
