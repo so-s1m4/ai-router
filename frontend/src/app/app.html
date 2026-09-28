@@ -498,6 +498,9 @@
               }
 
               <div class="composer-handoff-quick">
+                @if(chatgptModelNotice()){
+                  <span class="chatgpt-model-notice" role="status">{{chatgptModelNotice()}}</span>
+                }
                 @if(mode()==='chat'){
                   <button type="button" class="handoff-chip-btn" (click)="handoff('codex')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и передать в Codex">
                     <svg lucideTerminal [size]="13"></svg>
@@ -743,6 +746,9 @@
             }
 
             <div class="composer-handoff-quick">
+              @if(chatgptModelNotice()){
+                <span class="chatgpt-model-notice" role="status">{{chatgptModelNotice()}}</span>
+              }
               @if(mode()==='chat'){
                 <button type="button" class="handoff-chip-btn" (click)="handoff('codex')" [disabled]="handoffLoading()" title="Сформировать выжимку git diff и передать в Codex">
                   <svg lucideTerminal [size]="13"></svg>

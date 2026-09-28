@@ -365,6 +365,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
 
   currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
+  chatgptModelNotice=computed(()=>{
+    if(this.mode()!=='chat' || this.isDemo || this.models().some(m=>m.id!=='default'))return '';
+    const accounts=this.accounts().filter(a=>a.provider==='chatgpt');
+    if(!accounts.length)return 'Подключите аккаунт ChatGPT, чтобы загрузить модели.';
+    const error=accounts.find(a=>a.detail.startsWith('Ошибка подключения:'));
+    if(error)return error.detail;
+    if(accounts.every(a=>a.mode!=='runner'))return 'Runner ChatGPT не подключён. Модели появятся после подключения.';
+    return 'Список моделей ChatGPT пока не загружен. Проверьте сессию и настройку MOCK_MODE на runner.';
+  });
   models=computed(()=>{
     const blacklist=new Set(this.modelBlacklist());
     const allAccounts=this.accounts();

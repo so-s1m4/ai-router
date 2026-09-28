@@ -118,7 +118,9 @@ async function executeChatGPTWebInternal(
 ): Promise<string> {
   if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
 
-  if (onModels && process.env.MOCK_MODE === 'true') { onModels(DEFAULT_CHATGPT_MODELS); return ''; }
+  if (onModels && process.env.MOCK_MODE === 'true') {
+    throw new RunnerError('Runner работает в демо-режиме (MOCK_MODE=true). Установите MOCK_MODE=false и обновите runner.', 'unavailable');
+  }
   if (process.env.MOCK_MODE === 'true') {
     emit({ type: 'status', message: 'Демо-режим: Chromium эмулируется' });
     const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
@@ -278,7 +280,12 @@ async function executeChatGPTWebInternal(
       if (!response.ok) return { error: response.status === 401 || response.status === 403 ? 'auth' : 'unavailable' };
       return { payload: await response.json() };
     });
-    if (catalog.error) throw new RunnerError('Не удалось получить модели сессии ChatGPT. Проверьте подключение и авторизацию.', catalog.error === 'auth' ? 'auth' : 'unavailable');
+    if (catalog.error) throw new RunnerError(
+      catalog.error === 'auth'
+        ? 'Сессия ChatGPT не даёт доступ к списку моделей. Обновите токен или cookies аккаунта.'
+        : 'Не удалось получить список моделей ChatGPT. Проверьте подключение runner.',
+      catalog.error === 'auth' ? 'auth' : 'unavailable'
+    );
     const availableModels = parseChatGPTModels(catalog.payload);
     if (onModels) { onModels(availableModels); return ''; }
     if (job.model && !availableModels.some(m => m.id === job.model)) {

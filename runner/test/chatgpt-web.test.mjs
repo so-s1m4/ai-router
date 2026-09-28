@@ -16,15 +16,14 @@ after(async () => {
   await rm(dataRoot, { recursive: true, force: true });
 });
 
-test('ChatGPT mock status only exposes the default choice', async () => {
+test('ChatGPT mock status reports demo mode instead of pretending to load models', async () => {
   const previous = process.env.MOCK_MODE;
   process.env.MOCK_MODE = 'true';
   const dir = await mkdtemp(path.join(tmpdir(), 'chatgpt-test-'));
   try {
     const controller = new AbortController();
-    const status = await accountStatus('chatgpt', dir, controller.signal);
-    assert.ok(status.models.some(m => m.id === 'default'));
-    assert.equal(status.models.length, 1);
+    await assert.rejects(accountStatus('chatgpt', dir, controller.signal), error =>
+      error.code === 'unavailable' && error.message.includes('MOCK_MODE=true'));
   } finally {
     if (previous === undefined) delete process.env.MOCK_MODE; else process.env.MOCK_MODE = previous;
     await rm(dir, { recursive: true, force: true });
