@@ -2,44 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { modelCatalog, resolveAccountModels } from './types.js';
 
-test('modelCatalog contains default models for codex and antigravity/gemini and chatgpt', () => {
-  assert.ok(modelCatalog.codex.some(m => m.id === 'default'));
-  assert.ok(modelCatalog.codex.some(m => m.id === 'gpt-4o'));
-  assert.ok(modelCatalog.codex.some(m => m.id === 'o3'));
-  assert.ok(modelCatalog.antigravity.some(m => m.id === 'default'));
-  assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-3.8-flash'));
-  assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-2.5-pro'));
-  assert.ok(modelCatalog.antigravity.some(m => m.id === 'gemini-2.5-flash'));
-  assert.ok(modelCatalog.chatgpt.some(m => m.id === 'default'));
-  assert.deepEqual(modelCatalog.chatgpt.map(m => m.id), ['default']);
-  assert.deepEqual(resolveAccountModels('chatgpt', [{id:'session-model',label:'Session model'}]).map(m => m.id), ['default', 'session-model']);
+test('catalog only advertises the default model before runner discovery', () => {
+  for (const provider of ['codex', 'antigravity', 'chatgpt'] as const) {
+    assert.ok(modelCatalog[provider].some(model => model.id === 'default'));
+  }
+  assert.deepEqual(resolveAccountModels('chatgpt').map(model => model.id), ['default']);
 });
 
-test('reasoning efforts are configured for models with reasoning support', () => {
-  const flash38 = modelCatalog.antigravity.find(m => m.id === 'gemini-3.8-flash');
-  assert.ok(flash38?.reasoning?.length);
-  assert.ok(flash38.reasoning.some(r => r.id === 'high'));
-  assert.ok(flash38.reasoning.some(r => r.id === 'low'));
-
-  const geminiPro = modelCatalog.antigravity.find(m => m.id === 'gemini-2.5-pro');
-  assert.ok(geminiPro?.reasoning?.length);
-  assert.ok(geminiPro.reasoning.some(r => r.id === 'high'));
-
-  const o3 = modelCatalog.codex.find(m => m.id === 'o3');
-  assert.ok(o3?.reasoning?.length);
-  assert.ok(o3.reasoning.some(r => r.id === 'high'));
-});
-
-test('resolveAccountModels merges catalog with account-specific models', () => {
-  const codexModels = resolveAccountModels('codex');
-  assert.ok(codexModels.some(m => m.id === 'gpt-5'));
-
-  const custom = [{ id: 'custom-model', label: 'Custom Model' }];
-  const merged = resolveAccountModels('codex', custom);
-  assert.ok(merged.some(m => m.id === 'custom-model'));
-  assert.ok(merged.some(m => m.id === 'gpt-4o'));
-
-  const geminiModels = resolveAccountModels('antigravity');
-  assert.ok(geminiModels.some(m => m.id === 'gemini-3.8-flash'));
-  assert.ok(geminiModels.some(m => m.id === 'gemini-2.5-pro'));
+test('runner model list replaces stale catalog entries and preserves supported reasoning', () => {
+  const reported = [{ id: 'current-model', label: 'Current model', reasoning: [{ id: 'high', label: 'Высокое' }] }];
+  const models = resolveAccountModels('codex', reported);
+  assert.deepEqual(models.map(model => model.id), ['default', 'current-model']);
+  assert.deepEqual(models[1].reasoning, reported[0].reasoning);
+  assert.deepEqual(resolveAccountModels('codex', []).map(model => model.id), ['default']);
 });

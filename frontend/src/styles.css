@@ -35,12 +35,13 @@
   --border-focus: rgba(255, 255, 255, 0.35);
 
   /* Brand Accents */
-  --primary: #3a3a3a;
-  --primary-hover: #4a4a4a;
+  --primary: #ffffff;
+  --primary-hover: #ececec;
+  --primary-fg: #0d0d0d;
   --primary-glow: rgba(255, 255, 255, 0.15);
   --primary-subtle: rgba(255, 255, 255, 0.08);
   --primary-text: #ececec;
-  --accent-purple: #7c3aed;
+  --accent-purple: #8b5cf6;
 
   /* Status */
   --success: #10a37f;
@@ -149,7 +150,7 @@ code, pre, kbd, samp, .mono {
 }
 
 ::selection {
-  background: var(--primary);
+  background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
 }
 

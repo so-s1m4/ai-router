@@ -553,12 +553,6 @@
                         <svg lucideChevronDown [size]="12"></svg>
                       </button>
                     </div>
-                  } @else {
-                    <div class="pill-select-wrapper" title="ChatGPT">
-                      <button class="pill-model-badge pill-model-static" type="button" tabindex="-1">
-                        <span>ChatGPT</span>
-                      </button>
-                    </div>
                   }
 
                   <!-- MODEL PILL -->
@@ -798,12 +792,6 @@
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
                   </div>
-                } @else {
-                  <div class="pill-select-wrapper" title="ChatGPT">
-                    <button class="pill-model-badge pill-model-static" type="button" tabindex="-1">
-                      <span>ChatGPT</span>
-                    </button>
-                  </div>
                 }
 
                 <!-- MODEL PILL -->
@@ -887,10 +875,22 @@
           </div>
 
           @if(error()){
-            <div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>
+            <div class="banner banner-error">
+              <svg lucideInfo [size]="16"></svg>
+              <span>{{error()}}</span>
+              <button type="button" class="btn-banner-close" (click)="error.set('')" aria-label="Закрыть">
+                <svg lucideX [size]="14"></svg>
+              </button>
+            </div>
           }
           @if(notice()){
-            <div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>
+            <div class="banner banner-notice">
+              <svg lucideInfo [size]="16"></svg>
+              <span>{{notice()}}</span>
+              <button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Закрыть">
+                <svg lucideX [size]="14"></svg>
+              </button>
+            </div>
           }
 
           @if(!projects().length){
@@ -912,7 +912,7 @@
                   <div class="project-avatar">
                     <svg lucideFolder [size]="22"></svg>
                   </div>
-                  <span class="badge badge-ready">{{chatsFor(project.id).length}} чатов</span>
+                  <span class="badge" [class.badge-ready]="chatsFor(project.id).length > 0" [class.badge-neutral]="chatsFor(project.id).length === 0">{{formatChatsCount(chatsFor(project.id).length)}}</span>
                 </div>
                 <h3>{{project.name}}</h3>
                 <div class="project-meta">
@@ -944,8 +944,8 @@
       } @else if(page()==='sites') {
         <div class="page-content">
           <div class="section-hero"><div><span class="section-tag">ПРЕВЬЮ НА ВАШИХ RUNNER</span><h2>Опубликованные сайты</h2><p>Файлы остаются на runner. Здесь можно скрыть сайт или снова открыть его публичный адрес.</p></div></div>
-          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
-          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span><button type="button" class="btn-banner-close" (click)="error.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
           @if(!previews().length){<div class="empty-card"><div class="empty-icon"><svg lucideGlobe2 [size]="32"></svg></div><h3>Сайтов пока нет</h3><p>На runner выполните <code>deploy-preview &lt;папка-сайта&gt;</code>. Готовый адрес появится здесь.</p></div>}
           <div class="cards-grid">
             @for(site of previews();track site.subdomain){
@@ -969,8 +969,8 @@
             </div>
           </div>
 
-          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
-          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span><button type="button" class="btn-banner-close" (click)="error.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
 
           <!-- TOOLBAR & STATS CARD -->
           <div class="providers-toolbar-card">
@@ -1271,12 +1271,12 @@
             <div>
               <span class="section-tag">ПРОВАЙДЕРЫ И КВОТЫ</span>
               <h2>Аккаунты искусственного интеллекта</h2>
-              <p>Каждое подключение изолированно использует свой CLI-вход на runner. Лимиты и квоты обновляются напрямую от провайдеров.</p>
+              <p>Каждое подключение использует свой CLI-вход на runner. При автоматическом выборе сначала пробуются аккаунты с высоким приоритетом; при лимите запрос переходит к следующему. Аккаунты одного уровня чередуются.</p>
             </div>
           </div>
 
-          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
-          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span><button type="button" class="btn-banner-close" (click)="error.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
 
           <div class="cards-grid">
             @for(a of accounts(); track a.id){
@@ -1298,6 +1298,15 @@
 
                 <h3 class="account-name">{{a.name}}</h3>
                 <div class="account-detail">{{providerLabel(a.provider)}} · {{a.detail}}</div>
+
+                <div class="account-priority-row">
+                  <label [for]="'priority-'+a.id">Приоритет использования</label>
+                  <select class="custom-select" [id]="'priority-'+a.id" [value]="a.priority ?? 1" (change)="setAccountPriority(a, $any($event.target).value)">
+                    <option value="2">Высокий</option>
+                    <option value="1">Обычный</option>
+                    <option value="0">Низкий</option>
+                  </select>
+                </div>
 
                 <div class="account-quota-box">
                   <div class="quota-head">
@@ -1563,8 +1572,8 @@
             </div>
           </div>
 
-          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span></div>}
-          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span></div>}
+          @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span><button type="button" class="btn-banner-close" (click)="error.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
+          @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Закрыть"><svg lucideX [size]="14"></svg></button></div>}
 
           @if(managedRunner()){
             <app-manager-panel [runner]="managedRunner()!" [accounts]="accounts()" (close)="managedRunner.set(null); refreshRunners()"></app-manager-panel>

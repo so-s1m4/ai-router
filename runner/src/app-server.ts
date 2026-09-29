@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import type { Job, Event } from './cli.js';
 import { RunnerError } from './cli.js';
 import { cliTimeoutSeconds } from './timeouts.js';
+import { isQuotaError } from './provider-errors.js';
 
 type Json = Record<string, any>;
 type Pending = { resolve: (value: Json) => void; reject: (error: Error) => void };
@@ -138,7 +139,7 @@ class AppServerConnection {
     });
     void completed.catch(() => undefined);
     const errorCode = (message: string, info?: Json) =>
-      String(info?.codexErrorInfo?.type || info?.codexErrorInfo?.code || '').includes('UsageLimit') || /usage|quota|rate.?limit/i.test(message) ? 'rate_limit' : 'failed';
+      String(info?.codexErrorInfo?.type || info?.codexErrorInfo?.code || '').includes('UsageLimit') || isQuotaError(message) ? 'rate_limit' : 'failed';
     const handle = (value: Json) => {
       const params = value.params || {};
       if (value.method === '__closed') { finish(new RunnerError(String(params.error || 'App Server закрыт'), 'unavailable')); return; }

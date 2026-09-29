@@ -144,24 +144,33 @@
 }
 
 .action {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-  box-shadow: 0 2px 8px var(--primary-glow);
+  background: #ffffff;
+  border: none;
+  color: #0d0d0d;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 .action:hover:not(:disabled) {
-  background: var(--primary-hover);
+  background: #ececec;
+  color: #000000;
   transform: translateY(-1px);
 }
 
+.quiet {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ececec;
+}
+
 .quiet:hover, .icon-button:hover, .container-actions button:hover {
-  background: var(--bg-surface-hover);
-  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 .action:disabled, .quiet:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -191,13 +200,21 @@
   white-space: nowrap;
   border-radius: var(--radius-pill);
   padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.manager-tabs button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
 }
 
 .manager-tabs button.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-  box-shadow: 0 2px 8px var(--primary-glow);
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: none;
 }
 
 .manager-error, .manager-notice {

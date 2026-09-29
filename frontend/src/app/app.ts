@@ -20,37 +20,18 @@ type ReasoningEffort = {id:string;label:string};
 type Model = {id:string;label:string;reasoning?:ReasoningEffort[];defaultReasoning?:string};
 
 export const DEFAULT_CODEX_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Codex' },
-  { id: 'gpt-5', label: 'GPT-5' },
-  { id: 'gpt-4.1', label: 'GPT-4.1' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'o3', label: 'o3', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] }
+  { id: 'default', label: 'По умолчанию Codex' }
 ];
 
 export const DEFAULT_GEMINI_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Gemini' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
-  { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
-  { id: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }, { id: 'max', label: 'Максимальное' }] },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-flash-thinking', label: 'Gemini 2.5 Flash Thinking', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
+  { id: 'default', label: 'По умолчанию Gemini' }
 ];
 
 export const DEFAULT_CHATGPT_MODELS: Model[] = [
   { id: 'default', label: 'По умолчанию ChatGPT' }
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
-type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
+type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
 type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;createdAt:string;revokedAt?:string};
 type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string};
 type Preview = {subdomain:string;runnerId:string;visible:boolean;online:boolean;expired:boolean;url:string;createdAt:string;updatedAt:string;expiresAt:string};
@@ -587,14 +568,13 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   async refreshProviders(){
     try{
-      const [res]=await Promise.all([
+      const [res,refresh]=await Promise.all([
         this.api<{blacklist:string[]}>('/user/model-blacklist'),
-        this.refreshAccounts()
+        this.api<{requested:number}>('/providers/refresh',{method:'POST'})
       ]);
-      if(res?.blacklist){
-        this.modelBlacklist.set(res.blacklist);
-      }
-      this.notice.set('Список моделей обновлен');
+      if(res?.blacklist)this.modelBlacklist.set(res.blacklist);
+      await this.refreshAccounts();
+      this.notice.set(refresh.requested?'Обновление моделей запущено':'Нет подключённых runner для обновления моделей');
     }catch(e){
       if(this.page()==='providers')this.error.set((e as Error).message);
     }
@@ -671,9 +651,36 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       }
     }
   }
-  async api<T>(path:string,options:RequestInit={}):Promise<T>{const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});const body=await r.json();if(!r.ok){const error=new Error(body.error||'Ошибка запроса') as Error&{status:number};error.status=r.status;throw error;}return body as T;}
+  async api<T>(path:string,options:RequestInit={}):Promise<T>{
+    const r=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})},credentials:'same-origin'});
+    const text=await r.text();
+    let body: any = {};
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      if(!r.ok){
+        const error=new Error(r.status === 404 ? 'Запрашиваемый ресурс не найден' : `Ошибка сервера (${r.status})`) as Error&{status:number};
+        error.status=r.status;
+        throw error;
+      }
+    }
+    if(!r.ok){
+      const error=new Error(body?.error||`Ошибка запроса (${r.status})`) as Error&{status:number};
+      error.status=r.status;
+      throw error;
+    }
+    return body as T;
+  }
   toggleSidebar() {
     this.sidebarOpen.update(v => !v);
+  }
+  formatChatsCount(n: number): string {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 19) return `${n} чатов`;
+    if (mod10 === 1) return `${n} чат`;
+    if (mod10 >= 2 && mod10 <= 4) return `${n} чата`;
+    return `${n} чатов`;
   }
   async refreshUsers(){if(!this.isOwner()||this.isDemo)return;try{this.users.set(await this.api<{id:string;username:string;createdAt:string}[]>('/users'));this.userAdminError='';}catch(e){this.userAdminError=(e as Error).message;}}
   async createUser(){this.userAdminError='';this.userAdminNotice='';try{await this.api('/users',{method:'POST',body:JSON.stringify({username:this.newUsername,password:this.newUserPassword})});this.newUsername='';this.newUserPassword='';this.userAdminNotice='Пользователь создан';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
@@ -681,6 +688,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async removeUser(id:string,username:string){if(!window.confirm(`Удалить пользователя ${username}?`))return;try{await this.api(`/users/${encodeURIComponent(id)}`,{method:'DELETE'});this.userAdminNotice='Пользователь удалён';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
 
   setMode(m: 'chat' | 'work') {
+    this.mobileMenu.set(false);
     this.mode.set(m);
     if (m === 'chat') {
       this.selectedService.set('chatgpt');
@@ -1688,6 +1696,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
   async addAccount(){this.error.set('');try{await this.api('/accounts',{method:'POST',body:JSON.stringify({provider:this.accountProvider,name:this.accountName,runnerId:this.selectedRunner})});this.accountName='';await this.refreshAccounts();this.notice.set('Аккаунт добавлен. Выполните команду входа на своём контейнере.');}catch(e){this.error.set((e as Error).message);}}
   async assignAccount(a:Account,runnerId:string){try{await this.api('/accounts/'+a.id,{method:'PATCH',body:JSON.stringify({runnerId})});await this.refreshAccounts();}catch(e){this.error.set((e as Error).message);}}
+  async setAccountPriority(a:Account,value:string){
+    const priority=Number(value);
+    if(priority!==0&&priority!==1&&priority!==2)return;
+    try{
+      await this.api('/accounts/'+a.id+'/priority',{method:'PATCH',body:JSON.stringify({priority})});
+      await this.refreshAccounts();
+      this.notice.set('Приоритет аккаунта сохранён');
+    }catch(e){this.error.set((e as Error).message);await this.refreshAccounts();}
+  }
   runnerInstructionTab = signal<'quick' | 'detailed'>('quick');
   serverOrigin(): string {
     if (typeof window !== 'undefined' && window.location?.origin) {

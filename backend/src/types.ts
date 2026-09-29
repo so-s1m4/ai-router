@@ -8,30 +8,11 @@ export interface Message { id: string; role: 'user' | 'assistant'; text: string;
 export interface ChatSession { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[]; projectId?: string; runnerId?: string; }
 
 export const DEFAULT_CODEX_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Codex' },
-  { id: 'gpt-5', label: 'GPT-5' },
-  { id: 'gpt-4.1', label: 'GPT-4.1' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'o3', label: 'o3', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'o3-mini', label: 'o3-mini', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'o1', label: 'o1', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] }
+  { id: 'default', label: 'По умолчанию Codex' }
 ];
 
 export const DEFAULT_GEMINI_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Gemini' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', defaultReasoning: 'high', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
-  { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
-  { id: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }, { id: 'max', label: 'Максимальное' }] },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-flash-thinking', label: 'Gemini 2.5 Flash Thinking', reasoning: [{ id: 'low', label: 'Низкое' }, { id: 'medium', label: 'Среднее' }, { id: 'high', label: 'Высокое' }] },
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
+  { id: 'default', label: 'По умолчанию Gemini' }
 ];
 
 export const DEFAULT_CHATGPT_MODELS: Model[] = [
@@ -59,9 +40,9 @@ export const modelCatalog: Record<ProviderId, Model[]> = {
 
 export function resolveAccountModels(provider: ProviderId, reportedModels?: Model[]): Model[] {
   const catalog = modelCatalog[provider] || [];
-  if (!reportedModels?.length) return catalog;
+  if (!reportedModels) return catalog;
   const map = new Map<string, Model>();
-  for (const m of catalog) map.set(m.id, m);
+  map.set('default', catalog.find(m => m.id === 'default') || { id: 'default', label: 'По умолчанию аккаунта' });
   for (const m of reportedModels) map.set(m.id, m);
   return [...map.values()];
 }

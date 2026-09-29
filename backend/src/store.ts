@@ -7,7 +7,7 @@ const root = path.resolve(process.env.DATA_DIR || '/srv/data');
 const safe = (id: string) => { if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new Error('Invalid identifier'); return id; };
 export const userDir = (userId: string) => path.join(root, 'users', safe(userId));
 export const dataRoot = root;
-export interface Account { id: string; provider: ProviderId; name: string; runnerId?: string; createdAt: string; importKey?: string; }
+export interface Account { id: string; provider: ProviderId; name: string; runnerId?: string; priority?: 0 | 1 | 2; createdAt: string; importKey?: string; }
 export interface Project { id:string; name:string; runnerId:string; createdAt:string; updatedAt:string; }
 const sessionFile = (userId: string, sessionId: string) => path.join(userDir(userId), 'sessions', safe(sessionId) + '.json');
 export async function prepareUser(userId: string) { await mkdir(path.join(userDir(userId),'sessions'), {recursive:true,mode:0o700}); await mkdir(path.join(userDir(userId),'projects'), {recursive:true,mode:0o700}); }
@@ -19,6 +19,7 @@ export async function listAccounts(userId:string):Promise<Account[]> { await pre
 export function addAccount(userId:string,provider:ProviderId,name:string,runnerId:string):Promise<Account> { return mutateAccounts(userId,async()=>{const accounts=await listAccounts(userId);const account={id:randomUUID(),provider,name:name.trim().slice(0,60),runnerId,createdAt:new Date().toISOString()};accounts.push(account);await saveAccounts(userId,accounts);return account;}); }
 export function addImportedCodexAccount(userId:string,name:string,runnerId:string,importKey:string):Promise<Account> { return mutateAccounts(userId,async()=>{const accounts=await listAccounts(userId);const existing=accounts.find(a=>a.provider==='codex'&&a.runnerId===runnerId&&a.importKey===importKey);if(existing)return existing;const account:Account={id:randomUUID(),provider:'codex',name:name.trim().slice(0,60),runnerId,importKey,createdAt:new Date().toISOString()};accounts.push(account);await saveAccounts(userId,accounts);return account;}); }
 export function assignAccount(userId:string,accountId:string,runnerId:string):Promise<Account|null>{return mutateAccounts(userId,async()=>{const accounts=await listAccounts(userId);const account=accounts.find(a=>a.id===safe(accountId));if(!account)return null;account.runnerId=runnerId;await saveAccounts(userId,accounts);return account;});}
+export function setAccountPriority(userId:string,accountId:string,priority:0|1|2):Promise<Account|null>{return mutateAccounts(userId,async()=>{const accounts=await listAccounts(userId);const account=accounts.find(a=>a.id===safe(accountId));if(!account)return null;account.priority=priority;await saveAccounts(userId,accounts);return account;});}
 const projectsFile=(userId:string)=>path.join(userDir(userId),'projects.json');
 const projectFile=(userId:string,id:string)=>path.join(userDir(userId),'projects',safe(id)+'.json');
 export async function listProjects(userId:string):Promise<Project[]>{await prepareUser(userId);try{return JSON.parse(await readFile(projectsFile(userId),'utf8')) as Project[];}catch{return [];}}
