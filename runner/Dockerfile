@@ -7,6 +7,7 @@ COPY src ./src
 RUN npm run build
 FROM node:22-bookworm-slim
 ARG INSTALL_CODEX_CLI=false
+ARG CODEX_CLI_VERSION=0.159.0
 ARG INSTALL_AGY_CLI=false
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -24,7 +25,7 @@ RUN apt-get update \
   && chromium --version \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g @playwright/mcp@0.0.82 \
-  && if [ "$INSTALL_CODEX_CLI" = "true" ]; then npm install -g @openai/codex; fi \
+  && if [ "$INSTALL_CODEX_CLI" = "true" ]; then npm install -g "@openai/codex@$CODEX_CLI_VERSION" && codex --version; fi \
   && if [ "$INSTALL_AGY_CLI" = "true" ]; then \
        curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh \
        && bash /tmp/agy-install.sh --dir /usr/local/bin \

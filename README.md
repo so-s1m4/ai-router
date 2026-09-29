@@ -43,7 +43,7 @@ docker compose --profile local-runner up --build -d
 
 ### Вход в провайдеров
 
-Готовый образ содержит Codex CLI. Для собственной сборки задайте `INSTALL_CODEX_CLI=true` в `.env` **исполнителя** и выполните `docker compose -f compose.yaml -f compose.build.yaml up -d --build` из каталога `runner/`. Затем скопируйте команду входа с карточки аккаунта и выполните её на устройстве исполнителя:
+Сборка образа runner устанавливает Codex CLI версии 0.159.0. Для собственной сборки задайте `INSTALL_CODEX_CLI=true` в `.env` **исполнителя** и выполните `docker compose -f compose.yaml -f compose.build.yaml up -d --build` из каталога `runner/`. Затем скопируйте команду входа с карточки аккаунта и выполните её на устройстве исполнителя:
 
 ```bash
 docker compose exec runner /app/scripts/provider-login.sh codex <account-id>
