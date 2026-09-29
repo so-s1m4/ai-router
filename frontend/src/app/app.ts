@@ -164,7 +164,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return r.charAt(0).toUpperCase() + r.slice(1);
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
-  draft=''; selectedService=signal<ServiceId>('chatgpt'); selectedAccount='chatgpt'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default');
+  draft=''; selectedService=signal<ServiceId>('chatgpt'); selectedAccount='chatgpt'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default'); codexFast=signal(false);
   handoffLoading=signal(false);
   slashCommands=[
     { cmd: '/codex', label: 'Передать в Codex', desc: 'git diff + ключевые пункты задачи', target: 'codex' as const },
@@ -176,7 +176,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if(d==='/')return this.slashCommands;
     return this.slashCommands.filter(c=>c.cmd.startsWith(d));
   }
-  accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
+  accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); deletingAccount=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
@@ -348,7 +348,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   currentProject=computed(()=>{const pId=this.current()?.projectId;return pId?this.projects().find(p=>p.id===pId):null;});
   chatgptModelNotice=computed(()=>{
     if(this.mode()!=='chat' || this.isDemo || this.models().some(m=>m.id!=='default'))return '';
-    const accounts=this.accounts().filter(a=>a.provider==='chatgpt');
+    const accounts=(Array.isArray(this.accounts()) ? this.accounts() : []).filter(a=>a.provider==='chatgpt');
     if(!accounts.length)return 'Подключите аккаунт ChatGPT, чтобы загрузить модели.';
     const error=accounts.find(a=>a.detail.startsWith('Ошибка подключения:'));
     if(error)return error.detail;
@@ -357,7 +357,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
   models=computed(()=>{
     const blacklist=new Set(this.modelBlacklist());
-    const allAccounts=this.accounts();
+    const allAccounts=Array.isArray(this.accounts()) ? this.accounts() : [];
     const pId=this.current()?.projectId;
     const project=pId?this.projects().find(p=>p.id===pId):null;
     const scoped=project?allAccounts.filter(a=>a.runnerId===project.runnerId):allAccounts;
@@ -418,7 +418,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
 
   allGeminiModels=computed(()=>{
-    const accModels=this.accounts().filter(a=>a.provider==='antigravity').flatMap(a=>a.models||[]);
+    const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];
+    const accModels=accounts.filter(a=>a.provider==='antigravity').flatMap(a=>a.models||[]);
     const map=new Map<string,Model>();
     for(const m of DEFAULT_GEMINI_MODELS)if(m.id!=='default')map.set(m.id,{...m});
     for(const m of accModels)if(m.id!=='default'&&!map.has(m.id))map.set(m.id,m);
@@ -426,7 +427,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
 
   allCodexModels=computed(()=>{
-    const accModels=this.accounts().filter(a=>a.provider==='codex').flatMap(a=>a.models||[]);
+    const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];
+    const accModels=accounts.filter(a=>a.provider==='codex').flatMap(a=>a.models||[]);
     const map=new Map<string,Model>();
     for(const m of DEFAULT_CODEX_MODELS)if(m.id!=='default')map.set(m.id,{...m});
     for(const m of accModels)if(m.id!=='default'&&!map.has(m.id))map.set(m.id,m);
@@ -434,7 +436,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
 
   allChatGPTModels=computed(()=>{
-    const accModels=this.accounts().filter(a=>a.provider==='chatgpt').flatMap(a=>a.models||[]);
+    const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];
+    const accModels=accounts.filter(a=>a.provider==='chatgpt').flatMap(a=>a.models||[]);
     const map=new Map<string,Model>();
     for(const m of DEFAULT_CHATGPT_MODELS)if(m.id!=='default')map.set(m.id,{...m});
     for(const m of accModels)if(m.id!=='default'&&!map.has(m.id))map.set(m.id,m);
@@ -590,6 +593,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if (options && options.length > 0) {
       return [{ id: 'default', label: 'По умолчанию' }, ...options.filter(r => r.id !== 'default')];
     }
+    if (modelId !== 'default' && this.selectedService() === 'codex') {
+      return [
+        { id: 'default', label: 'По умолчанию' },
+        { id: 'low', label: 'Низкое (Low)' },
+        { id: 'medium', label: 'Среднее (Medium)' },
+        { id: 'high', label: 'Высокое (High)' },
+        { id: 'xhigh', label: 'Очень высокое (XHigh)' }
+      ];
+    }
     if (modelId === 'default') {
       if (this.mode() === 'chat') {
         return [];
@@ -598,7 +610,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         { id: 'default', label: 'По умолчанию' },
         { id: 'high', label: 'Высокое (High)' },
         { id: 'medium', label: 'Среднее (Medium)' },
-        { id: 'low', label: 'Низкое (Low)' }
+        { id: 'low', label: 'Низкое (Low)' },
+        ...(this.selectedService() === 'codex' ? [{ id: 'xhigh', label: 'Очень высокое (XHigh)' }] : [])
       ];
     }
     return [];
@@ -606,13 +619,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   onReasoningChange(val: string) {
     this.selectedReasoning.set(val);
-    if (val !== 'default' && this.selectedModel() === 'default') {
-      if (this.selectedService() === 'codex') {
-        this.selectedModel.set('o3-mini');
-      } else {
-        this.selectedModel.set('gemini-3.8-flash');
-      }
-    }
     this.validateReasoning();
   }
   private preventWindowDrop = (e: DragEvent) => {
@@ -658,11 +664,13 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     try {
       body = text ? JSON.parse(text) : {};
     } catch {
-      if(!r.ok){
-        const error=new Error(r.status === 404 ? 'Запрашиваемый ресурс не найден' : `Ошибка сервера (${r.status})`) as Error&{status:number};
-        error.status=r.status;
-        throw error;
-      }
+      const error = new Error(
+        !r.ok
+          ? (r.status === 404 ? 'Запрашиваемый ресурс не найден' : `Ошибка сервера (${r.status})`)
+          : 'Неверный ответ сервера (ожидался JSON)'
+      ) as Error & { status: number };
+      error.status = r.status;
+      throw error;
     }
     if(!r.ok){
       const error=new Error(body?.error||`Ошибка запроса (${r.status})`) as Error&{status:number};
@@ -1625,7 +1633,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
     const targetService = this.mode() === 'chat' ? 'chatgpt' : this.selectedService();
     const targetMode = this.mode() === 'chat' ? 'chat' : 'task';
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:targetService==='codex'&&this.codexFast(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
   }
 
   sendDemoMessage(prompt: string, s: ChatSession) {
@@ -1721,6 +1729,12 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       this.notice.set('Приоритет аккаунта сохранён');
     }catch(e){this.error.set((e as Error).message);await this.refreshAccounts();}
   }
+  async removeAccount(a:Account){
+    if(this.deletingAccount()||!window.confirm(`Удалить подключение «${a.name}»? Данные входа и API-ключ на runner будут удалены.`))return;
+    this.deletingAccount.set(a.id);this.error.set('');
+    try{await this.api('/accounts/'+encodeURIComponent(a.id),{method:'DELETE'});delete this.apiKeyDrafts[a.id];await this.refreshAccounts();this.notice.set('Подключение удалено');}
+    catch(e){this.error.set((e as Error).message);}finally{this.deletingAccount.set('');}
+  }
   runnerInstructionTab = signal<'quick' | 'detailed'>('quick');
   serverOrigin(): string {
     if (typeof window !== 'undefined' && window.location?.origin) {
@@ -1760,7 +1774,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Сброс ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
-  hasAccountsFor(service:ServiceId):boolean{if(service==='auto')return this.accounts().length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId;const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?this.accounts().filter(a=>a.runnerId===project.runnerId):this.accounts();return list.some(a=>a.provider===provider);}
+  hasAccountsFor(service:ServiceId):boolean{const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];if(service==='auto')return accounts.length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId;const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?accounts.filter(a=>a.runnerId===project.runnerId):accounts;return list.some(a=>a.provider===provider);}
   selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel.set('default');this.selectedReasoning.set('default');}
   selectModel(id:string){
@@ -1799,7 +1813,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
                     ||this.allCodexModels().find(m=>m.id===modelId)
                     ||this.allChatGPTModels().find(m=>m.id===modelId);
     const reasoningExists=currentModel?.reasoning?.some(r=>r.id===this.selectedReasoning());
-    if(modelId!=='default' && this.selectedReasoning()!=='default' && !reasoningExists){
+    if(modelId!=='default' && this.selectedReasoning()!=='default' && currentModel?.reasoning?.length && !reasoningExists){
       this.selectedReasoning.set(currentModel?.defaultReasoning||'default');
     }
   }

@@ -583,6 +583,10 @@
                     </div>
                   }
 
+                  @if(mode()==='work' && selectedService()==='codex') {
+                    <button type="button" class="pill-model-badge codex-fast-toggle" [class.codex-fast-active]="codexFast()" [attr.aria-pressed]="codexFast()" title="Fast mode Codex: повышенная скорость и расход лимита" (click)="codexFast.set(!codexFast())">Fast {{codexFast() ? 'вкл' : 'выкл'}}</button>
+                  }
+
                   <!-- MIC BUTTON -->
                   <button class="pill-btn-icon pill-btn-mic"
                           type="button"
@@ -820,6 +824,10 @@
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
                   </div>
+                }
+
+                @if(mode()==='work' && selectedService()==='codex') {
+                  <button type="button" class="pill-model-badge codex-fast-toggle" [class.codex-fast-active]="codexFast()" [attr.aria-pressed]="codexFast()" title="Fast mode Codex: повышенная скорость и расход лимита" (click)="codexFast.set(!codexFast())">Fast {{codexFast() ? 'вкл' : 'выкл'}}</button>
                 }
 
                 <!-- MIC BUTTON -->
@@ -1397,6 +1405,9 @@
                   <code class="code-snippet">{{loginCommand(a)}}</code>
                 </div>
                 }
+                <button type="button" class="btn btn-danger-outline btn-sm account-delete" (click)="removeAccount(a)" [disabled]="!!deletingAccount()">
+                  {{deletingAccount()===a.id ? 'Удаление…' : 'Удалить подключение'}}
+                </button>
               </div>
             }
           </div>

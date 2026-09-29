@@ -181,7 +181,8 @@ class AppServerConnection {
         approvalPolicy: 'never',
         sandboxPolicy: job.mode === 'task' ? (taskSandbox === 'workspace-write' ? { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: true } : { type: 'dangerFullAccess' }) : { type: 'readOnly', access: { type: 'fullAccess' } },
         ...(job.model !== 'default' ? { model: job.model } : {}),
-        ...(job.reasoning && job.reasoning !== 'default' ? { effort: job.reasoning } : {})
+        ...(job.reasoning && job.reasoning !== 'default' ? { effort: job.reasoning } : {}),
+        serviceTierForTurn: job.fast ? 'fast' : 'default'
       });
       turnId = String(turn.turn?.id || '');
       if (!turnId) throw new RunnerError('App Server не вернул turn', 'unavailable');

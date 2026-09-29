@@ -46,6 +46,10 @@ process.stdin.on('data', chunk => {
       turns++;
       const turnId = 'turn_' + turns;
       send({ id: message.id, result: { turn: { id: turnId } } });
+      if (message.params.input[0].text === 'FAST' && (message.params.serviceTierForTurn !== 'fast' || message.params.effort !== 'high')) {
+        send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'failed', error: { message: 'Fast mode or reasoning not forwarded' } } } });
+        continue;
+      }
       if (message.params.input[0].text === 'LIMIT') {
         send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'failed', error: { message: 'usage limit reached', codexErrorInfo: { type: 'UsageLimitExceeded' } } } } });
         continue;
@@ -74,6 +78,8 @@ process.stdin.on('data', chunk => {
       assert.equal(first.text, 'answer 1');
       assert.equal(second.text, 'answer 2');
       assert.equal(events.filter(event => event.type === 'checkpoint').length, 2);
+      const fast = await runCodexAppServer({ ...job, prompt: 'FAST', fast: true, reasoning: 'high' }, home, cwd, new AbortController().signal, () => {}, first.threadId);
+      assert.equal(fast.text, 'answer 3');
       await assert.rejects(runCodexAppServer({ ...job, prompt: 'LIMIT' }, home, cwd, new AbortController().signal, () => {}, first.threadId), error => error.code === 'rate_limit');
       await mkdir(path.join(home, '.codex'), { recursive: true });
       await writeFile(path.join(home, '.codex', 'config.toml'), '[mcp_servers.browser]\ncommand = "playwright-mcp"\n');

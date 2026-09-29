@@ -908,6 +908,19 @@
   color: #ffffff;
 }
 
+.codex-fast-toggle {
+  pointer-events: auto;
+  cursor: pointer;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.codex-fast-toggle:hover,
+.codex-fast-toggle.codex-fast-active {
+  color: #fff;
+  background: rgba(16, 163, 127, 0.2);
+  border-color: rgba(16, 163, 127, 0.65);
+}
+
 .pill-model-highlight {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.08);
@@ -2596,6 +2609,11 @@
   background: var(--danger-bg);
   border-color: var(--danger);
   color: #fff;
+}
+
+.account-delete {
+  align-self: flex-start;
+  margin-top: 14px;
 }
 
 .btn-sm {

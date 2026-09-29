@@ -39,6 +39,8 @@ export class AccountUsageManager {
 
   available(user: string, account: string) { return !this.snapshot(user, account).cooldownUntil; }
 
+  remove(user: string, account: string) { this.records.delete(this.key(user, account)); }
+
   update(user: string, account: string, input: UsageInput) {
     const old = this.snapshot(user, account);
     const mapWindow = (window: UsageInputWindow | null | undefined, previous: UsageWindow | null): UsageWindow | null => {
