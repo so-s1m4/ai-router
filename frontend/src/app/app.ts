@@ -1,4 +1,5 @@
-import { Component, OnInit, AfterViewInit, OnDestroy, signal, computed, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener } from '@angular/core';
+import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
@@ -59,9 +60,10 @@ export function sortSessions(list: ChatSession[]): ChatSession[] {
     .filter(s => !!s && Array.isArray(s.messages) && s.messages.length > 0)
     .sort((a, b) => getSessionLastMessageTime(b) - getSessionLastMessageTime(a));
 }
-type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:ProviderId;message?:string;text?:string;data?:{accountId?:string;state?:string}};
+type FileGroup = {kind:'projects'|'sessions';id:string;title:string;runnerId:string;files:{name:string;size:number;modified:string}[];error?:string};
+type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:ProviderId;message?:string;text?:string;data?:{accountId?:string;state?:string;steeringAvailable?:boolean;steeringMessage?:Message}};
 type RunActivity = {type:string;message:string;at:string;provider?:ProviderId;accountId?:string};
-type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[]} | {runId:string;sessionId:string;type:'completed'|'error';message:string;finishedAt:number};
+type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[];steeringAvailable?:boolean} | {runId:string;sessionId:string;type:'completed'|'error';message:string;finishedAt:number};
 
 export interface FlatFileNode {
   name: string;
@@ -96,11 +98,66 @@ interface FileNodeInternal {
     LucideZap, ManagerPanel, MarkdownPipe
   ],
   templateUrl:'./app.html',
-  styleUrls:['./app.css', './adaptive.css']
+  styleUrls:['./app.css', './adaptive.css', './features.css']
 })
 export class App implements OnInit,AfterViewInit,OnDestroy {
+  constructor(private sanitizer:DomSanitizer){}
+  steeringAvailable=signal(false); steeringSending=signal(false);
+  fileGroups=signal<FileGroup[]>([]); libraryLoading=signal(false); libraryQuery=signal(''); librarySource=signal('');
+  libraryGroups=computed(()=>this.fileGroups().filter(g=>!this.librarySource()||g.kind+':'+g.id===this.librarySource()).map(g=>({...g,files:g.files.filter(f=>f.name.toLowerCase().includes(this.libraryQuery().trim().toLowerCase()))})).filter(g=>g.files.length||g.error));
+  previewOpen=signal(false); previewLoading=signal(false); previewName=signal(''); previewError=signal(''); previewText=signal(''); previewKind=signal(''); previewUrl=signal(''); previewPdf=signal<SafeResourceUrl|null>(null);
+  private previewRequest=0;
+  private previewReturnFocus?:HTMLElement;
+  @HostListener('document:keydown', ['$event'])
+  onPreviewKey(event:KeyboardEvent){
+    if(!this.previewOpen())return;
+    if(event.key==='Escape'){event.preventDefault();this.closePreview();return;}
+    if(event.key==='Tab'){
+      const dialog=document.querySelector<HTMLElement>('.file-preview-dialog');
+      const items=dialog?.querySelectorAll<HTMLElement>('button, iframe, [tabindex="0"]');
+      if(!items?.length)return;
+      const first=items[0],last=items[items.length-1];
+      if(event.shiftKey&&(document.activeElement===first||document.activeElement===dialog)){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    }
+  }
+  telegram=signal<{configured:boolean;connected:boolean;name:string;enabled:boolean;lastError:string}|null>(null);
+  telegramLink=signal(''); telegramBusy=signal(false);
+  browserNotifications=signal(false);
+  async refreshLibrary(){if(this.libraryLoading())return;this.libraryLoading.set(true);this.error.set('');try{this.fileGroups.set((await this.api<{groups:FileGroup[]}>('/files')).groups);}catch(e){this.error.set((e as Error).message);}finally{this.libraryLoading.set(false);}}
+  async previewFile(name:string,kind:'projects'|'sessions'='sessions',id=this.current()?.id){
+    if(!id)return;this.closePreview();this.previewReturnFocus=document.activeElement as HTMLElement;const request=++this.previewRequest;this.previewOpen.set(true);this.previewLoading.set(true);this.previewName.set(name);requestAnimationFrame(()=>document.querySelector<HTMLElement>('.file-preview-dialog')?.focus());
+    try{
+      const response=await fetch('/api/workspaces/'+kind+'/'+id+'/preview?name='+encodeURIComponent(name),{credentials:'same-origin'});
+      if(!response.ok){const data=await response.json();throw new Error(data.error||'Файл недоступен');}
+      const mime=response.headers.get('Content-Type')||'';
+      const blob=await response.blob();if(request!==this.previewRequest)return;
+      if(mime.startsWith('text/')){this.previewKind.set('text');this.previewText.set(await blob.text());}
+      else if(mime.startsWith('image/')||mime==='application/pdf'){
+        const url=URL.createObjectURL(blob);this.previewUrl.set(url);this.previewKind.set(mime==='application/pdf'?'pdf':'image');
+        if(mime==='application/pdf')this.previewPdf.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+      }else throw new Error('Формат не поддерживает просмотр');
+    }catch(e){if(request===this.previewRequest)this.previewError.set((e as Error).message);}finally{if(request===this.previewRequest)this.previewLoading.set(false);}
+  }
+  closePreview(){this.previewRequest++;if(this.previewUrl())URL.revokeObjectURL(this.previewUrl());this.previewOpen.set(false);this.previewUrl.set('');this.previewPdf.set(null);this.previewText.set('');this.previewError.set('');this.previewKind.set('');this.previewReturnFocus?.focus();this.previewReturnFocus=undefined;}
+  async libraryShare(group:FileGroup,name:string,download=false){try{const result=await this.api<{url:string}>('/workspaces/'+group.kind+'/'+group.id+'/share',{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,location.origin).href;if(download){const a=document.createElement('a');a.href=url;a.download=name.split('/').pop()||name;a.click();}else{await this.copy(url,'library-share');this.notice.set('Ссылка скопирована. Действует 7 дней.');}}catch(e){this.error.set((e as Error).message);}}
+  async libraryDelete(group:FileGroup,name:string){if(this.deletingFile()||!confirm('Удалить файл «'+name+'»?'))return;this.deletingFile.set(group.id+':'+name);try{await this.api('/workspaces/'+group.kind+'/'+group.id+'/files',{method:'DELETE',body:JSON.stringify({name})});this.fileGroups.update(groups=>groups.map(g=>g.kind===group.kind&&g.id===group.id?{...g,files:g.files.filter(f=>f.name!==name)}:g));}catch(e){this.error.set((e as Error).message);}finally{this.deletingFile.set('');}}
+  openFileSource(group:FileGroup){if(group.kind==='projects'){this.selectedProjectId.set(group.id);this.selectProject(group.id);}else void this.openSession(group.id);}
+  async refreshTelegram(){try{this.telegram.set(await this.api('/notifications/telegram'));}catch(e){this.error.set((e as Error).message);}}
+  async connectTelegram(){this.telegramBusy.set(true);this.error.set('');try{this.telegramLink.set((await this.api<{url:string}>('/notifications/telegram/connect',{method:'POST',body:'{}'})).url);}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
+  async disconnectTelegram(){this.telegramBusy.set(true);try{await this.api('/notifications/telegram',{method:'DELETE'});this.telegramLink.set('');await this.refreshTelegram();}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
+  async toggleTelegram(){this.telegramBusy.set(true);try{await this.api('/notifications/telegram',{method:'PATCH',body:JSON.stringify({enabled:!this.telegram()?.enabled})});await this.refreshTelegram();}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
+  async enableBrowserNotifications(){if(!('Notification' in window)){this.error.set('Браузер не поддерживает уведомления');return;}if(this.browserNotifications()){this.browserNotifications.set(false);return;}const permission=await Notification.requestPermission();this.browserNotifications.set(permission==='granted');if(permission!=='granted')this.error.set('Разрешите уведомления в настройках браузера');}
+  async steer(){
+    const prompt=this.draft.trim(),sessionId=this.current()?.id,runId=this.runId();
+    if(!prompt||!sessionId||!runId||!this.steeringAvailable()||this.steeringSending()||!this.socket?.connected)return;
+    this.steeringSending.set(true);this.error.set('');
+    try{const reply=await this.socket.timeout(40000).emitWithAck('steer',{runId,prompt});if(!reply?.ok)throw new Error(reply?.error||'Не удалось передать уточнение');if(this.current()?.id===sessionId&&this.draft.trim()===prompt){this.draft='';this.adjustTextareaHeight();}this.notice.set('Уточнение передано модели');}
+    catch(e){this.error.set((e as Error).message);}finally{this.steeringSending.set(false);}
+  }
+
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
-  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'>('projects');
+  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'>('projects');
   isOwner=signal(false);
   users=signal<{id:string;username:string;createdAt:string}[]>([]);
   newUsername=''; newUserPassword=''; userAdminError=''; userAdminNotice='';
@@ -245,6 +302,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     }, 0);
   }
 
+  onChatWheel(event:WheelEvent){if(event.deltaY<0){this.userScrolledUp.set(true);this.showScrollBottom.set(true);}}
+  onChatTouch(){this.userScrolledUp.set(true);this.showScrollBottom.set(true);}
   onChatScroll() {
     const el = this.chatScrollArea?.nativeElement;
     if (!el) return;
@@ -612,6 +671,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.restore();
   }
   ngOnDestroy(){
+    this.closePreview();
     this.stopVoiceInput();
     this.socket?.disconnect();
     if(this.clock)clearInterval(this.clock);
@@ -680,10 +740,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       return;
     }
     this.username=me.username;this.isOwner.set(!!me.isOwner);this.loggedIn.set(true);this.connect();
-    try{await this.load();}catch(e){this.error.set((e as Error).message);}
+    try{await this.load();const linked=new URLSearchParams(location.search).get('session');if(linked)await this.openSession(linked);}catch(e){this.error.set((e as Error).message);}
   }
-  async login(){this.loginError='';try{const me=await this.api<{username:string;isOwner:boolean}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.isOwner.set(!!me.isOwner);this.password='';this.loggedIn.set(true);await this.load();this.connect();}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'}).catch(()=>{});this.socket?.disconnect();this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.loggedIn.set(false);this.current.set(null);}
+  async login(){this.loginError='';try{const me=await this.api<{username:string;isOwner:boolean}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.isOwner.set(!!me.isOwner);this.password='';this.loggedIn.set(true);await this.load();this.connect();const linked=new URLSearchParams(location.search).get('session');if(linked)await this.openSession(linked);}catch(e){this.loginError=(e as Error).message;}}
+  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'}).catch(()=>{});this.socket?.disconnect();this.browserNotifications.set(false);this.closePreview();this.fileGroups.set([]);this.telegram.set(null);this.telegramLink.set('');this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.loggedIn.set(false);this.current.set(null);}
   async load(){
     const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([
       this.api<Account[]>('/accounts'),
@@ -928,7 +988,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   filteredRecentSessions = computed(() => {
     const query = this.sidebarSearch().trim().toLowerCase();
-    const all = sortSessions(this.sessions());
+    const all = sortSessions(this.sessions()).filter(s=>!s.projectId);
     if (!query) return all;
     return all.filter(s => s.title.toLowerCase().includes(query));
   });
@@ -1215,13 +1275,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     void this.uploadFiles(files);
     input.value = '';
   }
-  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'){
+  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'){
     if(page==='users'&&!this.isOwner())return;
     this.stopVoiceInput();
     this.page.set(page);
     this.mobileMenu.set(false);
     if(page==='runners')this.refreshRunners();
     else this.managedRunner.set(null);
+    if(page==='files')void this.refreshLibrary();
+    if(page==='notifications')void this.refreshTelegram();
     if(page==='sites')void this.refreshPreviews();
     if(page==='providers')void this.refreshProviders();
     if(page==='users')void this.refreshUsers();
@@ -1232,9 +1294,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
   connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
-  resetRun(){this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
-  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
-  onEvent(e:AIEvent){if(e.sessionId!==this.current()?.id)return;if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();void this.refreshTaskFiles();}}
+  resetRun(){this.steeringAvailable.set(false);this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
+  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
+  onEvent(e:AIEvent){
+    if(e.type==='completed'&&this.browserNotifications()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||e.sessionId!==this.current()?.id||this.page()!=='chat')){const n=new Notification('Ответ готов',{body:this.sessions().find(s=>s.id===e.sessionId)?.title||'AI Router'});n.onclick=()=>{window.focus();void this.openSession(e.sessionId);n.close();};}
+    if(e.sessionId!==this.current()?.id)return;
+    if(e.type==='fallback'||e.type==='handoff_started')this.steeringAvailable.set(false);
+    if(typeof e.data?.steeringAvailable==='boolean')this.steeringAvailable.set(e.data.steeringAvailable);
+    if(e.data?.steeringMessage){const message=e.data.steeringMessage;this.current.update(s=>s&&!s.messages.some(m=>m.id===message.id)?{...s,messages:[...s.messages,message],updatedAt:message.at||s.updatedAt}:s);}
+if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();void this.refreshTaskFiles();}}
   async reloadCurrent(){
     const id=this.current()?.id;
     if(!id)return;
@@ -1250,7 +1318,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async send(){
     if(this.isRecording())this.stopVoiceInput();
     const prompt=this.draft.trim();
-    if(!prompt||this.running())return;
+    if(this.running()){await this.steer();return;}
+    if(!prompt)return;
 
     let s=this.current();
     if(!s||!s.id){
@@ -1288,7 +1357,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
     const targetService = this.selectedService();
     const targetMode = 'task';
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:targetService==='codex'&&this.codexFast(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom(true);}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:targetService==='codex'&&this.codexFast(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom();}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
   }
 
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}

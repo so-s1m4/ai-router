@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { accountStatus, execute, RunnerError, workspaceFor, type Job, type ProviderId } from './cli.js';
 import { saveChatGPTSession } from './chatgpt-web.js';
 import { CheckpointWriter } from './checkpoint.js';
-import { prewarmCodexAppServer } from './app-server.js';
+import { prewarmCodexAppServer, steerCodexJob } from './app-server.js';
 import { startPreviews } from './previews.js';
 import { attachSharedFiles } from './shared-files.js';
 const url=process.env.ROUTER_SERVER_URL?.replace(/\/$/,'');if(!url)throw new Error('ROUTER_SERVER_URL is required');const parsed=new URL(url);if(parsed.protocol!=='https:'&&process.env.ROUTER_ALLOW_INSECURE!=='true')throw new Error('HTTPS required; set ROUTER_ALLOW_INSECURE=true only for local development');
@@ -15,6 +15,7 @@ interface Device {id:string;secret:string;name:string}
 async function device():Promise<Device>{try{return JSON.parse(await readFile(file,'utf8')) as Device;}catch{}const code=process.env.ROUTER_PAIRING_CODE;if(!code)throw new Error('Set ROUTER_PAIRING_CODE once to enroll this runner');const response=await fetch(url+'/api/runner/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});if(!response.ok)throw new Error('Pairing failed: '+response.status);const d=await response.json() as Device;await mkdir(root,{recursive:true,mode:0o700});await writeFile(file,JSON.stringify(d),{mode:0o600});return d;}
 const jobSchema=z.object({jobId:z.string().uuid(),taskId:z.string().uuid(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),mode:z.enum(['chat','task']).optional().default('task')});
 async function start(){const d=await device();const socket=io(url+'/runner',{path:'/socket.io',transports:['websocket'],auth:{runnerId:d.id,secret:d.secret},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000});const active=new Map<string,AbortController>();
+ const steeringCheckpoints=new Map<string,{writer:CheckpointWriter;prompt:string}>();
  await startPreviews(socket);
  attachSharedFiles(socket);
  socket.on('connect',()=>console.log(`Runner ${d.name} connected`));
@@ -41,6 +42,7 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
   const checkpoint=new CheckpointWriter(workspaceFor(job),job.taskId,{taskId:job.taskId,jobId:job.jobId,accountId:job.accountId,provider:job.provider,sessionId:job.sessionId,projectId:job.projectId,model:job.model,reasoning:job.reasoning,prompt:job.originalPrompt||job.prompt,priorContext:job.handoffContext});
   let partial='';
   active.set(job.jobId,controller);
+  steeringCheckpoints.set(job.jobId,{writer:checkpoint,prompt:job.originalPrompt||job.prompt});
   ack?.({ok:true});
   try{
    checkpoint.update({},true);
@@ -62,7 +64,17 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
    try{await checkpoint.flush();}catch(error){console.error('Checkpoint write failed:',error);}
    if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint сохранён для продолжения',data:{taskId:job.taskId,status:code==='rate_limit'?'handoff_pending':'failed'}});
    if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:false,error:e instanceof Error?e.message:'Ошибка',code});
-  }finally{active.delete(job.jobId);}
+  }finally{active.delete(job.jobId);steeringCheckpoints.delete(job.jobId);}
+ });
+ socket.on('job:steer',async(raw:unknown,ack?:(r:unknown)=>void)=>{
+  const parsed=z.object({jobId:z.string().uuid(),text:z.string().trim().min(1).max(16000)}).strict().safeParse(raw);
+  if(!parsed.success)return ack?.({ok:false,error:'Неверное уточнение'});
+  if(!active.has(parsed.data.jobId))return ack?.({ok:false,error:'Задача уже завершена'});
+  try{await steerCodexJob(parsed.data.jobId,parsed.data.text);
+   const checkpoint=steeringCheckpoints.get(parsed.data.jobId);
+   if(checkpoint){checkpoint.prompt+='\n\nUser steering:\n'+parsed.data.text;checkpoint.writer.update({prompt:checkpoint.prompt},true);}
+   ack?.({ok:true});}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось передать уточнение'});}
  });
  socket.on('job:cancel',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid()}).safeParse(raw);if(p.success)active.get(p.data.jobId)?.abort();});
  const accounts=new Map<string,{provider:ProviderId;authType?:'api_key'}>();

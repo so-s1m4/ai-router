@@ -41,6 +41,16 @@ test('files upload, share and delete through a real runner socket with owner iso
   const content=Buffer.alloc(2*1024*1024,65),filename="отчёт (1)'s.txt";
   const upload=await fetch(base+'/api/projects/'+project.body.id+'/files',{method:'POST',headers:{cookie,'content-type':'application/octet-stream','X-File-Name':encodeURIComponent(filename)},body:content});
   assert.equal(upload.status,201);assert.equal((await upload.json()).name,filename);
+  const catalog=await api('/files');assert.equal(catalog.status,200);assert.equal(catalog.body.groups.length,1);assert.equal(catalog.body.groups[0].files[0].name,filename);
+  // Oversized code is rejected before transfer; HTML and SVG are served only as plain text.
+  const large=await fetch(base+'/api/workspaces/projects/'+project.body.id+'/preview?name='+encodeURIComponent(filename),{headers:{cookie}});assert.equal(large.status,400);
+  for(const [name,text,mime] of [['code.html','<script>alert(1)</script>','text/plain'],['drawing.svg','<svg onload="alert(1)"></svg>','text/plain'],['document.pdf','%PDF-1.4','application/pdf'],['picture.png','PNG test','image/png']]){
+   const uploaded=await fetch(base+'/api/projects/'+project.body.id+'/files',{method:'POST',headers:{cookie,'content-type':'application/octet-stream','X-File-Name':encodeURIComponent(name)},body:text});assert.equal(uploaded.status,201);
+   const preview=await fetch(base+'/api/workspaces/projects/'+project.body.id+'/preview?name='+encodeURIComponent(name),{headers:{cookie}});assert.equal(preview.status,200);assert.ok(preview.headers.get('content-type').startsWith(mime));assert.equal(await preview.text(),text);
+   assert.equal((await fetch(base+'/api/workspaces/projects/'+project.body.id+'/preview?name='+name)).status,401);
+   assert.equal((await api('/workspaces/projects/'+project.body.id+'/files','DELETE',{name})).status,200);
+  }
+  const traversal=await fetch(base+'/api/workspaces/projects/'+project.body.id+'/preview?name=..%2Fsecret.txt',{headers:{cookie}});assert.equal(traversal.status,400);
   const url='/sessions/'+session.body.id+'/files';
   assert.equal((await api(url)).body.files[0].name,filename);
   const share=await api(url+'/share','POST',{name:filename});assert.equal(share.status,201);
@@ -49,6 +59,8 @@ test('files upload, share and delete through a real runner socket with owner iso
   assert.deepEqual(Buffer.from(await download.arrayBuffer()),content);
   const registered=await fetch(base+'/api/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'files-other-user',password:'files-other-password'})});
   const otherCookie=registered.headers.get('set-cookie').split(';')[0];
+  const otherCatalog=await fetch(base+'/api/files',{headers:{cookie:otherCookie}});assert.deepEqual((await otherCatalog.json()).groups,[]);
+  const privatePreview=await fetch(base+'/api/workspaces/projects/'+project.body.id+'/preview?name='+encodeURIComponent(filename),{headers:{cookie:otherCookie}});assert.equal(privatePreview.status,404);
   const forbidden=await fetch(base+'/api'+url,{method:'DELETE',headers:{cookie:otherCookie,'content-type':'application/json'},body:JSON.stringify({name:filename})});assert.equal(forbidden.status,404);
   assert.equal((await fetch(base+'/api'+url,{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({name:filename})})).status,401);
   assert.equal((await api(url,'DELETE',{name:'.env'})).status,503);

@@ -18,6 +18,12 @@ function tokenCounts(value: Json | undefined): TokenCounts | undefined {
   return Object.fromEntries(tokenFields.map(key => [key, value[key]])) as TokenCounts;
 }
 
+const activeSteering = new Map<string, (text: string) => Promise<void>>();
+export async function steerCodexJob(jobId: string, text: string) {
+  const steer = activeSteering.get(jobId);
+  if (!steer) throw new RunnerError('Steering доступен только для активного Codex App Server turn', 'unavailable');
+  await steer(text);
+}
 const processes = new Map<string, AppServerConnection>();
 const configVersions = new Map<string, string>();
 const codexBin = process.env.CODEX_BIN || 'codex';
@@ -214,8 +220,16 @@ class AppServerConnection {
       turnId = String(turn.turn?.id || '');
       if (!turnId) throw new RunnerError('App Server не вернул turn', 'unavailable');
       for (const value of queued.splice(0)) handle(value);
+      if (!settled) {
+        activeSteering.set(job.jobId, async text => {
+          if (settled || signal.aborted) throw new RunnerError('Задача уже завершена', 'unavailable');
+          await this.request('turn/steer', { threadId, expectedTurnId: turnId, input: [{ type: 'text', text }] });
+        });
+        emit({ type: 'status', message: 'Можно отправить уточнение во время выполнения', data: { steeringAvailable: true } });
+      }
       await completed;
     } finally {
+      activeSteering.delete(job.jobId);
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);
       remove();

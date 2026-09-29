@@ -72,7 +72,7 @@
         <button class="rail-btn" [class.active]="page()==='runners'" (click)="showPage('runners')" title="Исполнители" aria-label="Исполнители"><svg lucideServer [size]="18"></svg></button>
       </div>
 
-      <div class="rail-spacer"></div>
+      <div class="rail-group"><button class="rail-btn" [class.active]="page()==='files'" (click)="showPage('files')" title="Все файлы" aria-label="Все файлы"><svg lucideFile [size]="18"></svg></button><button class="rail-btn" [class.active]="page()==='notifications'" (click)="showPage('notifications')" title="Уведомления" aria-label="Уведомления"><svg lucideSettings2 [size]="18"></svg></button></div><div class="rail-spacer"></div>
 
       <div class="rail-group">
         <button class="rail-btn" (click)="helpModalOpen.set(!helpModalOpen())" title="Справка">
@@ -151,7 +151,7 @@
       </div>
 
       <div class="mobile-drawer-content">
-      <nav class="mobile-drawer-links" aria-label="Разделы приложения">
+      <nav class="mobile-drawer-links" aria-label="Разделы приложения"><button [class.active]="page()==='files'" (click)="showPage('files')"><svg lucideFile [size]="21"></svg><span>Все файлы</span></button><button [class.active]="page()==='notifications'" (click)="showPage('notifications')"><svg lucideSettings2 [size]="21"></svg><span>Уведомления</span></button>
         <button [class.active]="page()==='projects'" (click)="showPage('projects')"><svg lucideFolder [size]="21"></svg><span>Проекты</span></button>
         <button [class.active]="page()==='sites'" (click)="showPage('sites')"><svg lucideGlobe2 [size]="21"></svg><span>Сайты и превью</span></button>
         <button [class.active]="page()==='providers'" (click)="showPage('providers')"><svg lucideCompass [size]="21"></svg><span>Провайдеры и модели</span></button>
@@ -257,7 +257,7 @@
 
         <div class="topbar-center">
 
-          <span class="mobile-page-title">{{page()==='chat' ? (current()?.title || 'Новая задача') : page()==='projects' ? 'Проекты' : page()==='sites' ? 'Сайты' : page()==='providers' ? 'Модели' : page()==='connections' ? 'Подключения' : page()==='users' ? 'Пользователи' : 'Исполнители'}}</span>
+          <span class="mobile-page-title">{{page()==='chat' ? (current()?.title || 'Новая задача') : page()==='files' ? 'Файлы' : page()==='notifications' ? 'Уведомления' : page()==='projects' ? 'Проекты' : page()==='sites' ? 'Сайты' : page()==='providers' ? 'Модели' : page()==='connections' ? 'Подключения' : page()==='users' ? 'Пользователи' : 'Исполнители'}}</span>
         </div>
 
         <div class="topbar-right">
@@ -418,7 +418,7 @@
                       </div>
                       <div class="task-tree-meta">
                         <span class="task-tree-size">{{formatFileSize(node.size)}}</span>
-                        <div class="task-tree-actions">
+                        <div class="task-tree-actions"><button class="btn btn-outline btn-sm" (click)="previewFile(node.path)" title="Просмотреть файл">Открыть</button>
                           @if(sharedFileLinks()[node.path]){
                             <a class="btn btn-outline btn-sm download-btn" [href]="sharedFileLinks()[node.path]" target="_blank" rel="noopener noreferrer" title="Скачать">
                               <svg lucideDownload [size]="14"></svg>
@@ -453,7 +453,7 @@
           </section>
         }
 
-        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()">
+        <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onChatWheel($event)" (touchmove)="onChatTouch()">
           @if(!current()?.messages?.length){
             <!-- THE HERO SCREEN: WHAT'S ON THE AGENDA TODAY? -->
             <div class="hero-view">
@@ -477,7 +477,7 @@
                             [(ngModel)]="draft"
                             (input)="adjustHeroTextareaHeight()"
                             (paste)="onPaste($event)"
-                            placeholder="Опишите задачу…" aria-label="Сообщение ассистенту"
+                            [placeholder]="running() ? (steeringAvailable() ? 'Уточните задачу во время выполнения…' : 'Уточнения доступны для Codex App Server') : 'Опишите задачу…'" aria-label="Сообщение ассистенту"
                             rows="1"
                             (keydown)="onComposerEnter($event)"></textarea>
                   @if(!draft) {
@@ -652,8 +652,8 @@
         @if(current()?.messages?.length) {
           <div class="composer-floating-wrap">
             @if(showScrollBottom()){
-              <button type="button" class="scroll-bottom-btn" (click)="scrollToBottom(true, 'smooth')" aria-label="Прокрутить вниз" title="Вниз">
-                <svg lucideChevronDown [size]="18"></svg>
+              <button type="button" class="scroll-bottom-btn" (click)="scrollToBottom(true, 'smooth')" aria-label="К последнему сообщению" title="К последнему сообщению">
+                <svg lucideChevronDown [size]="18"></svg><span>К последнему сообщению</span>
               </button>
             }
 
@@ -678,7 +678,7 @@
                           (keydown)="onComposerEnter($event)"></textarea>
               </div>
 
-              @if(running()) {<button class="pill-btn-voice btn-circle-stop" type="button" (click)="cancel()" title="Остановить" aria-label="Остановить ответ"><svg lucideSquare [size]="16"></svg></button>} @else {<button class="pill-btn-send" type="button" [disabled]="!draft.trim() || uploading()" (click)="send()" title="Отправить" aria-label="Отправить"><svg lucideArrowUp [size]="18"></svg></button>}
+              @if(running()) {<button class="pill-btn-voice btn-circle-stop" type="button" (click)="cancel()" title="Остановить" aria-label="Остановить ответ"><svg lucideSquare [size]="16"></svg></button><button class="pill-btn-send" type="button" [disabled]="!draft.trim() || !steeringAvailable() || steeringSending() || uploading()" (click)="steer()" title="Уточнить текущую задачу" aria-label="Уточнить текущую задачу"><svg lucideArrowUp [size]="18"></svg></button>} @else {<button class="pill-btn-send" type="button" [disabled]="!draft.trim() || uploading()" (click)="send()" title="Отправить" aria-label="Отправить"><svg lucideArrowUp [size]="18"></svg></button>}
 <div class="pill-controls">
                 <!-- SERVICE / PROVIDER PILL -->
 
@@ -751,6 +751,30 @@
           </div>
         }
       </div>
+    }
+    @else if(page()==='files') {
+      <div class="page-content file-library">
+        <div class="section-hero"><div><span class="section-tag">РАБОЧИЕ ФАЙЛЫ</span><h2>Все файлы</h2><p>Файлы проектов и отдельных диалогов на ваших исполнителях.</p></div><button class="btn btn-outline" (click)="refreshLibrary()" [disabled]="libraryLoading()">Обновить</button></div>
+        @if(error()){<div class="banner banner-error">{{error()}}</div>}@if(notice()){<div class="banner">{{notice()}}</div>}
+        <div class="library-toolbar"><input type="search" placeholder="Поиск по имени файла…" aria-label="Поиск файлов" [ngModel]="libraryQuery()" (ngModelChange)="libraryQuery.set($event)"><select aria-label="Источник файлов" [ngModel]="librarySource()" (ngModelChange)="librarySource.set($event)"><option value="">Все проекты и чаты</option>@for(group of fileGroups();track group.kind+group.id){<option [value]="group.kind+':'+group.id">{{group.title}}</option>}</select></div>
+        @if(libraryLoading()){<p role="status">Загружаем список файлов…</p>}
+        @else {@for(group of libraryGroups();track group.kind+group.id){
+          <section class="library-group"><div class="library-group-title"><button class="btn-link" (click)="openFileSource(group)">{{group.title}}</button><span>{{group.kind==='projects'?'Проект':'Диалог'}} · {{group.files.length}} файлов</span></div>
+          @if(group.error){<p class="library-source-error">{{group.error}}</p>}
+          @for(file of group.files;track file.name){<div class="library-file"><button class="library-file-name" (click)="previewFile(file.name,group.kind,group.id)"><svg lucideFile [size]="18"></svg><span>{{file.name}}</span></button><div class="library-file-meta"><span>{{formatFileSize(file.size)}}</span><time>{{file.modified | date:'dd.MM.yy HH:mm'}}</time></div><div class="library-file-actions"><button class="btn btn-outline btn-sm" (click)="previewFile(file.name,group.kind,group.id)">Открыть</button><button class="btn btn-outline btn-sm" (click)="libraryShare(group,file.name,true)">Скачать</button><button class="btn btn-outline btn-sm" (click)="libraryShare(group,file.name)">Ссылка</button><button class="btn btn-outline btn-sm" (click)="libraryDelete(group,file.name)" [disabled]="!!deletingFile()" aria-label="Удалить файл"><svg lucideTrash2 [size]="14"></svg></button></div></div>}
+          </section>
+        }@empty{<div class="library-empty"><svg lucideFolderOpen [size]="32"></svg><h3>Файлы не найдены</h3><p>Создайте файлы в задаче или загрузите их в проект.</p></div>}}
+      </div>
+    } @else if(page()==='notifications') {
+      <div class="page-content notifications-page"><div class="section-hero"><div><span class="section-tag">ОСТАВАЙТЕСЬ НА СВЯЗИ</span><h2>Уведомления</h2><p>Узнайте о готовом ответе, даже когда открыта другая вкладка.</p></div></div>
+      @if(error()){<div class="banner banner-error">{{error()}}</div>}
+      <section class="notification-card"><h3>Telegram</h3><p>Бот отправит сообщение в личку, когда задача завершится. Содержимое ответа остаётся в чате.</p>
+      @if(telegram();as tg){
+        @if(!tg.configured){<p>Telegram ещё не настроен владельцем сервера.</p>@if(isOwner()){<p>Задайте TELEGRAM_BOT_TOKEN в настройках backend и PUBLIC_URL для ссылок на чат.</p>}}
+        @else if(tg.connected){<p>Подключён {{tg.name}}</p><div class="notification-actions"><button class="btn btn-primary" (click)="toggleTelegram()" [disabled]="telegramBusy()">{{tg.enabled?'Выключить уведомления':'Включить уведомления'}}</button><button class="btn btn-outline" (click)="disconnectTelegram()" [disabled]="telegramBusy()">Отключить Telegram</button></div>@if(tg.lastError){<p class="library-source-error">{{tg.lastError}}</p>}}
+        @else{<button class="btn btn-primary" (click)="connectTelegram()" [disabled]="telegramBusy()">Подключить Telegram</button>@if(telegramLink()){<div class="telegram-connect"><a class="btn btn-outline" [href]="telegramLink()" target="_blank" rel="noopener noreferrer">Открыть бота в Telegram</a><p>Нажмите Start у бота, затем проверьте подключение. Ссылка действует 10 минут.</p><button class="btn btn-outline" (click)="refreshTelegram()">Проверить подключение</button></div>}}
+      }@else{<p>Загружаем настройки…</p>}
+      </section><section class="notification-card"><h3>В этом браузере</h3><p>Показывать уведомление, когда ответ готов и вы читаете другой чат или вкладку. Настройка действует до выхода из приложения.</p><button class="btn btn-outline" (click)="enableBrowserNotifications()">{{browserNotifications()?'Выключить':'Включить'}} уведомления</button></section></div>
     } @else if(page()==='projects') {
         <!-- PROJECTS VIEW -->
         <div class="page-content">
@@ -1853,4 +1877,16 @@ INSTALL_AGY_CLI=true</code></pre>
       </form>
     </section>
   </div>
+}
+
+@if(loggedIn() && previewOpen()){
+ <div class="file-preview-overlay" (click)="closePreview()" (keydown.escape)="closePreview()">
+  <section class="file-preview-dialog" role="dialog" aria-modal="true" aria-label="Просмотр файла" (click)="$event.stopPropagation()" tabindex="-1">
+   <header><strong>{{previewName()}}</strong><button class="btn btn-outline btn-sm" (click)="closePreview()" aria-label="Закрыть просмотр"><svg lucideX [size]="18"></svg></button></header>
+   @if(previewLoading()){<p role="status">Загружаем файл…</p>}@else if(previewError()){<p class="library-source-error">{{previewError()}}</p>}
+   @else if(previewKind()==='image'){<img class="preview-image" [src]="previewUrl()" [alt]="previewName()">}
+   @else if(previewKind()==='pdf'){<iframe class="preview-pdf" [src]="previewPdf()" title="Просмотр PDF"></iframe>}
+   @else if(previewKind()==='text'){<pre class="preview-code"><code>{{previewText()}}</code></pre>}
+  </section>
+ </div>
 }

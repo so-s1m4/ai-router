@@ -81,3 +81,25 @@ export async function downloadSharedFile(token:string,response:ServerResponse):P
   response.end();
  }catch(error){if(response.headersSent)response.destroy();else{response.removeHeader('Content-Length');response.statusCode=503;response.end(error instanceof Error?error.message:'Файл недоступен');}}
 }
+
+export function previewMime(name:string):string|undefined {
+ const ext=path.extname(name).toLowerCase();
+ const images:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.avif':'image/avif'};
+ if(images[ext])return images[ext];
+ if(ext==='.pdf')return 'application/pdf';
+ if(['.txt','.md','.json','.js','.mjs','.cjs','.ts','.tsx','.jsx','.py','.css','.scss','.html','.xml','.csv','.yaml','.yml','.toml','.sh','.sql','.go','.rs','.java','.c','.cpp','.h','.log','.svg','.ini'].includes(ext)||['Dockerfile','Makefile','LICENSE'].includes(path.basename(name)))return 'text/plain; charset=utf-8';
+ return undefined;
+}
+export async function readWorkspacePreview(runnerId:string,scope:Scope,name:string){
+ const mime=previewMime(name);if(!mime)throw new Error('Для этого формата доступно скачивание');
+ const info=await ask(runnerId,'file:info',{...scope,name});
+ const limit=mime.startsWith('text/')?1024*1024:10*1024*1024;
+ if(!Number.isSafeInteger(info.size)||info.size<0||info.size>limit||!Number.isFinite(info.modified))throw new Error('Файл слишком большой для просмотра');
+ const chunks:Buffer[]=[];
+ for(let offset=0;offset<info.size;offset+=CHUNK){
+  const reply=await ask(runnerId,'file:chunk',{...scope,name,offset,modified:info.modified});
+  const bytes=Buffer.isBuffer(reply.data)?reply.data:reply.data instanceof Uint8Array?Buffer.from(reply.data):null;
+  if(!bytes||bytes.length!==Math.min(CHUNK,info.size-offset))throw new Error('Неполный файл');chunks.push(bytes);
+ }
+ return {mime,bytes:Buffer.concat(chunks)};
+}

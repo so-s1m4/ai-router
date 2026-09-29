@@ -35,7 +35,6 @@ export async function listSessions(userId: string): Promise<ChatSession[]> {
     try {
       const s = JSON.parse(await readFile(full,'utf8')) as ChatSession;
       if (!s || !Array.isArray(s.messages) || s.messages.length === 0) {
-        await rm(full).catch(() => {});
         return null;
       }
       return s;

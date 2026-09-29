@@ -12,6 +12,8 @@ services:
       CLI_TASK_TIMEOUT_SECONDS: ${CLI_TASK_TIMEOUT_SECONDS:-3600}
       PREVIEW_PORT: "3001"
       PREVIEW_BASE_DOMAIN: preview.s1m4.com
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      PUBLIC_URL: ${PUBLIC_URL:-https://ai.s1m4.com}
       CODEX_MODELS: ${CODEX_MODELS:-}
       AGY_MODELS: ${AGY_MODELS:-}
     volumes:

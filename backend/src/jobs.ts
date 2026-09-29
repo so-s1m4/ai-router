@@ -6,7 +6,7 @@ import type { AIEventType, ProviderId } from './types.js';
 export interface RunnerEvent {jobId:string;type:AIEventType;text?:string;message?:string;data?:Record<string,unknown>}
 export interface RunnerResult {jobId:string;ok:boolean;text?:string;error?:string;code?:string}
 export class JobError extends Error {constructor(message:string,public code:string){super(message);}}
-const pending=new Map<string,{runnerId:string;resolve:(text:string)=>void;reject:(e:Error)=>void;onEvent:(e:RunnerEvent)=>void;timer:NodeJS.Timeout}>();
+const pending=new Map<string,{runnerId:string;taskId:string;resolve:(text:string)=>void;reject:(e:Error)=>void;onEvent:(e:RunnerEvent)=>void;timer:NodeJS.Timeout}>();
 function timeoutSeconds(mode:'chat'|'task') { const fallback=mode==='task'?3600:180,key=mode==='task'?'CLI_TASK_TIMEOUT_SECONDS':'CLI_TIMEOUT_SECONDS',configured=Number(process.env[key]);return Number.isFinite(configured)&&configured>0?Math.min(configured,86400):fallback; }
 function settle(jobId:string,result:RunnerResult){const job=pending.get(jobId);if(!job)return;pending.delete(jobId);clearTimeout(job.timer);if(result.ok&&typeof result.text==='string')job.resolve(result.text);else job.reject(new JobError(result.error||'Ошибка исполнителя',result.code||'failed'));}
 export function attachJobHandlers(namespace:Namespace){namespace.on('connection',socket=>{const runnerId=socket.data.runnerId as string;
@@ -14,4 +14,13 @@ export function attachJobHandlers(namespace:Namespace){namespace.on('connection'
  socket.on('job:result',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid(),ok:z.boolean(),text:z.string().max(500000).optional(),error:z.string().max(2000).optional(),code:z.string().max(40).optional()}).safeParse(raw);if(!p.success)return;const job=pending.get(p.data.jobId);if(job?.runnerId===runnerId)settle(p.data.jobId,p.data);});
  socket.on('disconnect',()=>{for(const [id,job] of pending)if(job.runnerId===runnerId)settle(id,{jobId:id,ok:false,error:'Исполнитель отключился',code:'unavailable'});});
  });}
-export function dispatch(runnerId:string,payload:{taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;model:string;reasoning?:string;fast?:boolean;mode:'chat'|'task'},signal:AbortSignal,onEvent:(e:RunnerEvent)=>void):Promise<string>{const socket=runnerSocket(runnerId);if(!socket)return Promise.reject(new JobError('Исполнитель не в сети','unavailable'));const jobId=randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Время ожидания истекло',code:'timeout'});},(timeoutSeconds(payload.mode)+15)*1000);pending.set(jobId,{runnerId,resolve,reject,onEvent,timer});signal.addEventListener('abort',()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Остановлено пользователем',code:'canceled'});},{once:true});socket.emit('job:start',{jobId,...payload},(ack:{ok:boolean;error?:string})=>{if(!ack?.ok)settle(jobId,{jobId,ok:false,error:ack?.error||'Исполнитель отклонил задачу',code:'unavailable'});});});}
+export function dispatch(runnerId:string,payload:{taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;model:string;reasoning?:string;fast?:boolean;mode:'chat'|'task'},signal:AbortSignal,onEvent:(e:RunnerEvent)=>void):Promise<string>{const socket=runnerSocket(runnerId);if(!socket)return Promise.reject(new JobError('Исполнитель не в сети','unavailable'));const jobId=randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Время ожидания истекло',code:'timeout'});},(timeoutSeconds(payload.mode)+15)*1000);pending.set(jobId,{runnerId,taskId:payload.taskId,resolve,reject,onEvent,timer});signal.addEventListener('abort',()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Остановлено пользователем',code:'canceled'});},{once:true});socket.emit('job:start',{jobId,...payload},(ack:{ok:boolean;error?:string})=>{if(!ack?.ok)settle(jobId,{jobId,ok:false,error:ack?.error||'Исполнитель отклонил задачу',code:'unavailable'});});});}
+
+export async function steerJob(taskId:string,text:string){
+ const entry=[...pending.entries()].find(([,job])=>job.taskId===taskId);
+ if(!entry)throw new JobError('Задача ещё не готова к уточнениям или уже завершена','unavailable');
+ const [jobId,job]=entry,socket=runnerSocket(job.runnerId);
+ if(!socket)throw new JobError('Исполнитель не в сети','unavailable');
+ const reply=await socket.timeout(35000).emitWithAck('job:steer',{jobId,text});
+ if(!reply?.ok)throw new JobError(reply?.error||'Runner не поддерживает steering. Обновите runner.','unavailable');
+}
