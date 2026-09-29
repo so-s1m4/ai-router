@@ -198,7 +198,7 @@ class AppServerConnection {
 }
 
 async function configVersion(home: string) {
-  try { return createHash('sha256').update(await readFile(`${home}/.codex/config.toml`)).digest('hex'); }
+  try { const files=await Promise.all(['config.toml','auth.json'].map(async name=>{try{return await readFile(`${home}/.codex/${name}`);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return Buffer.alloc(0);throw error;}}));const hash=createHash('sha256');for(const file of files)hash.update(file);return hash.digest('hex'); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''; throw error; }
 }
 

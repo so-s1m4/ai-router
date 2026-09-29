@@ -31,7 +31,7 @@ export const DEFAULT_CHATGPT_MODELS: Model[] = [
   { id: 'default', label: 'По умолчанию ChatGPT' }
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
-type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
+type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
 type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;createdAt:string;revokedAt?:string};
 type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string};
 type Preview = {subdomain:string;runnerId:string;visible:boolean;online:boolean;expired:boolean;url:string;createdAt:string;updatedAt:string;expiresAt:string};
@@ -176,7 +176,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if(d==='/')return this.slashCommands;
     return this.slashCommands.filter(c=>c.cmd.startsWith(d));
   }
-  accountName=''; accountProvider:ProviderId='codex'; selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
+  accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
@@ -1694,7 +1694,23 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
   elapsed(){const start=Date.parse(this.runStartedAt());if(!Number.isFinite(start))return '0:00';const seconds=Math.max(0,Math.floor((this.now()-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
-  async addAccount(){this.error.set('');try{await this.api('/accounts',{method:'POST',body:JSON.stringify({provider:this.accountProvider,name:this.accountName,runnerId:this.selectedRunner})});this.accountName='';await this.refreshAccounts();this.notice.set('Аккаунт добавлен. Выполните команду входа на своём контейнере.');}catch(e){this.error.set((e as Error).message);}}
+  async addAccount(){
+    if(this.addingAccount())return;
+    this.error.set('');this.addingAccount.set(true);
+    try{
+      const isApi=this.accountProvider==='openai-api';
+      await this.api('/accounts',{method:'POST',body:JSON.stringify({provider:isApi?'codex':this.accountProvider,name:this.accountName,runnerId:this.selectedRunner,...(isApi?{authType:'api_key'}:{})})});
+      this.accountName='';await this.refreshAccounts();
+      this.notice.set(isApi?'Подключение создано. Введите API-ключ в его карточке.':'Аккаунт добавлен. Выполните команду входа на своём контейнере.');
+    }catch(e){this.error.set((e as Error).message);}finally{this.addingAccount.set(false);}
+  }
+  async saveOpenAIKey(a:Account){
+    if(this.savingApiKey())return;
+    const apiKey=(this.apiKeyDrafts[a.id]||'').trim();if(!apiKey)return;
+    this.savingApiKey.set(a.id);this.error.set('');
+    try{await this.api('/accounts/'+a.id+'/api-key',{method:'PUT',body:JSON.stringify({apiKey})});this.apiKeyDrafts[a.id]='';await this.refreshAccounts();this.notice.set('API-ключ сохранён. Модели появятся в выборе Codex после обновления статуса.');}
+    catch(e){this.error.set((e as Error).message);}finally{this.savingApiKey.set('');}
+  }
   async assignAccount(a:Account,runnerId:string){try{await this.api('/accounts/'+a.id,{method:'PATCH',body:JSON.stringify({runnerId})});await this.refreshAccounts();}catch(e){this.error.set((e as Error).message);}}
   async setAccountPriority(a:Account,value:string){
     const priority=Number(value);

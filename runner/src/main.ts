@@ -1,3 +1,4 @@
+import { readApiKey, saveApiKey } from './openai-key.js';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { io } from 'socket.io-client';
@@ -65,10 +66,19 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
  });
  socket.on('file:write',async(raw:unknown,ack?:(r:unknown)=>void)=>{const parsed=z.object({transferId:z.string().uuid(),projectId:z.string().uuid(),name:z.string().min(1).max(180),data:z.any()}).safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверный файл'});const {projectId,name}=parsed.data;const bytes=Buffer.isBuffer(parsed.data.data)?parsed.data.data:parsed.data.data instanceof Uint8Array?Buffer.from(parsed.data.data):null;if(!bytes)return ack?.({ok:false,error:'Неверное содержимое файла'});if(name==='.'||name==='..'||/[\\/\0]/.test(name))return ack?.({ok:false,error:'Недопустимое имя файла'});const projectRoot=path.resolve(root,'projects',projectId),target=path.resolve(projectRoot,name);if(!target.startsWith(projectRoot+path.sep))return ack?.({ok:false,error:'Недопустимый путь'});try{await mkdir(projectRoot,{recursive:true,mode:0o700});await writeFile(target,bytes,{mode:0o600});ack?.({ok:true,name,size:bytes.length});}catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось сохранить файл'});}});
  socket.on('job:cancel',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid()}).safeParse(raw);if(p.success)active.get(p.data.jobId)?.abort();});
- const accounts=new Map<string,{provider:ProviderId}>();
- const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Статус не получен'});}};
+ const accounts=new Map<string,{provider:ProviderId;authType?:'api_key'}>();
+ const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{if(accounts.get(accountId)?.authType==='api_key'&&!await readApiKey(home))throw new Error('Подключите API-ключ OpenAI');const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Статус не получен'});}};
  const refreshAll=()=>{for(const [accountId,account] of accounts)void refresh(accountId,account.provider);};
- socket.on('accounts:list',(raw:unknown)=>{const list=z.array(z.object({id:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt'])})).safeParse(raw);if(!list.success)return;accounts.clear();for(const account of list.data)accounts.set(account.id,{provider:account.provider});refreshAll();});
+ socket.on('accounts:list',(raw:unknown)=>{const list=z.array(z.object({id:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),authType:z.literal('api_key').optional()})).safeParse(raw);if(!list.success)return;accounts.clear();for(const account of list.data)accounts.set(account.id,{provider:account.provider,authType:account.authType});refreshAll();});
+ socket.on('account:openai-key',async(raw:unknown,ack?:(r:unknown)=>void)=>{
+  const parsed=z.object({accountId:z.string().uuid(),apiKey:z.string().min(20).max(512)}).strict().safeParse(raw);
+  if(!parsed.success)return ack?.({ok:false,error:'Неверные данные ключа'});
+  const account=accounts.get(parsed.data.accountId);
+  if(account?.provider!=='codex'||account.authType!=='api_key')return ack?.({ok:false,error:'API-подключение не назначено этому runner'});
+  const home=path.join(root,'accounts',parsed.data.accountId,'home');
+  try{await saveApiKey(home,parsed.data.apiKey);ack?.({ok:true});void refresh(parsed.data.accountId,'codex');}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось сохранить ключ'});}
+ });
  socket.on('account:chatgpt-session',async(raw:unknown,ack?:(r:unknown)=>void)=>{const p=z.object({accountId:z.string().uuid(),sessionToken:z.string().optional(),cookies:z.array(z.any()).optional()}).safeParse(raw);if(!p.success)return ack?.({ok:false,error:'Неверные данные сессии'});const home=path.join(root,'accounts',p.data.accountId,'home');try{await saveChatGPTSession(home,{sessionToken:p.data.sessionToken,cookies:p.data.cookies});void refresh(p.data.accountId,'chatgpt');ack?.({ok:true});}catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Ошибка сохранения'});}});
  const interval=setInterval(refreshAll,Number(process.env.USAGE_REFRESH_SECONDS||60)*1000);interval.unref();
  socket.on('disconnect',()=>accounts.clear());

@@ -55,4 +55,4 @@ jobs:
       - run: npm ci --prefix runner
       - run: npm run build --prefix backend
       - run: npm run build --prefix runner
-      - run: node --test tests/preview.integration.mjs
+      - run: node --test tests/*.integration.mjs
