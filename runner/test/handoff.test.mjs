@@ -41,7 +41,10 @@ process.stdin.on('data', chunk => {
     const send = value => process.stdout.write(JSON.stringify(value) + '\\n');
     if (message.method === 'initialize') send({ id: message.id, result: {} });
     if (message.method === 'thread/start') send({ id: message.id, result: { thread: { id: 'thr_test' } } });
-    if (message.method === 'thread/resume') send({ id: message.id, result: { thread: { id: 'thr_test' } } });
+    if (message.method === 'thread/resume') {
+      if (turns === 0) turns = 5; // History restored by a freshly started process.
+      send({ id: message.id, result: { thread: { id: 'thr_test' } } });
+    }
     if (message.method === 'turn/start') {
       turns++;
       const turnId = 'turn_' + turns;
@@ -55,6 +58,13 @@ process.stdin.on('data', chunk => {
         continue;
       }
       send({ method: 'item/agentMessage/delta', params: { threadId: 'thr_test', turnId, delta: 'answer ' + turns } });
+      const tokens = n => ({ totalTokens: n * 100, inputTokens: n * 80, cachedInputTokens: n * 40, outputTokens: n * 20, reasoningOutputTokens: n * 10 });
+      // Two model calls in one request, with a duplicate snapshot and unrelated updates.
+      const update = (threadId, id, n) => send({ method: 'thread/tokenUsage/updated', params: { threadId, turnId: id, tokenUsage: { total: tokens(n), last: tokens(1), modelContextWindow: 200000 } } });
+      update('thr_other', turnId, 999);
+      update('thr_test', turnId, turns * 2 - 1);
+      update('thr_test', turnId, turns * 2 - 1);
+      update('thr_test', turnId, turns * 2);
       send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'completed' } } });
     }
   }
@@ -73,18 +83,22 @@ process.stdin.on('data', chunk => {
     const events = [];
     try {
       const first = await runCodexAppServer(job, home, cwd, new AbortController().signal, event => events.push(event));
+      assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.data.totalTokens), [100, 100, 200]);
       const second = await runCodexAppServer(job, home, cwd, new AbortController().signal, event => events.push(event), first.threadId);
       assert.equal(first.threadId, 'thr_test');
       assert.equal(first.text, 'answer 1');
       assert.equal(second.text, 'answer 2');
       assert.equal(events.filter(event => event.type === 'checkpoint').length, 2);
+      assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.data.totalTokens), [100, 100, 200, 100, 100, 200], 'continued requests exclude earlier turn usage');
       const fast = await runCodexAppServer({ ...job, prompt: 'FAST', fast: true, reasoning: 'high' }, home, cwd, new AbortController().signal, () => {}, first.threadId);
       assert.equal(fast.text, 'answer 3');
       await assert.rejects(runCodexAppServer({ ...job, prompt: 'LIMIT' }, home, cwd, new AbortController().signal, () => {}, first.threadId), error => error.code === 'rate_limit');
       await mkdir(path.join(home, '.codex'), { recursive: true });
       await writeFile(path.join(home, '.codex', 'config.toml'), '[mcp_servers.browser]\ncommand = "playwright-mcp"\n');
-      const updated = await runCodexAppServer(job, home, cwd, new AbortController().signal, () => {}, first.threadId);
-      assert.equal(updated.text, 'answer 1', 'changing MCP config starts a fresh App Server');
+      const resumedEvents = [];
+      const updated = await runCodexAppServer(job, home, cwd, new AbortController().signal, event => resumedEvents.push(event), first.threadId);
+      assert.equal(updated.text, 'answer 6', 'changing MCP config starts a fresh App Server and restores history');
+      assert.deepEqual(resumedEvents.filter(event => event.type === 'usage').map(event => event.data.totalTokens), [100, 100, 200], 'resumed history is excluded even without an initial usage snapshot');
     } finally { closeCodexAppServers(); }
   } finally {
     if (prior === undefined) delete process.env.CODEX_BIN; else process.env.CODEX_BIN = prior;

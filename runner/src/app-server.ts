@@ -10,6 +10,13 @@ import { isQuotaError } from './provider-errors.js';
 type Json = Record<string, any>;
 type Pending = { resolve: (value: Json) => void; reject: (error: Error) => void };
 type NotificationHandler = (value: Json) => void;
+const tokenFields = ['totalTokens', 'inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens'] as const;
+type TokenCounts = Record<typeof tokenFields[number], number>;
+
+function tokenCounts(value: Json | undefined): TokenCounts | undefined {
+  if (!value || !tokenFields.every(key => Number.isSafeInteger(value[key]) && value[key] >= 0)) return undefined;
+  return Object.fromEntries(tokenFields.map(key => [key, value[key]])) as TokenCounts;
+}
 
 const processes = new Map<string, AppServerConnection>();
 const configVersions = new Map<string, string>();
@@ -36,6 +43,7 @@ class AppServerConnection {
   private notifications = new Set<NotificationHandler>();
   private initialized: Promise<void>;
   private threads = new Map<string, string>();
+  private threadTokens = new Map<string, TokenCounts>();
   private closed = false;
   private activeRuns = 0;
   private retired = false;
@@ -69,7 +77,13 @@ class AppServerConnection {
         const pending = this.pending.get(value.id)!; this.pending.delete(value.id);
         if (value.error) pending.reject(new RunnerError(String(value.error.message || 'App Server request failed'), 'unavailable'));
         else pending.resolve(value.result || {});
-      } else if (typeof value.method === 'string') for (const handler of this.notifications) handler(value);
+      } else if (typeof value.method === 'string') {
+        if (value.method === 'thread/tokenUsage/updated') {
+          const total = tokenCounts(value.params?.tokenUsage?.total);
+          if (total && typeof value.params?.threadId === 'string') this.threadTokens.set(value.params.threadId, total);
+        }
+        for (const handler of this.notifications) handler(value);
+      }
     }
   }
 
@@ -122,6 +136,10 @@ class AppServerConnection {
     }
     if (!threadId) throw new RunnerError('App Server не вернул thread', 'unavailable');
     this.threads.set(job.taskId, threadId);
+    // Thread totals include previous requests; subtract the pre-turn snapshot.
+    // A newly resumed process may learn that baseline from its first update.
+    let tokenBaseline = this.threadTokens.get(threadId);
+    if (!cached || threadId !== cached) tokenBaseline = Object.fromEntries(tokenFields.map(key => [key, 0])) as TokenCounts;
     emit({ type: 'checkpoint', message: 'Используется сохранённый App Server thread', data: { threadId } });
     let turnId = '';
     let text = '';
@@ -146,7 +164,16 @@ class AppServerConnection {
       if (params.threadId && params.threadId !== threadId) return;
       if (!turnId) { queued.push(value); return; }
       if (params.turnId && params.turnId !== turnId) return;
-      if (value.method === 'item/agentMessage/delta' && typeof (params.delta ?? params.text) === 'string') {
+      if (value.method === 'thread/tokenUsage/updated') {
+        const total = tokenCounts(params.tokenUsage?.total);
+        if (!total) return;
+        if (!tokenBaseline) {
+          const last = tokenCounts(params.tokenUsage?.last);
+          if (!last) return;
+          tokenBaseline = Object.fromEntries(tokenFields.map(key => [key, Math.max(0, total[key] - last[key])])) as TokenCounts;
+        }
+        emit({ type: 'usage', data: Object.fromEntries(tokenFields.map(key => [key, Math.max(0, total[key] - tokenBaseline![key])])) });
+      } else if (value.method === 'item/agentMessage/delta' && typeof (params.delta ?? params.text) === 'string') {
         const delta = String(params.delta ?? params.text); text += delta; emit({ type: 'delta', text: delta });
       } else if (value.method === 'item/started' && ['commandExecution', 'command_execution', 'fileChange', 'file_change'].includes(String(params.item?.type))) {
         emit({ type: 'tool', message: 'Инструмент', data: { type: params.item.type } });

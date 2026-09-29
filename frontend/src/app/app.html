@@ -635,6 +635,7 @@
                         <div class="assistant-meta">
                           <span class="sender-name">{{providerLabel(m.provider) || 'ChatGPT'}}</span>
                           <span class="message-time">{{m.at | date:'HH:mm'}}</span>
+                          <span class="message-tokens" [title]="tokenTitle(m.tokenUsage)">{{tokenLabel(m.tokenUsage)}}</span>
                         </div>
                         <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
                         <div class="assistant-actions">

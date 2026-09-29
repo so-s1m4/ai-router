@@ -36,7 +36,8 @@ type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;cre
 type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string};
 type Preview = {subdomain:string;runnerId:string;visible:boolean;online:boolean;expired:boolean;url:string;createdAt:string;updatedAt:string;expiresAt:string};
 type Pairing = {code:string;expiresAt:string};
-type Message = {id:string;role:'user'|'assistant'|'system';text:string;at?:string;provider?:ProviderId|string;steps?:any[];[key:string]:any};
+type TokenUsage = {totalTokens:number;inputTokens?:number;outputTokens?:number;cachedInputTokens?:number;reasoningOutputTokens?:number};
+type Message = {id:string;role:'user'|'assistant'|'system';text:string;at?:string;provider?:ProviderId|string;tokenUsage?:TokenUsage;steps?:any[];[key:string]:any};
 type ChatSession = {id:string;title:string;updatedAt:string;messages:Message[];projectId?:string};
 
 export function getSessionLastMessageTime(sess: ChatSession): number {
@@ -1769,6 +1770,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
   providerLabel(id?:ProviderId|string){return id==='codex'?'Codex':(id==='antigravity'||id==='gemini')?'Gemini':id==='chatgpt'?'ChatGPT':'';}
+  tokenLabel(usage?:TokenUsage){return usage?`${new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(usage.totalTokens)} tokens`:'— tokens';}
+  tokenTitle(usage?:TokenUsage){
+    if(!usage)return 'Провайдер не передал расход токенов для этого запроса';
+    const format=(value:number)=>new Intl.NumberFormat('ru-RU').format(value);
+    const rows=[`Всего за запрос: ${format(usage.totalTokens)} токенов`];
+    if(usage.inputTokens!==undefined)rows.push(`Вход: ${format(usage.inputTokens)}`);
+    if(usage.outputTokens!==undefined)rows.push(`Выход: ${format(usage.outputTokens)}`);
+    if(usage.cachedInputTokens!==undefined)rows.push(`Из кеша: ${format(usage.cachedInputTokens)}`);
+    if(usage.reasoningOutputTokens!==undefined)rows.push(`Рассуждения: ${format(usage.reasoningOutputTokens)}`);
+    return rows.join('\n');
+  }
   limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
   windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 ч';if(minutes===10080)return 'Неделя';if(minutes===43200)return 'Месяц';if(minutes&&minutes%60===0)return `${minutes/60} ч`;return 'Окно';}
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
