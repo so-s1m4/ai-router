@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { once } from 'node:events';
 import type { ServerResponse } from 'node:http';
@@ -23,6 +23,16 @@ export async function listWorkspaceFiles(runnerId:string,scope:Scope):Promise<Fi
  return Array.isArray(reply.files)?reply.files.filter((row:unknown)=>{
   const file=row as FileRow;return typeof file?.name==='string'&&typeof file.size==='number'&&typeof file.modified==='string';
  }):[];
+}
+export async function deleteWorkspaceFile(runnerId:string,scope:Scope,name:string){
+ await ask(runnerId,'file:delete',{...scope,name});
+ const entries=await readdir(directory).catch(()=>[]);
+ await Promise.all(entries.filter(entry=>tokenPattern.test(entry.replace(/\.json$/, ''))).map(async entry=>{
+  const file=path.join(directory,entry);
+  try{const share=JSON.parse(await readFile(file,'utf8')) as Share;
+   if(share.runnerId===runnerId && share.name===name && (scope.projectId?share.scope.projectId===scope.projectId:!share.scope.projectId&&share.scope.sessionId===scope.sessionId))await unlink(file);
+  }catch{}
+ }));
 }
 export async function getWorkspaceGitSummary(runnerId:string,scope:Scope):Promise<any>{
  try{
@@ -55,7 +65,7 @@ export async function downloadSharedFile(token:string,response:ServerResponse):P
  }catch(error){response.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}).end(error instanceof Error?error.message:'Файл недоступен');return;}
  const filename=path.basename(share.name).replace(/[\r\n"\\]/g,'_');
  response.setHeader('Content-Type','application/octet-stream');
- response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+ response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase())}`);
  response.setHeader('Cache-Control','no-store');
  response.setHeader('Referrer-Policy','no-referrer');
  response.setHeader('X-Content-Type-Options','nosniff');

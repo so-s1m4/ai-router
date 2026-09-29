@@ -24,12 +24,17 @@ async function run(bin: string, args: string[], home: string) {
 const agyFile = (home: string) => path.join(home, '.gemini', 'config', 'mcp_config.json');
 async function readAgy(home: string): Promise<{ mcpServers: Record<string, any> }> { try { const content = await readFile(agyFile(home), 'utf8'); if (!content.trim()) return { mcpServers: {} }; const raw = JSON.parse(content); return { ...raw, mcpServers: raw.mcpServers && typeof raw.mcpServers === 'object' ? raw.mcpServers : {} }; } catch (error: any) { if (error?.code === 'ENOENT') return { mcpServers: {} }; throw new Error('Не удалось прочитать конфигурацию Antigravity MCP'); } }
 async function writeAgy(home: string, value: { mcpServers: Record<string, any> }) { const file = agyFile(home); await mkdir(path.dirname(file), { recursive: true, mode: 0o700 }); const temp = file + '.tmp'; await writeFile(temp, JSON.stringify(value, null, 2), { mode: 0o600 }); await rename(temp, file); }
-export type McpInput = { accountId?: string; provider?: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string> };
+export type McpInput = { accountId?: string; provider?: Provider; name?: string; url?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string>; removeHeaders?: string[] };
 function sanitized(name: string, item: any) { const value = item?.transport || item; return { name, url: value?.url || value?.serverUrl || null, command: value?.command || null, args: value?.args || [], envNames: Object.keys(value?.env || {}), headerNames: Object.keys(value?.headers || {}), enabled: item?.enabled !== false && item?.disabled !== true }; }
 export async function listMcp(_input: McpInput = {}) {
   const home = path.join(root, 'global-mcp');
   const config = await readAgy(home); return Object.entries(config.mcpServers).map(([name, item]) => sanitized(name, item));
 
+}
+function validateHeaders(headers: Record<string, string>) {
+  const names = Object.keys(headers);
+  if (names.length > 30 || new Set(names.map(name => name.toLowerCase())).size !== names.length || Object.entries(headers).some(([key, value]) => !/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,100}$/.test(key) || typeof value !== 'string' || value.length > 4000 || /[^\t\x20-\x7e\x80-\xff]/.test(value))) throw new Error('Неверные HTTP headers MCP');
+  if (JSON.stringify(headers).length > 16000) throw new Error('Слишком большой размер headers');
 }
 export async function addMcp(input: McpInput) {
   const home = path.join(root, 'global-mcp'), name = safeName(input.name || '');
@@ -38,14 +43,29 @@ export async function addMcp(input: McpInput) {
   if (input.command && (input.command.length > 200 || /[\r\n]/.test(input.command))) throw new Error('Неверная команда MCP');
   if ((input.args || []).some(arg => arg.length > 500) || Object.entries(input.env || {}).some(([key, value]) => !/^[A-Z_][A-Z0-9_]*$/.test(key) || value.length > 2000)) throw new Error('Неверные параметры MCP');
   const headers = input.headers || {};
-  const names = Object.keys(headers);
-  if (names.length && !input.url) throw new Error('Headers доступны только для HTTPS MCP');
-  if (names.length > 30 || new Set(names.map(name => name.toLowerCase())).size !== names.length || Object.entries(headers).some(([key, value]) => !/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,100}$/.test(key) || typeof value !== 'string' || value.length > 4000 || /[^\t\x20-\x7e\x80-\xff]/.test(value))) throw new Error('Неверные HTTP headers MCP');
-  if (JSON.stringify(headers).length > 16000) throw new Error('Слишком большой размер headers');
+  if (Object.keys(headers).length && !input.url) throw new Error('Headers доступны только для HTTPS MCP');
+  validateHeaders(headers);
   const config = await readAgy(home); config.mcpServers[name] = input.url ? { serverUrl: input.url, headers } : { command: input.command, args: input.args || [], env: input.env || {} }; await writeAgy(home, config);
 
   return listMcp(input);
 }
+export async function updateMcpHeaders(input: McpInput) {
+  const home = path.join(root, 'global-mcp'), name = safeName(input.name || '');
+  const config = await readAgy(home), server = config.mcpServers[name];
+  if (!server) throw new Error('MCP-сервер не найден');
+  if (!server.serverUrl && !server.url) throw new Error('Headers доступны только для HTTPS MCP');
+  validateHeaders(input.headers || {});
+  const headers: Record<string, string> = { ...server.headers };
+  const removed = new Set((input.removeHeaders || []).map(key => key.toLowerCase()));
+  const changed = new Set(Object.keys(input.headers || {}).map(key => key.toLowerCase()));
+  for (const key of Object.keys(headers)) if (removed.has(key.toLowerCase()) || changed.has(key.toLowerCase())) delete headers[key];
+  Object.assign(headers, input.headers || {});
+  validateHeaders(headers);
+  server.headers = headers;
+  await writeAgy(home, config);
+  return listMcp();
+}
+
 export async function removeMcp(input: McpInput) {
   const home = path.join(root, 'global-mcp'), name = safeName(input.name || '');
   const config = await readAgy(home); delete config.mcpServers[name]; await writeAgy(home, config);
@@ -63,6 +83,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const result = op === 'ensureHome' ? await ensureHome(payload.accountId || '')
         : op === 'mcp.list' ? await listMcp(payload)
         : op === 'mcp.add' ? await addMcp(payload)
+        : op === 'mcp.headers' ? await updateMcpHeaders(payload)
         : op === 'mcp.remove' ? await removeMcp(payload)
         : (() => { throw new Error('Операция не поддерживается'); })();
       process.stdout.write(JSON.stringify(result));

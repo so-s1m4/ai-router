@@ -7,7 +7,7 @@ import path from 'node:path';
 test('global MCP reaches existing and new accounts, redacts secrets and removes entries', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'global-mcp-'));
   process.env.RUNNER_DATA_DIR = root;
-  const { addMcp, listMcp, removeMcp, syncGlobalMcp } = await import('../dist/manager-mcp.js');
+  const { addMcp, listMcp, removeMcp, syncGlobalMcp, updateMcpHeaders } = await import('../dist/manager-mcp.js');
   try {
     const homes = [path.join(root, 'first'), path.join(root, 'new')];
     const configFile = home => path.join(home, '.gemini/config/mcp_config.json');
@@ -38,7 +38,21 @@ test('global MCP reaches existing and new accounts, redacts secrets and removes 
       await assert.rejects(addMcp({ name: 'invalid', url: 'https://example.com', headers }));
     }
     await assert.rejects(addMcp({ name: 'invalid', command: 'echo', headers: { Token: 'x' } }));
-    await addMcp({ name: 'remote', url: 'https://example.com/mcp' });
+    await updateMcpHeaders({ name: 'remote', headers: { authorization: 'Bearer updated', 'X-New': 'new' }, removeHeaders: ['X-API-Key'] });
+    await syncGlobalMcp(homes[0], 'antigravity');
+    let saved = JSON.parse(await readFile(configFile(homes[0]))).mcpServers.remote;
+    assert.equal(saved.serverUrl, 'https://example.com/mcp');
+    assert.deepEqual(saved.headers, { authorization: 'Bearer updated', 'X-New': 'new' });
+    await updateMcpHeaders({ name: 'remote', headers: { 'X-New': 'changed' } });
+    await syncGlobalMcp(homes[0], 'antigravity');
+    saved = JSON.parse(await readFile(configFile(homes[0]))).mcpServers.remote;
+    assert.equal(saved.headers.authorization, 'Bearer updated');
+    assert.equal(saved.headers['X-New'], 'changed');
+    assert.equal(JSON.stringify(await listMcp()).includes('Bearer updated'), false);
+    await assert.rejects(updateMcpHeaders({ name: 'remote', headers: { Good: 'bad\r\nInjected: yes' } }));
+    await assert.rejects(updateMcpHeaders({ name: 'missing', headers: {} }));
+    await assert.rejects(updateMcpHeaders({ name: 'browser', headers: { Token: 'x' } }));
+    await updateMcpHeaders({ name: 'remote', removeHeaders: ['Authorization', 'X-New'] });
     await syncGlobalMcp(homes[0], 'antigravity');
     assert.deepEqual(JSON.parse(await readFile(configFile(homes[0]))).mcpServers.remote.headers, {});
     await removeMcp({ name: 'browser' });

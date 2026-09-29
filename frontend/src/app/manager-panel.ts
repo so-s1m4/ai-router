@@ -30,6 +30,8 @@ export class ManagerPanel implements OnDestroy {
   image = ''; envRows: { key: string; value: string }[] = []; envUnset = new Set<string>();
   mountRows: { type: 'bind' | 'volume'; source: string; target: string; readOnly: boolean }[] = []; mountRemove = new Set<string>();
   selectedAccountId = ''; mcp = signal<Mcp[]>([]); mcpName = ''; mcpKind: 'url' | 'command' = 'url'; mcpUrl = ''; mcpCommand = ''; mcpArgs = ''; mcpHeaderRows: { key: string; value: string }[] = []; mcpEnvRows: { key: string; value: string }[] = [];
+  editingMcp = signal<Mcp | null>(null);
+  editHeaderRows: { key: string; value: string; original?: string }[] = [];
   loginSession = signal<Auth | null>(null); private pollTimer?: ReturnType<typeof setTimeout>;
   get localAccounts() { return this.accounts.filter(account => account.runnerId === this.runner.id); }
   get selectedAccount() { return this.localAccounts.find(account => account.id === this.selectedAccountId); }
@@ -65,7 +67,7 @@ export class ManagerPanel implements OnDestroy {
   }
   async getPairing() { try { this.pairing.set(await this.api<Pairing>('pairing', {})); } catch (error) { this.error.set((error as Error).message); } }
   async unlock() { if (!this.password) return; const overview = await this.operation<Overview>('overview'); if (overview) { this.unlocked.set(true); this.applyOverview(overview); } }
-  lock() { this.password = ''; this.unlocked.set(false); this.details.set(null); if (this.pollTimer) clearTimeout(this.pollTimer); }
+  lock() { this.cancelHeaderEdit(); this.password = ''; this.unlocked.set(false); this.details.set(null); if (this.pollTimer) clearTimeout(this.pollTimer); }
   private applyOverview(value: Overview) { this.keys.set(value.keys); this.containers.set(value.containers); this.dockerError.set(value.dockerError); }
   async refresh() { const value = await this.operation<Overview>('overview'); if (value) this.applyOverview(value); }
   async copy(value: string) { await navigator.clipboard.writeText(value); this.notice.set('Скопировано'); }
@@ -87,7 +89,7 @@ export class ManagerPanel implements OnDestroy {
   }
   toggleEnv(name: string, checked: boolean) { checked ? this.envUnset.add(name) : this.envUnset.delete(name); }
   toggleMount(target: string, checked: boolean) { checked ? this.mountRemove.add(target) : this.mountRemove.delete(target); }
-  async loadMcp() { this.mcp.set([]); const value = await this.operation<Mcp[]>('mcp.list', {}); if (value) this.mcp.set(value); }
+  async loadMcp() { this.cancelHeaderEdit(); this.mcp.set([]); const value = await this.operation<Mcp[]>('mcp.list', {}); if (value) this.mcp.set(value); }
   async addMcp() {
     const payload: Record<string, unknown> = { name: this.mcpName.trim() };
     if (this.mcpKind === 'url') {
@@ -99,6 +101,21 @@ export class ManagerPanel implements OnDestroy {
     else { payload['command'] = this.mcpCommand.trim(); payload['args'] = this.mcpArgs.split('\n').map(value => value.trim()).filter(Boolean); payload['env'] = Object.fromEntries(this.mcpEnvRows.filter(row => row.key.trim()).map(row => [row.key.trim(), row.value])); }
     const value = await this.operation<Mcp[]>('mcp.add', payload, 'MCP-сервер добавлен');
     if (value) { this.mcp.set(value); this.mcpName = ''; this.mcpUrl = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpEnvRows = []; this.mcpHeaderRows = []; }
+  }
+  editMcpHeaders(server: Mcp) {
+    this.editingMcp.set(server); this.error.set(''); this.notice.set('');
+    this.editHeaderRows = (server.headerNames || []).map(key => ({ key, value: '', original: key }));
+  }
+  cancelHeaderEdit() { this.editingMcp.set(null); this.editHeaderRows = []; }
+  async saveMcpHeaders() {
+    const server = this.editingMcp(); if (!server) return;
+    const rows = this.editHeaderRows;
+    if (rows.some(row => !row.key.trim()) || new Set(rows.map(row => row.key.trim().toLowerCase())).size !== rows.length) { this.error.set('Укажите уникальное имя для каждого header'); return; }
+    if (rows.some(row => !row.value && row.key.trim() !== row.original)) { this.error.set('Укажите значение для нового или переименованного header'); return; }
+    const headers = Object.fromEntries(rows.filter(row => row.value).map(row => [row.key.trim(), row.value]));
+    const removeHeaders = (server.headerNames || []).filter(key => !rows.some(row => row.key.trim() === key));
+    const value = await this.operation<Mcp[]>('mcp.headers', { name: server.name, headers, removeHeaders }, 'Headers сохранены. Изменения применятся к новым запускам задач.');
+    if (value) { this.mcp.set(value); this.cancelHeaderEdit(); }
   }
   async removeMcp(name: string) { if (!confirm(`Удалить MCP «${name}»?`)) return; const value = await this.operation<Mcp[]>('mcp.remove', { name }, 'MCP-сервер удалён'); if (value) this.mcp.set(value); }
   async addBrowser() {

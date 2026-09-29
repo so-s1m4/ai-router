@@ -20,6 +20,18 @@ test('file exchange lists workspace output and rejects private paths and symlink
  await symlink(path.join(workspace,'.env'),path.join(workspace,'output','shortcut'));
  const ask=(event,data)=>new Promise(resolve=>socket.emit(event,data,resolve));
  try{
+  const projectId='923b2a0f-64b0-4e4d-9bf9-d5f5f3b393ea';
+  const transferId='b03b7201-6e45-446a-a916-707e3c0fe3d1';
+  const data=Buffer.alloc(2*1024*1024,65);
+  assert.equal((await ask('file:write',{projectId,transferId,name:'.env',data})).ok,false);
+  const uploaded=await ask('file:write',{projectId,transferId,name:'upload.txt',data});
+  assert.equal(uploaded.ok,true);
+  assert.equal(uploaded.size,data.length);
+  assert.equal((await ask('file:write',{projectId,transferId,name:'upload.txt',data})).name,'upload-1.txt');
+  const projectFiles=await ask('file:list',{sessionId,projectId});
+  assert.equal(projectFiles.files.length,2);
+  assert.equal((await ask('file:delete',{sessionId,projectId,name:'upload.txt'})).ok,true);
+  assert.equal((await ask('file:list',{sessionId,projectId})).files.length,1);
   const listed=await ask('file:list',{sessionId});
   assert.deepEqual(listed.files.map(file=>file.name),['output/result.txt']);
   const info=await ask('file:info',{sessionId,name:'output/result.txt'});
@@ -28,6 +40,9 @@ test('file exchange lists workspace output and rejects private paths and symlink
   assert.equal(Buffer.from(chunk.data).toString(),'hello');
  for(const name of ['../.env','.env','.ai-router/checkpoint.json','output/shortcut']){
    assert.equal((await ask('file:info',{sessionId,name})).ok,false,name);
+  }
+  for(const name of ['../.env','.env','.ai-router/checkpoint.json','output/shortcut']){
+   assert.equal((await ask('file:delete',{sessionId,name})).ok,false,name);
   }
   const linkedSession='a533536e-b824-4ddc-8bbc-5b2a5cc37671';
   await symlink(workspace,path.join(root,'workspaces',linkedSession));
@@ -39,5 +54,9 @@ test('file exchange lists workspace output and rejects private paths and symlink
   assert.equal(summaryRes.summary.isGitRepo, false);
   assert.equal(summaryRes.summary.recentFiles.length, 1);
   assert.equal(summaryRes.summary.recentFiles[0].name, 'output/result.txt');
+  assert.equal((await ask('file:delete',{sessionId,name:'output/result.txt'})).ok,true);
+  assert.deepEqual((await ask('file:list',{sessionId})).files,[]);
+  assert.equal((await ask('file:info',{sessionId,name:'output/result.txt'})).ok,false);
+  assert.equal((await ask('file:delete',{sessionId:linkedSession,name:'output/result.txt'})).ok,false);
  }finally{await rm(root,{recursive:true,force:true});}
 });

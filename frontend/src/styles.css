@@ -17,47 +17,47 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* ChatGPT Dark Theme Palette */
-  --bg-canvas: #212121;
-  --bg-sidebar: #171717;
-  --bg-rail: #171717;
-  --bg-surface: #212121;
-  --bg-surface-elevated: #2f2f2f;
-  --bg-surface-hover: rgba(255, 255, 255, 0.08);
-  --bg-surface-active: rgba(255, 255, 255, 0.12);
-  --bg-input: #2f2f2f;
-  --bg-input-focus: #383838;
+  /* Neutral surfaces with a single blue action accent. */
+  --bg-canvas: #111318;
+  --bg-sidebar: #191d25;
+  --bg-rail: #13161c;
+  --bg-surface: #191d25;
+  --bg-surface-elevated: #20252e;
+  --bg-surface-hover: #262d38;
+  --bg-surface-active: #28354c;
+  --bg-input: #191d25;
+  --bg-input-focus: #191d25;
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.14);
-  --border-hover: rgba(255, 255, 255, 0.24);
-  --border-focus: rgba(255, 255, 255, 0.35);
+  --border-subtle: #292f3a;
+  --border-medium: #394252;
+  --border-hover: #53617a;
+  --border-focus: #7c9cff;
 
   /* Brand Accents */
-  --primary: #ffffff;
-  --primary-hover: #ececec;
-  --primary-fg: #0d0d0d;
-  --primary-glow: rgba(255, 255, 255, 0.15);
-  --primary-subtle: rgba(255, 255, 255, 0.08);
-  --primary-text: #ececec;
+  --primary: #7294f5;
+  --primary-hover: #88a5ff;
+  --primary-fg: #11192b;
+  --primary-glow: rgba(48, 94, 232, 0.1);
+  --primary-subtle: #222f49;
+  --primary-text: #a1b9ff;
   --accent-purple: #8b5cf6;
 
   /* Status */
-  --success: #10a37f;
-  --success-bg: rgba(16, 163, 127, 0.15);
-  --success-border: rgba(16, 163, 127, 0.3);
-  --warning: #f59e0b;
-  --warning-bg: rgba(245, 158, 11, 0.15);
-  --danger: #ef4444;
-  --danger-bg: rgba(239, 68, 68, 0.15);
-  --danger-hover: #dc2626;
+  --success: #79cda8;
+  --success-bg: #1b3028;
+  --success-border: #315342;
+  --warning: #e2b66e;
+  --warning-bg: #32291b;
+  --danger: #ef9292;
+  --danger-bg: #362326;
+  --danger-hover: #ffaaaa;
 
   /* Text */
-  --text-main: #ececec;
-  --text-secondary: #b4b4b4;
-  --text-muted: #8e8e8e;
-  --text-inverse: #171717;
+  --text-main: #e1e6ef;
+  --text-secondary: #adb7c8;
+  --text-muted: #8995a9;
+  --text-inverse: #e9edf5;
 
   /* Radii */
   --radius-xs: 6px;
@@ -68,10 +68,10 @@
   --radius-pill: 9999px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px 0 rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 36px 0 rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 24px rgba(255, 255, 255, 0.08);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 0 3px rgba(48, 94, 232, 0.08);
 }
 
 *, *::before, *::after {
@@ -130,19 +130,31 @@ code, pre, kbd, samp, .mono {
   font-family: var(--font-mono);
 }
 
-/* Scrollbars */
+/* Compact scrollbars for Firefox and Chromium/Safari. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #465064 transparent;
+}
+
+/* Prefer the explicit 4px width in browsers with WebKit scrollbar support. */
+@supports selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: #465064;
   border-radius: var(--radius-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: #65728b;
 }
 
 ::-webkit-scrollbar-track {
@@ -151,7 +163,7 @@ code, pre, kbd, samp, .mono {
 
 ::selection {
   background: rgba(255, 255, 255, 0.22);
-  color: #ffffff;
+  color: #e9edf5;
 }
 
 /* ==========================================================================
@@ -178,7 +190,7 @@ code, pre, kbd, samp, .mono {
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  color: #fff;
+  color: var(--text-main);
   font-weight: 600;
   line-height: 1.35;
   margin: 16px 0 8px 0;
@@ -259,12 +271,12 @@ code, pre, kbd, samp, .mono {
 }
 
 .markdown-body a:hover {
-  color: #a5b4fc;
+  color: var(--primary-hover);
 }
 
 .markdown-body strong {
   font-weight: 600;
-  color: #fff;
+  color: var(--text-main);
 }
 
 .markdown-body em {
@@ -283,7 +295,7 @@ code, pre, kbd, samp, .mono {
   border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-subtle);
-  color: #c7d2fe;
+  color: #a1b9ff;
 }
 
 /* Code block container */
@@ -559,3 +571,9 @@ code, pre, kbd, samp, .mono {
     overflow-wrap: anywhere;
   }
 }
+
+::selection { background: #334972; color: #e1e6ef; }
+.code-block { color-scheme: dark; }
+.code-lang { color: #b9caff; }
+.copy-code-btn { color: #b1bbcd; }
+.copy-code-btn:hover { color: #fff; background: #333c4b; }
