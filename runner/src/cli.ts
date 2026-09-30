@@ -1,3 +1,4 @@
+import { parseResetCredits, type ResetCredits } from './reset-credits.js';
 import { readApiKey, fetchApiModels } from './openai-key.js';
 import { syncGlobalMcp } from './manager-mcp.js';
 import { isQuotaError } from './provider-errors.js';
@@ -10,10 +11,10 @@ import { readAgyModels } from './agy-models.js';
 import { cliTimeoutSeconds } from './timeouts.js';
 import { chatgptAccountStatus, executeChatGPTWeb } from './chatgpt-web.js';
 export type ProviderId='codex'|'antigravity'|'chatgpt';
-export type Job={jobId:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;originalPrompt?:string;handoffContext?:string;previousThreadId?:string;model:string;reasoning?:string;fast?:boolean;mode:'chat'|'task'};
+export type Job={continuationOf?:string;jobId:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;originalPrompt?:string;handoffContext?:string;previousThreadId?:string;model:string;reasoning?:string;fast?:boolean;mode:'chat'|'task'};
 export type Event={type:'status'|'delta'|'tool'|'usage'|'checkpoint';text?:string;message?:string;data?:Record<string,unknown>};
 export type AccountModel={id:string;label:string;reasoning?:{id:string;label:string}[];defaultReasoning?:string};
-export type AccountStatus={models:AccountModel[];limits?:{primary?:{usedPercent:number;windowMinutes?:number;resetAt?:string};secondary?:{usedPercent:number;windowMinutes?:number;resetAt?:string}}};
+export type AccountStatus={models:AccountModel[];limits?:{resetCredits?:ResetCredits|null;primary?:{usedPercent:number;windowMinutes?:number;resetAt?:string};secondary?:{usedPercent:number;windowMinutes?:number;resetAt?:string}}};
 export class RunnerError extends Error {constructor(message:string,public code:string){super(message);}}
 const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data');
 export const workspaceFor=(job:Pick<Job,'projectId'|'sessionId'>)=>path.join(root,job.projectId?'projects':'workspaces',job.projectId||job.sessionId);
@@ -64,6 +65,14 @@ async function appServerRequest(home:string,requests:{id:number;method:string;pa
     send({method:'initialize',id:0,params:{clientInfo:{name:'ai_router_runner',title:'AI Router Runner',version:'0.1.0'}}});
   });
 }
+export async function consumeResetCredit(home:string,idempotencyKey:string,signal:AbortSignal){
+  if(await readApiKey(home))throw new RunnerError('Resets require a ChatGPT subscription account','failed');
+  const responses=await appServerRequest(home,[{id:1,method:'account/rateLimitResetCredit/consume',params:{idempotencyKey}}],signal);
+  if(responses[1]?.error)throw new RunnerError(String(responses[1].error.message||'Reset failed'),'unavailable');
+  const outcome=responses[1]?.result?.outcome;
+  if(!['reset','nothingToReset','noCredit','alreadyRedeemed'].includes(outcome))throw new RunnerError('Unexpected reset response; refresh account status before retrying','unavailable');
+  return outcome as 'reset'|'nothingToReset'|'noCredit'|'alreadyRedeemed';
+}
 export async function accountStatus(provider:ProviderId,home:string,signal:AbortSignal):Promise<AccountStatus>{
   if(provider==='chatgpt')return chatgptAccountStatus(home,signal);
   if(provider==='codex'){const apiKey=await readApiKey(home);if(apiKey)return {models:await fetchApiModels(apiKey,signal)};}
@@ -80,12 +89,12 @@ export async function accountStatus(provider:ProviderId,home:string,signal:Abort
     try { const limits=await readAgyUsage(bin.antigravity,home,env,signal); return {models,...(limits?{limits}:{})}; }
     catch(error) { console.error('Antigravity usage unavailable:',error instanceof Error?error.message:error); return {models}; }
   }
-  const responses=await appServerRequest(home,[{id:1,method:'account/read',params:{refreshToken:true}},{id:2,method:'account/rateLimits/read'},{id:3,method:'model/list',params:{limit:100,includeHidden:false}}],signal);
+  const responses=await appServerRequest(home,[{id:1,method:'account/read',params:{refreshToken:true}},{id:2,method:'account/rateLimits/read',params:{excludeResetCreditDetails:false}},{id:3,method:'model/list',params:{limit:100,includeHidden:false}}],signal);
   if(responses[2]?.error)throw new RunnerError(String(responses[2].error.message||'Failed to get account limit'),'unavailable');
   if(responses[3]?.error || !Array.isArray(responses[3]?.result?.data))throw new RunnerError(String(responses[3]?.error?.message||'Failed to get list of Codex models'),'unavailable');
   const rate=responses[2]?.result?.rateLimits||responses[2]?.result?.rate_limits;
   const models=Array.isArray(responses[3]?.result?.data)?responses[3].result.data.filter((m:any)=>typeof (m?.model||m?.id)==='string').map((m:any)=>({id:String(m.model||m.id),label:String(m.displayName||m.model||m.id),reasoning:Array.isArray(m.supportedReasoningEfforts)?m.supportedReasoningEfforts.filter((r:any)=>typeof r?.reasoningEffort==='string').map((r:any)=>({id:String(r.reasoningEffort),label:String(r.reasoningEffort)})):undefined,defaultReasoning:typeof m.defaultReasoningEffort==='string'?m.defaultReasoningEffort:undefined})):[];
-  return {models:[{id:'default',label:'Account default'},...models.filter((m:AccountModel)=>m.id!=='default')],limits:{primary:appServerWindow(rate?.primary),secondary:appServerWindow(rate?.secondary)}};
+  return {models:[{id:'default',label:'Account default'},...models.filter((m:AccountModel)=>m.id!=='default')],limits:{primary:appServerWindow(rate?.primary),secondary:appServerWindow(rate?.secondary),resetCredits:parseResetCredits(responses[2]?.result?.rateLimitResetCredits)}};
 }
 async function runJson(command:string,args:string[],cwd:string,home:string,provider:ProviderId,signal:AbortSignal,onJson:(v:Record<string,any>)=>void,mode:Job['mode']){
  if(signal.aborted)throw new RunnerError('Stopped','canceled');

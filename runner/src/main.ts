@@ -3,9 +3,10 @@ import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { io } from 'socket.io-client';
 import { z } from 'zod';
-import { accountStatus, execute, RunnerError, workspaceFor, type Job, type ProviderId } from './cli.js';
+import { consumeResetCredit, accountStatus, execute, RunnerError, workspaceFor, type Job, type ProviderId } from './cli.js';
 import { saveChatGPTSession } from './chatgpt-web.js';
 import { CheckpointWriter } from './checkpoint.js';
+import { restoreCheckpoint } from './continuation.js';
 import { prewarmCodexAppServer, steerCodexJob } from './app-server.js';
 import { startPreviews } from './previews.js';
 import { attachSharedFiles } from './shared-files.js';
@@ -14,7 +15,7 @@ const url=process.env.ROUTER_SERVER_URL?.replace(/\/$/,'');if(!url)throw new Err
 const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data'),file=path.join(root,'device.json');
 interface Device {id:string;secret:string;name:string}
 async function device():Promise<Device>{try{return JSON.parse(await readFile(file,'utf8')) as Device;}catch{}const code=process.env.ROUTER_PAIRING_CODE;if(!code)throw new Error('Set ROUTER_PAIRING_CODE once to enroll this runner');const response=await fetch(url+'/api/runner/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});if(!response.ok)throw new Error('Pairing failed: '+response.status);const d=await response.json() as Device;await mkdir(root,{recursive:true,mode:0o700});await writeFile(file,JSON.stringify(d),{mode:0o600});return d;}
-const jobSchema=z.object({jobId:z.string().uuid(),taskId:z.string().uuid(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),mode:z.enum(['chat','task']).optional().default('task')});
+const jobSchema=z.object({jobId:z.string().uuid(),taskId:z.string().uuid(),continuationOf:z.string().uuid().optional(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),mode:z.enum(['chat','task']).optional().default('task')});
 async function start(){const d=await device();const socket=io(url+'/runner',{path:'/socket.io',transports:['websocket'],auth:{runnerId:d.id,secret:d.secret},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000});const active=new Map<string,AbortController>();
  const steeringCheckpoints=new Map<string,{writer:CheckpointWriter;prompt:string}>();
  await startPreviews(socket);
@@ -23,24 +24,16 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
  attachProjectSync(socket,root,id=>[...jobProjects.values()].includes(id));
  socket.on('connect',()=>console.log(`Runner ${d.name} connected`));
  socket.on('connect_error',(err)=>console.error('Connection failed:',err.message));
- socket.on('disconnect',()=>{for(const controller of active.values())controller.abort();active.clear();console.log('Control plane disconnected; active jobs stopped');});
+ socket.on('disconnect',()=>{for(const controller of active.values())controller.abort();console.log('Control plane disconnected; active jobs stopped');});
  socket.on('job:start',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   if(!socket.connected)return ack?.({ok:false,error:'Offline'});
   const parsed=jobSchema.safeParse(raw);
   if(!parsed.success)return ack?.({ok:false,error:'Invalid job'});
   const job=parsed.data as Job;
   if(active.has(job.jobId))return ack?.({ok:false,error:'Duplicate job'});
-  try{
-   const previous=JSON.parse(await readFile(path.join(workspaceFor(job),'.ai-router','tasks',job.taskId,'checkpoint.json'),'utf8')) as {taskId?:string;sessionId?:string;projectId?:string;accountId?:string;threadId?:string;prompt?:string;priorContext?:string;partialText?:string;error?:string};
-   if(previous.taskId===job.taskId&&previous.sessionId===job.sessionId&&previous.projectId===job.projectId){
-    job.originalPrompt=previous.prompt||job.prompt;
-    if(previous.accountId===job.accountId)job.previousThreadId=previous.threadId;
-    if(previous.accountId!==job.accountId){
-     job.handoffContext=[previous.priorContext||'',`Previous provider output:\n${(previous.partialText||'').slice(-12000)}`,`Previous error:\n${(previous.error||'').slice(-1000)}`].filter(Boolean).join('\n\n').slice(-20000);
-     job.prompt=`Original request:\n${(previous.prompt||'').slice(0,16000)}\n\n${job.handoffContext}\n\n${job.prompt}`.slice(0,39000);
-    }
-   }
-  }catch{}
+  if(active.size)return ack?.({ok:false,error:'The runner is still stopping the previous task'});
+  try{await restoreCheckpoint(job,workspaceFor(job));}catch(error){return ack?.({ok:false,error:error instanceof Error?error.message:'Unable to restore checkpoint'});}
+  if(active.size)return ack?.({ok:false,error:'The runner is still stopping the previous task'});
   const controller=new AbortController();
   const checkpoint=new CheckpointWriter(workspaceFor(job),job.taskId,{taskId:job.taskId,jobId:job.jobId,accountId:job.accountId,provider:job.provider,sessionId:job.sessionId,projectId:job.projectId,model:job.model,reasoning:job.reasoning,prompt:job.originalPrompt||job.prompt,priorContext:job.handoffContext});
   let partial='';
@@ -49,7 +42,7 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
   steeringCheckpoints.set(job.jobId,{writer:checkpoint,prompt:job.originalPrompt||job.prompt});
   ack?.({ok:true});
   try{
-   checkpoint.update({},true);
+   await checkpoint.flush();
    if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Task checkpoint created',data:{taskId:job.taskId,status:'running'}});
    const text=await execute(job,controller.signal,e=>{
     if(e.type==='delta'&&e.text){partial=(partial+e.text).slice(-12000);checkpoint.update({partialText:partial,lastEvent:'delta'});}
@@ -83,6 +76,16 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
  socket.on('job:cancel',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid()}).safeParse(raw);if(p.success)active.get(p.data.jobId)?.abort();});
  const accounts=new Map<string,{provider:ProviderId;authType?:'api_key'}>();
  const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{if(accounts.get(accountId)?.authType==='api_key'&&!await readApiKey(home))throw new Error('Connect OpenAI API key');const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Status not received'});}};
+ socket.on('account:reset',async(raw:unknown,ack?:(r:unknown)=>void)=>{
+  const parsed=z.object({accountId:z.string().uuid(),idempotencyKey:z.string().uuid()}).strict().safeParse(raw);
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid reset request'});
+  const account=accounts.get(parsed.data.accountId);
+  if(account?.provider!=='codex'||account.authType==='api_key')return ack?.({ok:false,error:'Subscription account is not assigned to this runner'});
+  try{
+   const outcome=await consumeResetCredit(path.join(root,'accounts',parsed.data.accountId,'home'),parsed.data.idempotencyKey,new AbortController().signal);
+   ack?.({ok:true,outcome});void refresh(parsed.data.accountId,'codex');
+  }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Reset failed'});}
+ });
  const refreshAll=()=>{for(const [accountId,account] of accounts)void refresh(accountId,account.provider);};
  socket.on('accounts:list',async(raw:unknown)=>{const list=z.array(z.object({id:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),authType:z.literal('api_key').optional()})).safeParse(raw);if(!list.success)return;accounts.clear();for(const account of list.data)accounts.set(account.id,{provider:account.provider,authType:account.authType});const accountsDir=path.join(root,'accounts');try{for(const entry of await readdir(accountsDir,{withFileTypes:true})){if(!/^[a-f0-9-]{36}$/.test(entry.name)||accounts.has(entry.name))continue;await rm(path.join(accountsDir,entry.name),{recursive:true,force:true});}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')console.error('Account cleanup failed:',error);}refreshAll();});
  socket.on('account:openai-key',async(raw:unknown,ack?:(r:unknown)=>void)=>{

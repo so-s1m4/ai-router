@@ -13,6 +13,8 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-https://ai.s1m4.com}
       CODEX_MODELS: ${CODEX_MODELS:-}
       AGY_MODELS: ${AGY_MODELS:-}
+      AUTO_CHEAP_MODELS: ${AUTO_CHEAP_MODELS:-}
+      AUTO_STRONG_MODELS: ${AUTO_STRONG_MODELS:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - router_data:/srv/data

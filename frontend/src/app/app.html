@@ -56,27 +56,25 @@
     }
 
     <!-- 1. LEFT MINI RAIL (DOCK) -->
-    <nav class="app-rail" aria-label="Quick Rail">
-      <div class="rail-group">
-        <button class="rail-btn" [class.active]="page()==='projects'" (click)="showPage('projects')" title="Projects (Workspaces)">
-          <svg lucideLibrary [size]="18"></svg>
-        </button>
-        <button class="rail-btn" [class.active]="page()==='sites'" (click)="showPage('sites')" title="Websites and previews" aria-label="Websites and previews">
-          <svg lucideGlobe2 [size]="18"></svg>
-        </button>
-        <button class="rail-btn" [class.active]="page()==='providers'" (click)="showPage('providers')" title="Providers and models">
-          <svg lucideCompass [size]="18"></svg>
-        </button>
-
-        <button class="rail-btn" [class.active]="page()==='connections'" (click)="showPage('connections')" title="Connections" aria-label="Connections"><svg lucidePlugZap [size]="18"></svg></button>
-        <button class="rail-btn" [class.active]="page()==='runners'" (click)="showPage('runners')" title="Runners" aria-label="Runners"><svg lucideServer [size]="18"></svg></button>
-      </div>
-
-      <div class="rail-group"><button class="rail-btn" [class.active]="page()==='operations'" (click)="showPage('operations')" title="Tasks and usage" aria-label="Tasks and usage"><svg lucideTerminal [size]="18"></svg></button><button class="rail-btn" [class.active]="page()==='files'" (click)="showPage('files')" title="All files" aria-label="All files"><svg lucideFile [size]="18"></svg></button><button class="rail-btn" [class.active]="page()==='notifications'" (click)="showPage('notifications')" title="Notifications" aria-label="Notifications"><svg lucideSettings2 [size]="18"></svg></button></div><div class="rail-spacer"></div>
-
+    <nav class="app-rail" aria-label="Main navigation">
+<div class="rail-group"><span class="nav-group-label">Workspace</span>
+<button class="rail-btn" [class.active]="page()==='chat'" [attr.aria-current]="page()==='chat' ? 'page' : null" (click)="showPage('chat')" title="Chats"><svg lucideMessageSquare [size]="18" aria-hidden="true"></svg><span>Chats</span></button>
+<button class="rail-btn" [class.active]="page()==='projects'" [attr.aria-current]="page()==='projects' ? 'page' : null" (click)="showPage('projects')" title="Projects"><svg lucideFolder [size]="18" aria-hidden="true"></svg><span>Projects</span></button>
+<button class="rail-btn" [class.active]="page()==='operations'" [attr.aria-current]="page()==='operations' ? 'page' : null" (click)="showPage('operations')" title="Usage"><svg lucideTerminal [size]="18" aria-hidden="true"></svg><span>Usage</span></button>
+<button class="rail-btn" [class.active]="page()==='files'" [attr.aria-current]="page()==='files' ? 'page' : null" (click)="showPage('files')" title="Files"><svg lucideFile [size]="18" aria-hidden="true"></svg><span>Files</span></button>
+<button class="rail-btn" [class.active]="page()==='sites'" [attr.aria-current]="page()==='sites' ? 'page' : null" (click)="showPage('sites')" title="Websites & previews"><svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites & previews</span></button>
+</div>
+<div class="rail-group"><span class="nav-group-label">Settings</span>
+<button class="rail-btn" [class.active]="page()==='providers'" [attr.aria-current]="page()==='providers' ? 'page' : null" (click)="showPage('providers')" title="Models"><svg lucideBot [size]="18" aria-hidden="true"></svg><span>Models</span></button>
+<button class="rail-btn" [class.active]="page()==='connections'" [attr.aria-current]="page()==='connections' ? 'page' : null" (click)="showPage('connections')" title="Accounts & connections"><svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Accounts & connections</span></button>
+<button class="rail-btn" [class.active]="page()==='runners'" [attr.aria-current]="page()==='runners' ? 'page' : null" (click)="showPage('runners')" title="Runners"><svg lucideServer [size]="18" aria-hidden="true"></svg><span>Runners</span></button>
+<button class="rail-btn" [class.active]="page()==='notifications'" [attr.aria-current]="page()==='notifications' ? 'page' : null" (click)="showPage('notifications')" title="Notifications & Telegram"><svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications & Telegram</span></button>
+</div>
+@if(isOwner()){<div class="rail-group"><button class="rail-btn" [class.active]="page()==='users'" (click)="showPage('users')"><svg lucideSettings2 [size]="18" aria-hidden="true"></svg><span>Users</span></button></div>}
+<div class="rail-spacer"></div>
       <div class="rail-group">
         <button class="rail-btn" (click)="helpModalOpen.set(!helpModalOpen())" title="Help">
-          <svg lucideCircleQuestionMark [size]="18"></svg>
+          <svg lucideCircleQuestionMark [size]="18" aria-hidden="true"></svg><span>Help</span>
         </button>
 
         <div class="rail-avatar-wrapper">
@@ -151,14 +149,20 @@
       </div>
 
       <div class="mobile-drawer-content">
-      <nav class="mobile-drawer-links" aria-label="Application Sections"><button [class.active]="page()==='operations'" (click)="showPage('operations')"><svg lucideTerminal [size]="21"></svg><span>Tasks and usage</span></button><button [class.active]="page()==='files'" (click)="showPage('files')"><svg lucideFile [size]="21"></svg><span>All files</span></button><button [class.active]="page()==='notifications'" (click)="showPage('notifications')"><svg lucideSettings2 [size]="21"></svg><span>Notifications</span></button>
-        <button [class.active]="page()==='projects'" (click)="showPage('projects')"><svg lucideFolder [size]="21"></svg><span>Projects</span></button>
-        <button [class.active]="page()==='sites'" (click)="showPage('sites')"><svg lucideGlobe2 [size]="21"></svg><span>Websites and previews</span></button>
-        <button [class.active]="page()==='providers'" (click)="showPage('providers')"><svg lucideCompass [size]="21"></svg><span>Providers and models</span></button>
-        <button [class.active]="page()==='connections'" (click)="showPage('connections')"><svg lucidePlugZap [size]="21"></svg><span>Connections</span></button>
-        <button [class.active]="page()==='runners'" (click)="showPage('runners')"><svg lucideServer [size]="21"></svg><span>Runners</span></button>
-        @if(isOwner()){<button [class.active]="page()==='users'" (click)="showPage('users')"><svg lucideSettings2 [size]="21"></svg><span>Users</span></button>}
-      </nav>
+<nav class="mobile-drawer-links" aria-label="Main navigation">
+<span class="nav-group-label">Workspace</span>
+<button [class.active]="page()==='chat'" [attr.aria-current]="page()==='chat' ? 'page' : null" (click)="showPage('chat')" title="Chats"><svg lucideMessageSquare [size]="18" aria-hidden="true"></svg><span>Chats</span></button>
+<button [class.active]="page()==='projects'" [attr.aria-current]="page()==='projects' ? 'page' : null" (click)="showPage('projects')" title="Projects"><svg lucideFolder [size]="18" aria-hidden="true"></svg><span>Projects</span></button>
+<button [class.active]="page()==='operations'" [attr.aria-current]="page()==='operations' ? 'page' : null" (click)="showPage('operations')" title="Usage"><svg lucideTerminal [size]="18" aria-hidden="true"></svg><span>Usage</span></button>
+<button [class.active]="page()==='files'" [attr.aria-current]="page()==='files' ? 'page' : null" (click)="showPage('files')" title="Files"><svg lucideFile [size]="18" aria-hidden="true"></svg><span>Files</span></button>
+<button [class.active]="page()==='sites'" [attr.aria-current]="page()==='sites' ? 'page' : null" (click)="showPage('sites')" title="Websites & previews"><svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites & previews</span></button>
+<span class="nav-group-label">Settings</span>
+<button [class.active]="page()==='providers'" [attr.aria-current]="page()==='providers' ? 'page' : null" (click)="showPage('providers')" title="Models"><svg lucideBot [size]="18" aria-hidden="true"></svg><span>Models</span></button>
+<button [class.active]="page()==='connections'" [attr.aria-current]="page()==='connections' ? 'page' : null" (click)="showPage('connections')" title="Accounts & connections"><svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Accounts & connections</span></button>
+<button [class.active]="page()==='runners'" [attr.aria-current]="page()==='runners' ? 'page' : null" (click)="showPage('runners')" title="Runners"><svg lucideServer [size]="18" aria-hidden="true"></svg><span>Runners</span></button>
+<button [class.active]="page()==='notifications'" [attr.aria-current]="page()==='notifications' ? 'page' : null" (click)="showPage('notifications')" title="Notifications & Telegram"><svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications & Telegram</span></button>
+@if(isOwner()){<button [class.active]="page()==='users'" (click)="showPage('users')"><svg lucideSettings2 [size]="18" aria-hidden="true"></svg><span>Users</span></button>}
+</nav>
 
       <div class="sidebar-scroll">
         <!-- RECENTS SECTION -->
@@ -257,7 +261,7 @@
 
         <div class="topbar-center">
 
-          <span class="mobile-page-title">{{page()==='operations' ? 'Tasks and usage' : page()==='chat' ? (current()?.title || 'New task') : page()==='files' ? 'Files' : page()==='notifications' ? 'Notifications' : page()==='projects' ? 'Projects' : page()==='sites' ? 'Websites' : page()==='providers' ? 'Models' : page()==='connections' ? 'Connections' : page()==='users' ? 'Users' : 'Runners'}}</span>
+          <span class="mobile-page-title">{{page()==='operations' ? 'Usage' : page()==='chat' ? (current()?.title || 'New task') : page()==='files' ? 'Files' : page()==='notifications' ? 'Notifications' : page()==='projects' ? 'Projects' : page()==='sites' ? 'Websites' : page()==='providers' ? 'Models' : page()==='connections' ? 'Connections' : page()==='users' ? 'Users' : 'Runners'}}</span>
         </div>
 
         <div class="topbar-right">
@@ -463,7 +467,7 @@
         }
 
         <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onChatWheel($event)" (touchmove)="onChatTouch()">
-          @if(currentWaitingTasks().length){<div class="chat-queue-banner" role="status"><span>{{currentWaitingTasks().length}} queued · {{currentWaitingTasks()[0].message}}</span><button class="btn btn-outline btn-sm" (click)="showPage('operations')">View queue</button></div>}
+          @if(currentWaitingTasks().length){<div class="chat-queue-banner" role="status"><span>{{currentWaitingTasks()[0].message}}</span><button class="btn btn-outline btn-sm" (click)="cancelTask(currentWaitingTasks()[0])">Cancel</button></div>}
           @if(!current()?.messages?.length){
             <!-- THE HERO SCREEN: WHAT'S ON THE AGENDA TODAY? -->
             <div class="hero-view">
@@ -626,6 +630,19 @@
                 </div>
               }
 
+              @for(task of currentInterruptedTasks(); track task.id){
+                <div class="message-row"><article class="recovery-card">
+                  <h3>Task interrupted · saved progress</h3>
+                  <p class="recovery-request">{{task.input.prompt}}</p>
+                  <p>{{task.message}}</p>
+                  <p class="task-last-activity">Last saved {{task.recovery?.updatedAt | date:'medium'}}</p>
+                  @if(task.recovery?.activity?.length){<details><summary>Recent actions</summary>@for(row of task.recovery?.activity;track $index){<p>{{row.at | date:'HH:mm:ss'}} · {{row.message}}</p>}</details>}
+                  @if(task.recovery?.partialText){<details open><summary>Last saved response</summary><div class="recovery-output markdown-body" [innerHTML]="task.recovery!.partialText | markdown"></div></details>}
+                  <p>Continue from the checkpoint on the original runner. The assistant will check the current files and completed steps before proceeding.</p>
+                  <button type="button" class="btn btn-primary" [disabled]="!!resumingTask()" (click)="resumeTask(task)">{{resumingTask()===task.id?'Starting…':'Continue from checkpoint'}}</button>
+                </article></div>
+              }
+
               @if(error()){
                 <div class="message-row">
                   <div class="chat-error-card">
@@ -654,7 +671,6 @@
 
 
 
-            @if(running()){<div class="composer-queue-actions"><button class="btn btn-outline btn-sm" type="button" [disabled]="!draft.trim() || taskSubmitting() || uploading()" (click)="send(true)" title="Run after the current task">Add to queue</button></div>}
             <div class="hero-pill-bar bottom-composer-pill">
               <input #filePickerBottom type="file" multiple hidden (change)="uploadFile($event)">
               <button class="pill-btn-icon pill-btn-plus" type="button" [disabled]="uploading()" (click)="filePickerBottom.click()" title="Attach files" aria-label="Attach files">
@@ -751,19 +767,9 @@
       </div>
     } @else if(page()==='operations') {
       <div class="page-content operations-page">
-        <div class="section-hero"><div><span class="section-tag">WORKSPACE</span><h2>Tasks and usage</h2><p>Queue tasks, track execution and review reported consumption.</p></div><button class="btn btn-outline" (click)="refreshTasks(); refreshUsageSummary()">Refresh</button></div>
+        <div class="section-hero"><div><span class="section-tag">WORKSPACE</span><h2>Usage</h2><p>Review token consumption, account limits and available resets.</p></div><button class="btn btn-outline" (click)="refreshUsageSummary()">Refresh</button></div>
         @if(error()){<div class="banner banner-error">{{error()}}</div>}
-        <section class="notification-card"><h3>Task queue · {{waitingTasks().length}} waiting</h3><p>Higher priority starts first. Tasks wait while their chat, project or runner is busy.</p>
-          <div class="operations-tasks">@for(task of tasks();track task.id){
-            <article class="operations-task" [attr.data-state]="task.state">
-              <div class="operations-task-heading"><button class="task-prompt" (click)="openSession(task.input.sessionId)">{{task.input.prompt}}</button><span class="badge">{{task.state}}</span></div>
-              <p>{{task.message}} · {{task.input.model}}</p>
-              @if(task.state==='running'){<p>Elapsed {{durationSince(task.startedAt)}} · Last activity {{durationSince(task.lastActivityAt)}} ago</p>@if(task.activity?.length){<details><summary>Recent activity</summary>@for(row of task.activity;track $index){<p>{{row.at | date:'HH:mm:ss'}} · {{row.message}}</p>}</details>}}
-              <div class="notification-actions">@if(task.state==='queued'){<label>Priority <select [ngModel]="task.priority" (ngModelChange)="changeTaskPriority(task,$event)"><option [ngValue]="2">High</option><option [ngValue]="1">Normal</option><option [ngValue]="0">Low</option></select></label>}
-              @if(task.state==='queued'||task.state==='running'){<button class="btn btn-outline btn-sm" (click)="cancelTask(task)">{{task.state==='running'?'Stop':'Cancel'}}</button>}</div>
-            </article>
-          }@empty{<p>No tasks yet. Send a request in a chat to add it to the queue.</p>}</div>
-        </section>
+        @if(notice()){<div class="banner banner-notice" role="status"><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Close"><svg lucideX [size]="14"></svg></button></div>}
         @if(usageSummary();as summary){
           <section class="notification-card"><h3>Reported consumption</h3><div class="usage-total">{{summary.totalTokens | number}} <span>tokens</span></div><p>{{summary.source}}. Older requests may have no model information.</p>
             <div class="operations-grid"><div><h4>By project</h4>@for(row of summary.byProject;track row.id){<div class="usage-summary-row"><span>{{projectUsageName(row.id)}}</span><strong>{{row.tokens | number}}</strong></div>}@empty{<p>No reported usage</p>}</div><div><h4>By model</h4>@for(row of summary.byModel;track row.id){<div class="usage-summary-row"><span>{{row.id}}</span><strong>{{row.tokens | number}}</strong></div>}@empty{<p>No reported usage</p>}</div></div>
@@ -774,6 +780,21 @@
               @if(account.limit.secondary;as window){<p>Secondary: {{window.remainingPercent}}% remaining · {{resetLabel(window)}}</p>}
               @if(account.limit.cooldownUntil){<p>Retry after {{account.limit.cooldownUntil | date:'medium'}}</p>}
               @if(account.limit.source==='unknown'){<p>Provider quota is unknown</p>}
+
+                  @if(account.provider==='codex' && account.authType!=='api_key' && !account.shared){
+                    <div class="reset-credits">
+                      @if(account.limit.resetCredits;as resets){
+                        <div class="quota-head"><span>Available resets</span><strong>{{resets.availableCount | number}}</strong></div>
+                        @for(credit of resets.credits || [];track credit.id){
+                          <p class="usage-reset">{{credit.title || 'Codex reset'}} · {{resetExpiry(credit.expiresAt)}}</p>
+                        }
+                        @if(resets.availableCount && (!resets.credits || resets.credits.length < resets.availableCount)){
+                          <p class="usage-reset">Expiry details unavailable for {{resets.availableCount - (resets.credits?.length || 0)}} reset(s).</p>
+                        }
+                        @if(resets.availableCount){<button class="btn btn-outline btn-sm" [disabled]="!!resettingAccount() || account.mode!=='runner'" (click)="useAccountReset(account)">{{resettingAccount()===account.id?'Applying reset…':'Use reset'}}</button>}
+                      }@else{<p class="usage-reset">Reset information unavailable</p>}
+                    </div>
+                  }
               @if(account.limit.updatedAt){<p>Updated {{account.limit.updatedAt | date:'medium'}}</p>}
             </article>}@empty{<p>No connections configured</p>}
           </section>
@@ -783,7 +804,7 @@
     } @else if(page()==='notifications') {
       <div class="page-content notifications-page"><div class="section-hero"><div><span class="section-tag">STAY CONNECTED</span><h2>Notifications</h2><p>Find out the ready answer even when another tab is open.</p></div></div>
       @if(error()){<div class="banner banner-error">{{error()}}</div>}
-      <section class="notification-card"><h3>Telegram</h3><p>The bot will send a private message when the task is completed. The content of the reply remains in the chat.</p>
+      <section class="notification-card"><h3>Telegram</h3><p>Send tasks from your phone, reply to the agent, and receive results in Telegram. Select a project with /projects, check /status, or stop work with /stop.</p>
       @if(telegram();as tg){
         @if(!tg.configured){<p>Telegram has not yet been configured by the server owner.</p>@if(isOwner()){<p>Set TELEGRAM_BOT_TOKEN in the backend and PUBLIC_URL settings for chat links.</p>}}
         @else if(tg.connected){<p>Connected {{tg.name}}</p><div class="notification-actions"><button class="btn btn-primary" (click)="toggleTelegram()" [disabled]="telegramBusy()">{{tg.enabled?'Turn off notifications':'Enable notifications'}}</button><button class="btn btn-outline" (click)="disconnectTelegram()" [disabled]="telegramBusy()">Disable Telegram</button></div>@if(tg.lastError){<p class="library-source-error">{{tg.lastError}}</p>}}
@@ -1270,6 +1291,21 @@
 
                 }
                 <div class="account-quota-box">
+                  @if(a.provider==='codex' && a.authType!=='api_key' && !a.shared){
+                    <div class="reset-credits">
+                      @if(a.limit.resetCredits;as resets){
+                        <div class="quota-head"><span>Available resets</span><strong>{{resets.availableCount | number}}</strong></div>
+                        @for(credit of resets.credits || [];track credit.id){
+                          <p class="usage-reset">{{credit.title || 'Codex reset'}} · {{resetExpiry(credit.expiresAt)}}</p>
+                        }
+                        @if(resets.availableCount && (!resets.credits || resets.credits.length < resets.availableCount)){
+                          <p class="usage-reset">Expiry details unavailable for {{resets.availableCount - (resets.credits?.length || 0)}} reset(s).</p>
+                        }
+                        @if(resets.availableCount){<button class="btn btn-outline btn-sm" [disabled]="!!resettingAccount() || a.mode!=='runner'" (click)="useAccountReset(a)">{{resettingAccount()===a.id?'Applying reset…':'Use reset'}}</button>}
+                      }@else{<p class="usage-reset">Reset information unavailable</p>}
+                    </div>
+                  }
+
                   <div class="quota-head">
                     <span>Quota status</span>
                     <strong>{{limitLabel(a)}}</strong>
@@ -1963,7 +1999,7 @@ INSTALL_AGY_CLI=true</code></pre>
         @for(m of filteredPickerModels(); track m.id) {
           <button type="button" class="model-picker-option" [class.model-picker-selected]="selectedModel() === m.id" [attr.aria-pressed]="selectedModel() === m.id" (click)="choosePickerModel(m.id)">
             <svg lucideBot [size]="20"></svg>
-            <span>{{m.label}}@if(m.id === 'default'){<small>Automatic selection</small>}</span>
+            <span>{{m.label}}@if(m.id === 'auto'){<small>Simple tasks use economical models; complex tasks use stronger models. Switches on failure.</small>}@if(m.id === 'default'){<small>Provider default</small>}</span>
             @if(selectedModel() === m.id){<svg lucideCheck [size]="18" class="model-picker-check"></svg>}
           </button>
         } @empty {

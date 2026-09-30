@@ -5,9 +5,9 @@ import { FormsModule } from '@angular/forms';
 import { io, Socket } from 'socket.io-client';
 import {
   LucideArrowUp, LucideArrowUpRight, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
-  LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideCompass,
+  LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark,
   LucideCopy, LucideDownload,  LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
-  LucideGraduationCap, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideGraduationCap, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideOrigami, LucidePanelLeft,
   LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
   LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideTrash2, LucideUploadCloud, LucideX, LucideZap
@@ -32,8 +32,9 @@ export const DEFAULT_CHATGPT_MODELS: Model[] = [
   { id: 'default', label: 'ChatGPT default' }
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
-type Account = {shared?:boolean;id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
-type QueueTask = {id:string;input:{sessionId:string;prompt:string;model:string;service?:string};createdAt:string;updatedAt:string;priority:number;state:string;message:string;startedAt?:string;lastActivityAt?:string;activity?:RunActivity[]};
+type ResetCredits = {availableCount:number;credits:{id:string;expiresAt:string|null;title:string|null}[]|null};
+type Account = {shared?:boolean;id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{resetCredits?:ResetCredits|null;source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
+type QueueTask = {id:string;input:{sessionId:string;prompt:string;model:string;service?:string};createdAt:string;updatedAt:string;priority:number;state:string;message:string;startedAt?:string;lastActivityAt?:string;activity?:RunActivity[];resumedBy?:string;recovery?:{checkpoint:boolean;updatedAt:string;partialText:string;activity:RunActivity[]}};
 type UsageSummary={totalTokens:number;source:string;byProject:{id:string;tokens:number}[];byModel:{id:string;tokens:number}[];byProvider:{id:string;tokens:number}[];accounts:Account[];grants:(AccessGrant & {remainingTokens:number})[];projects:{id:string;name:string}[]};
 type AccessGrant = {id:string;direction:'outgoing'|'incoming';ownerName:string;recipientName:string;models:string[];budget:number;period:'once'|'monthly';state:'pending'|'active'|'revoked';usedTokens:number;lifetimeTokens:number;usageByModel:Record<string,number>};
 type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;createdAt:string;revokedAt?:string};
@@ -93,9 +94,9 @@ interface FileNodeInternal {
   selector:'app-root',
   standalone:true,
   imports:[
-    CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck,
-    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideCompass, LucideCopy, LucideDownload,
-    LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu,
+    CommonModule, FormsModule, LucideBell, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck,
+    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideCopy, LucideDownload,
+    LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideInfo, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
     LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideTrash2, LucideUploadCloud, LucideX,
     LucideZap, ManagerPanel, MarkdownPipe
@@ -271,6 +272,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
   currentModelBadgeLabel = computed(() => {
     const modelId = this.selectedModel();
+    if (modelId === 'auto') return 'Auto model';
     if (modelId === 'default') {
       const s = this.selectedService();
       if (s === 'chatgpt') return 'ChatGPT';
@@ -308,7 +310,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     return r.charAt(0).toUpperCase() + r.slice(1);
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
-  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default'); codexFast=signal(false);
+  draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel=signal<string>('auto'); selectedReasoning=signal<string>('default'); codexFast=signal(false);
   grants=signal<AccessGrant[]>([]); grantBusy=signal(false); grantEditor=signal(false);
   grantId=''; grantUsername=''; grantBudget=1000000; grantPeriod:'once'|'monthly'='monthly'; grantModels:string[]=[];
   ownAccounts=computed(()=>this.accounts().filter(a=>!a.shared));
@@ -324,6 +326,14 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   tasks=signal<QueueTask[]>([]); usageSummary=signal<UsageSummary|null>(null); taskSubmitting=signal(false); lastActivityAt=signal('');
   waitingTasks=computed(()=>this.tasks().filter(t=>t.state==='queued'));
   currentWaitingTasks=computed(()=>this.waitingTasks().filter(t=>t.input.sessionId===this.current()?.id));
+  currentInterruptedTasks=computed(()=>this.tasks().filter(t=>t.input.sessionId===this.current()?.id&&this.canResumeTask(t)));
+  resumingTask=signal('');
+  canResumeTask(task:QueueTask){return (task.state==='error'||task.state==='canceled')&&task.recovery?.checkpoint===true&&!task.resumedBy;}
+  async resumeTask(task:QueueTask){
+    if(this.resumingTask())return;this.resumingTask.set(task.id);this.error.set('');
+    try{await this.api('/tasks/'+task.id+'/resume',{method:'POST'});await this.refreshTasks();this.notice.set('Continuation requested');}
+    catch(e){this.error.set((e as Error).message);}finally{this.resumingTask.set('');}
+  }
   async refreshTasks(){try{this.tasks.set(await this.api<QueueTask[]>('/tasks'));}catch(e){this.error.set((e as Error).message);}}
   async refreshUsageSummary(){try{this.usageSummary.set(await this.api<UsageSummary>('/usage-summary'));}catch(e){this.error.set((e as Error).message);}}
   async changeTaskPriority(task:QueueTask,priority:string){try{await this.api('/tasks/'+task.id,{method:'PATCH',body:JSON.stringify({priority:Number(priority)})});await this.refreshTasks();}catch(e){this.error.set((e as Error).message);}}
@@ -527,6 +537,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
 
   currentProject=computed(()=>{const pId=this.current()?.projectId || this.selectedProjectId();return pId?this.projects().find(p=>p.id===pId):null;});
   models=computed(()=>{
+    const autoModel:Model={id:'auto',label:'Auto · by task complexity'};
     const blacklist=new Set(this.modelBlacklist());
     const allAccounts=Array.isArray(this.accounts()) ? this.accounts() : [];
     const pId=this.current()?.projectId || this.selectedProjectId();
@@ -541,7 +552,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       for(const m of DEFAULT_GEMINI_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
       map.set('default',{id:'default',label:'Gemini default'});
-      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+      return [autoModel,...map.values()].filter(m=>m.id==='auto'||m.id==='default'||!blacklist.has(m.id));
     }
 
     if(service==='codex'){
@@ -550,7 +561,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       for(const m of DEFAULT_CODEX_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
       map.set('default',{id:'default',label:'Codex default'});
-      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+      return [autoModel,...map.values()].filter(m=>m.id==='auto'||m.id==='default'||!blacklist.has(m.id));
     }
 
     if(service==='chatgpt'){
@@ -559,7 +570,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       for(const m of DEFAULT_CHATGPT_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
       map.set('default',{id:'default',label:'ChatGPT default'});
-      return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+      return [autoModel,...map.values()].filter(m=>m.id==='auto'||m.id==='default'||!blacklist.has(m.id));
     }
 
     const map=new Map<string,Model>();
@@ -576,7 +587,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     for(const a of scoped.filter(x=>x.provider==='chatgpt')){
       for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · ChatGPT`});
     }
-    return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
+    return [autoModel,...map.values()].filter(m=>m.id==='auto'||m.id==='default'||!blacklist.has(m.id));
   });
 
   allGeminiModels=computed(()=>{
@@ -1426,7 +1437,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
   connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='The connection to the server is lost')this.error.set('');void this.refreshTasks();const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('queue:changed',()=>void this.refreshTasks());this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Connection lost. Restoring the task status...');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('The connection to the server is lost'));}
   resetRun(){this.steeringAvailable.set(false);this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
-  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('The connection has been restored, but the task status is unavailable. Refresh the chat or try again.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Done');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.lastActivityAt.set(state.lastActivityAt||state.activity?.at(-1)?.at||state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Task in progress');this.error.set('');this.requestScrollToBottom();});}
+  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.notice.set('Connection restored. Check saved progress below.');void this.refreshTasks();void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Done');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.lastActivityAt.set(state.lastActivityAt||state.activity?.at(-1)?.at||state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Task in progress');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){
     if(e.type==='completed'&&this.browserNotifications()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||e.sessionId!==this.current()?.id||this.page()!=='chat')){const n=new Notification('The answer is ready',{body:this.sessions().find(s=>s.id===e.sessionId)?.title||'AI Router'});n.onclick=()=>{window.focus();void this.openSession(e.sessionId);n.close();};}
     if(e.sessionId!==this.current()?.id)return;
@@ -1542,6 +1553,29 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     if(usage.cachedInputTokens!==undefined)rows.push(`Cached input: ${format(usage.cachedInputTokens)}`);
     if(usage.reasoningOutputTokens!==undefined)rows.push(`Reasoning: ${format(usage.reasoningOutputTokens)}`);
     return rows.join('\n');
+  }
+  resettingAccount=signal('');
+  resetAttempts=new Map<string,string>();
+  async useAccountReset(a:Account){
+    if(this.resettingAccount()||a.shared||a.mode!=='runner'||!a.limit.resetCredits?.availableCount)return;
+    if(!window.confirm('Use one reset for '+a.name+' to restore the Codex usage limits?'))return;
+    this.resettingAccount.set(a.id);this.error.set('');
+    try{
+      const storageKey='account-reset-attempt:'+a.id;
+      const key=this.resetAttempts.get(a.id)||sessionStorage.getItem(storageKey)||crypto.randomUUID();
+      this.resetAttempts.set(a.id,key);sessionStorage.setItem(storageKey,key);
+      const result=await this.api<{outcome:string}>('/accounts/'+encodeURIComponent(a.id)+'/reset',{method:'POST',body:JSON.stringify({idempotencyKey:key})});
+      this.resetAttempts.delete(a.id);sessionStorage.removeItem(storageKey);
+      const messages:Record<string,string>={reset:'Reset applied. Account limits are refreshing.',nothingToReset:'The account limits do not need a reset.',noCredit:'No resets available. Account status is refreshing.',alreadyRedeemed:'This reset attempt was already applied. Account status is refreshing.'};
+      this.notice.set(messages[result.outcome]||'Account status is refreshing.');
+      await this.refreshAccounts();if(this.page()==='operations')await this.refreshUsageSummary();
+    }catch(e){this.error.set((e as Error).message);}
+    finally{this.resettingAccount.set('');}
+  }
+  resetExpiry(expiresAt:string|null){
+    if(expiresAt===null)return 'No expiry';
+    const date=new Date(expiresAt);if(!Number.isFinite(date.getTime()))return 'Expiry unavailable';
+    return (date.getTime()<=this.now()?'Expired ':'Expires ')+new Intl.DateTimeFormat('en-US',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(date);
   }
   limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Limited';if(a.limit.primary||a.limit.secondary)return 'Account quota';return 'Provider';}
   windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 h';if(minutes===10080)return 'Week';if(minutes===43200)return 'Month';if(minutes&&minutes%60===0)return `${minutes/60} h`;return 'Window';}

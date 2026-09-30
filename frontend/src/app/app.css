@@ -4070,3 +4070,9 @@
 @media(max-width: 700px) { .operations-grid { grid-template-columns: 1fr; gap: 16px; } .operations-task-heading { flex-wrap: wrap; } }
 .chat-queue-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 16px; padding: 12px 16px; border: 1px solid var(--border-subtle); border-radius: 12px; font-size: 13px; flex-wrap: wrap; }
 .composer-queue-actions { display: flex; justify-content: flex-end; padding: 0 4px 8px; }
+
+.recovery-card{width:100%;padding:20px;border:1px solid var(--border-subtle);border-radius:16px;background:var(--bg-surface);overflow-wrap:anywhere}.recovery-card h3{margin:0 0 12px;font-size:16px}.recovery-card p{margin:10px 0}.recovery-card summary{cursor:pointer;margin:10px 0}.recovery-request{font-weight:600}.recovery-output{max-height:320px;overflow:auto;margin:12px 0}.recovery-card .btn{margin-top:8px}
+
+.reset-credits { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
+.reset-credits p { margin: 6px 0; overflow-wrap: anywhere; }
+.reset-credits button { margin-top: 8px; }

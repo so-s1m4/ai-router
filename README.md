@@ -197,8 +197,34 @@ Sync supports up to **64 MB of file contents and 20,000 files**. Symbolic links 
 
 If the most recent runner is offline, work can continue from its last successfully saved snapshot. If there are unsaved changes, switching runners is blocked until that runner reconnects and synchronization succeeds. Previews and running development servers stay on the runner where they were started; synchronization transfers files, not running processes. Shared project metadata persists in `DATA_DIR/shared-projects.json`. Update **backend, frontend and every participating runner** together to enable project synchronization.
 
-### Task queue and usage overview
+### Usage overview
 
-The **Tasks and usage** section shows waiting and running tasks, their priority, elapsed time and recent activity. Every chat request enters a durable queue. Use **Add to queue** while a task runs to schedule another request; the arrow continues to send a clarification. Waiting tasks can be canceled or assigned High, Normal or Low priority. Tasks sharing a runner execute sequentially, and shared projects also respect the existing synchronization lock. Offline runners and provider cooldowns keep tasks waiting. Permissions, model availability and budgets are checked again before execution.
+The **Usage** section groups reported token consumption by project and model and shows provider account limits and available resets. Task queue controls are no longer shown. Chat requests still wait for a free runner internally; clarification and checkpoint continuation remain available in chat.
 
 Queue state is stored in `DATA_DIR/task-queue.json`. After a backend restart, waiting tasks remain queued; previously running tasks are marked interrupted for review so commands are not automatically repeated. The usage overview groups provider-reported tokens by project and model, including reported consumption from unsuccessful attempts and account handoffs. Snapshots are recorded in `DATA_DIR/usage-ledger.json`; older successful requests are included from chat history. Requests without usage reports are excluded, and older model information is shown as unknown. Provider quotas and reset times remain live runner reports, while shared budgets use the existing persistent access-grant accounting.
+
+### Продолжение прерванной задачи
+
+После потери связи с runner, ошибки, остановки или перезапуска backend в чате появляется карточка сохранённого прогресса: причина остановки, время сохранения, последние действия и фрагмент ответа. **Continue from checkpoint** ставит продолжение в очередь на исходный runner и аккаунт; при отсутствии связи или квоты задача ждёт. Runner читает исходный checkpoint, восстанавливает запрос и уточнения, а для Codex также сохранённый thread. Агент получает инструкцию проверить текущие файлы и выполненные шаги перед продолжением.
+
+Продолжение запускается отдельной задачей с отдельным учётом расхода. Повторное нажатие не создаёт дубликаты. Выполненный, отсутствующий или не соответствующий рабочему каталогу checkpoint отклоняется до запуска команд. Доступ к аккаунту и модели проверяется заново. Для этой функции обновите backend, frontend и runner; файлы checkpoint и рабочий каталог должны оставаться на исходном runner. Прогресс на backend сохраняется с интервалом до 750 мс; при резком отключении последние события могут не попасть в карточку.
+
+### Управление через Telegram
+
+Задайте `TELEGRAM_BOT_TOKEN` отдельного бота в backend и `PUBLIC_URL` для ссылок на чаты. В разделе **Notifications → Telegram** подключите свой аккаунт по одноразовой ссылке. Используется long polling: публичный webhook не требуется; один токен должен обслуживаться одним backend.
+
+В личном чате бота отправьте `/projects`, затем `/project ID`, чтобы создать чат выбранного проекта. Обычное сообщение ставит задачу в очередь в режиме Auto. `/new` создаёт чат без проекта, `/chats` и `/chat ID` выбирают существующий чат. `/status` показывает состояние и текущий фрагмент ответа, `/stop` останавливает задачи выбранного чата. `/task текст` ставит отдельную задачу даже во время выполнения; `/reply текст` или обычное сообщение передаёт уточнение работающему агенту, если провайдер поддерживает уточнения. Если активной задачи нет, ответ запускает следующую задачу с историей чата.
+
+Бот присылает результат или причину остановки. При поддержке уточнений промежуточный текст агента отправляется после паузы в потоке. Используйте ответ на сообщение бота, чтобы продолжить именно этот чат, даже после выбора другого проекта. Длинные ответы разбиваются на сообщения; итог ограничен 12000 символами со ссылкой на полный ответ. Отключение уведомлений прекращает автоматические сообщения; **Disable Telegram** отвязывает аккаунт и прекращает управление. Команды из групп и непривязанных аккаунтов игнорируются. Обработанные update ID и выбранный чат сохраняются; повторная доставка не создаёт дубликат задачи.
+
+### Автоматический выбор модели
+
+Выберите **Auto · by task complexity** в списке моделей (в новых чатах выбран по умолчанию). Короткие простые запросы используют экономичные модели, задачи с признаками разработки, миграции, архитектуры и отладки — более сильные. Классификация выполняется локально по тексту запроса и последним сообщениям без платного обращения к модели. Это эвристика, а не точная оценка сложности или стоимости.
+
+Auto использует модели, объявленные runner, с учётом выбранного провайдера, проекта, blacklist, reasoning, квот и разрешений общего доступа. `AUTO_CHEAP_MODELS` и `AUTO_STRONG_MODELS` задают точные ID через запятую и переопределяют оценку по имени модели. Если модель не подошла, используются остальные доступные варианты; **Provider default** сохраняет выбор провайдера без классификации.
+
+При ошибке Auto пробует следующий вариант. После частичного выполнения продолжает из checkpoint на том же runner; при отмене, тайм-ауте или потере связи после начала работы задача останавливается для ручного продолжения. Если checkpoint недоступен, частично выполненная работа автоматически не повторяется. Каждая попытка имеет отдельный учёт токенов, включая переключение моделей на одном аккаунте. Для работы функций обновите backend, frontend и runner.
+
+### Codex account resets
+
+Subscription Codex accounts show **Available resets** in Connections and Usage, with provider-reported expiry dates for each available reset. Missing details are labeled unavailable; the total remains the provider count even when detail rows are capped. API keys and shared access do not expose reset controls. **Use reset** asks for confirmation, redeems one reset through the account’s runner, then refreshes provider limits. Lost responses reuse the same attempt ID, including after a page reload, to prevent consuming another reset. The backend, frontend and runner must all be updated; the Codex CLI must support `account/rateLimitResetCredit/consume` and `rateLimitResetCredits`. Older CLIs report reset information as unavailable.

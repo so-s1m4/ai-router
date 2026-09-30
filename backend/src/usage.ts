@@ -5,7 +5,10 @@ export type UsageWindow = {
   resetAt: string | null;
 };
 
+export type ResetCredits = {availableCount:number;credits:{id:string;expiresAt:string|null;title:string|null}[]|null};
+
 export type ProviderUsage = {
+  resetCredits: ResetCredits | null;
   source: 'provider' | 'unknown';
   primary: UsageWindow | null;
   secondary: UsageWindow | null;
@@ -15,6 +18,7 @@ export type ProviderUsage = {
 
 type UsageInputWindow = Partial<UsageWindow> & { usedPercent?: number };
 type UsageInput = {
+  resetCredits?: ResetCredits | null;
   primary?: UsageInputWindow | null;
   secondary?: UsageInputWindow | null;
 };
@@ -32,7 +36,7 @@ export class AccountUsageManager {
 
   snapshot(user: string, account: string): ProviderUsage {
     const value = this.records.get(this.key(user, account));
-    if (!value) return {source: 'unknown', primary: null, secondary: null, cooldownUntil: null, updatedAt: null};
+    if (!value) return {resetCredits: null, source: 'unknown', primary: null, secondary: null, cooldownUntil: null, updatedAt: null};
     if (value.cooldownUntil && Date.parse(value.cooldownUntil) <= Date.now()) value.cooldownUntil = null;
     return value;
   }
@@ -57,6 +61,7 @@ export class AccountUsageManager {
     };
     const record: ProviderUsage = {
       source: 'provider',
+      resetCredits: input.resetCredits === undefined ? old.resetCredits : input.resetCredits,
       primary: mapWindow(input.primary, old.primary),
       secondary: mapWindow(input.secondary, old.secondary),
       cooldownUntil: old.cooldownUntil,
@@ -64,6 +69,8 @@ export class AccountUsageManager {
     };
     this.records.set(this.key(user, account), record);
   }
+
+  clearCooldown(user:string,account:string){this.snapshot(user,account).cooldownUntil=null;}
 
   rateLimited(user: string, account: string) {
     const current = this.snapshot(user, account);

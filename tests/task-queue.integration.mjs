@@ -90,6 +90,25 @@ test('queue serializes runner work, supports priorities, cancellation and usage 
     assert.equal(jobs[2].taskId,two.runId);
     runner.emit('job:result',{jobId:jobs[2].jobId,ok:true,text:'Third answer'});
     await waitFor(async()=> (await api('/tasks')).find(t=>t.id===two.runId).state==='completed');
+    const interrupted=await submit('Task interrupted by runner disconnect');
+    await waitFor(()=>jobs.length===4);
+    runner.emit('job:event',{jobId:jobs[3].jobId,type:'checkpoint',message:'Task checkpoint created',data:{status:'running'}});
+    runner.emit('job:event',{jobId:jobs[3].jobId,type:'tool',message:'Updated project files'});
+    runner.emit('job:event',{jobId:jobs[3].jobId,type:'delta',text:'Finished step one'});
+    await waitFor(async()=> (await api('/tasks')).find(t=>t.id===interrupted.runId).recovery?.partialText==='Finished step one');
+    runner.disconnect();
+    await waitFor(async()=> (await api('/tasks')).find(t=>t.id===interrupted.runId).state==='error');
+    const continued=await api('/tasks/'+interrupted.runId+'/resume','POST');
+    const duplicate=await fetch(base+'/api/tasks/'+interrupted.runId+'/resume',{method:'POST',headers:{cookie}});assert.equal(duplicate.status,409);
+    await waitFor(async()=> (await api('/tasks')).find(t=>t.id===continued.runId).message==='Waiting for runner connection');
+    runner=await connect(base+'/runner',{auth:{runnerId:device.id,secret:device.secret}});
+    runner.on('job:start',(job,ack)=>{ack({ok:true});jobs.push(job);});
+    await waitFor(()=>jobs.length===5);
+    assert.equal(jobs[4].continuationOf,interrupted.runId);assert.equal(jobs[4].taskId,continued.runId);assert.equal(jobs[4].accountId,first.id);
+    assert.ok(jobs[4].prompt.includes('Inspect the current files'));
+    runner.emit('job:result',{jobId:jobs[4].jobId,ok:true,text:'Resumed successfully'});
+    await waitFor(async()=> (await api('/tasks')).find(t=>t.id===continued.runId).state==='completed');
+    const finishedChat=await api('/sessions/'+session.id);assert.equal(finishedChat.messages.filter(m=>m.text==='Task interrupted by runner disconnect').length,1);
     const summary=await api('/usage-summary');
     assert.equal(summary.totalTokens,123,'snapshots and saved chat history do not double count');
     assert.deepEqual(summary.byModel,[{id:'default',tokens:123}]);
@@ -100,6 +119,7 @@ test('queue serializes runner work, supports priorities, cancellation and usage 
     assert.deepEqual(await privateTasks.json(),[]);
     const denied=await fetch(base+'/api/tasks/'+one.runId,{method:'DELETE',headers:{cookie:friendCookie}});
     assert.equal(denied.status,404);
+    const deniedResume=await fetch(base+'/api/tasks/'+interrupted.runId+'/resume',{method:'POST',headers:{cookie:friendCookie}});assert.equal(deniedResume.status,404);
     const privateUsage=await fetch(base+'/api/usage-summary',{headers:{cookie:friendCookie}});
     assert.equal((await privateUsage.json()).totalTokens,0);
     runner.disconnect();
@@ -108,7 +128,7 @@ test('queue serializes runner work, supports priorities, cancellation and usage 
     assert.equal(offline.ok,true);
     await waitFor(async()=> (await api('/tasks')).find(t=>t.id===offline.runId).message==='Waiting for runner connection');
     await api('/tasks/'+offline.runId,'DELETE');
-    assert.equal(jobs.length,3,'canceled job never ran');
+    assert.equal(jobs.length,5,'canceled job never ran');
   } finally {
     browser?.disconnect(); runner?.disconnect();
     const exited = new Promise(resolve => backend.once('exit', resolve));

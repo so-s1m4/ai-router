@@ -268,3 +268,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 @media (max-width: 820px) {
   .sidebar { top: var(--app-top, 0px); height: var(--app-height, 100dvh); }
 }
+
+/* Destination labels and consistent groups on desktop and mobile. */
+.nav-group-label { display: block; padding: 12px 10px 6px; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+@media (min-width: 821px) {
+  .app-rail { width: 200px; flex: 0 0 200px; padding: 12px 10px; gap: 12px; overflow-y: auto; }
+  .rail-group { align-items: stretch; gap: 3px; }
+  .rail-btn { width: 100%; min-height: 40px; height: auto; padding: 10px; justify-content: flex-start; gap: 10px; font-size: 12px; text-align: left; line-height: 1.4; }
+  .rail-btn svg { flex-shrink: 0; }
+  .rail-btn.active { color: var(--primary-text); background: var(--primary-subtle); }
+  .rail-avatar-wrapper { padding: 6px 10px; }
+  .rail-user-menu { position: fixed; left: 16px; bottom: 60px; }
+  .sidebar { width: 220px; flex-basis: 220px; }
+  .sidebar.collapsed { width: 0; flex-basis: 0; }
+}
+@media (min-width: 821px) and (max-width: 1100px) { .app-rail { width: 174px; flex-basis: 174px; } .sidebar { width: 190px; flex-basis: 190px; } }
