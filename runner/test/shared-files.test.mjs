@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, mkdir, symlink, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, symlink, writeFile, readFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -58,5 +59,24 @@ test('file exchange lists workspace output and rejects private paths and symlink
   assert.deepEqual((await ask('file:list',{sessionId})).files,[]);
   assert.equal((await ask('file:info',{sessionId,name:'output/result.txt'})).ok,false);
   assert.equal((await ask('file:delete',{sessionId:linkedSession,name:'output/result.txt'})).ok,false);
+
+  // Repository sources stay local; uploaded and generated code remains available.
+  for(const dir of ['backend/src','frontend/src','outputs/frontend','src'])await mkdir(path.join(workspace,dir),{recursive:true});
+  const sources=['backend/src/server.ts','frontend/src/app.ts','src/untracked.ts','Dockerfile','package.json','README.md','compose.prod.yaml'];
+  for(const name of [...sources,'outputs/frontend/result.ts','upload.ts'])await writeFile(path.join(workspace,name),'code');
+  execFileSync('git',['init','--quiet'],{cwd:workspace});
+  execFileSync('git',['add','backend','frontend','README.md','compose.prod.yaml','outputs'],{cwd:workspace});
+  assert.deepEqual((await ask('file:list',{sessionId})).files.map(file=>file.name).sort(),['outputs/frontend/result.ts','upload.ts']);
+  for(const name of sources){
+   assert.equal((await ask('file:info',{sessionId,name})).ok,false,name);
+   assert.equal((await ask('file:chunk',{sessionId,name,offset:0,modified:0})).ok,false,name);
+   assert.equal((await ask('file:delete',{sessionId,name})).ok,false,name);
+   assert.equal(await readFile(path.join(workspace,name),'utf8'),'code');
+  }
+  const resultInfo=await ask('file:info',{sessionId,name:'outputs/frontend/result.ts'});
+  assert.equal(resultInfo.ok,true);
+  const resultChunk=await ask('file:chunk',{sessionId,name:'outputs/frontend/result.ts',offset:0,modified:resultInfo.modified});
+  assert.equal(Buffer.from(resultChunk.data).toString(),'code');
+  assert.equal((await ask('file:delete',{sessionId,name:'upload.ts'})).ok,true);
  }finally{await rm(root,{recursive:true,force:true});}
 });

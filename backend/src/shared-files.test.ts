@@ -9,18 +9,26 @@ import { once } from 'node:events';
 test('a 48-character secret link downloads the selected file without a session',async()=>{
  const directory=await mkdtemp(path.join(tmpdir(),'ai-router-shares-'));
  process.env.DATA_DIR=directory;
- const [{setConnected},{createFileShare,deleteWorkspaceFile,downloadSharedFile}]=await Promise.all([import('./runners.js'),import('./shared-files.js')]);
+ const [{setConnected},{createFileShare,deleteWorkspaceFile,downloadSharedFile,listWorkspaceFiles,readWorkspacePreview}]=await Promise.all([import('./runners.js'),import('./shared-files.js')]);
  const runnerId='d08c2190-222f-4bcc-b5a5-29d30154b603';
  const content=Buffer.alloc(700_000,65);
  const modified=123456;
  const handlers=new Map<string,Function>();
  const socket={connected:true,disconnect(){this.connected=false;},on(event:string,handler:Function){handlers.set(event,handler);},timeout(){return this;},async emitWithAck(event:string,input:any){
+  if(event==='file:list')return {ok:true,files:['backend/src/server.ts','frontend/package.json','compose.prod.yaml','ops/setup.sh','result.txt','outputs/frontend/app.ts'].map(name=>({name,size:1,modified:'2026-09-30'}))};
   if(event==='file:delete')return {ok:true};
   if(event==='file:info')return {ok:true,size:content.length,modified};
   if(event==='file:chunk')return {ok:true,data:content.subarray(input.offset,input.offset+256*1024)};
   throw new Error('Unexpected event');
  }};
  setConnected(runnerId,socket as any);
+ const scope={sessionId:'6655170d-2987-4c61-97a6-c826030849cb'};
+ assert.deepEqual((await listWorkspaceFiles(runnerId,scope)).map(file=>file.name),['result.txt','outputs/frontend/app.ts']);
+ for(const name of ['backend/src/server.ts','frontend/package.json','compose.prod.yaml','ops/setup.sh']){
+  await assert.rejects(createFileShare('user',runnerId,scope,name),/Исходники/);
+  await assert.rejects(readWorkspacePreview(runnerId,scope,name),/Исходники/);
+  await assert.rejects(deleteWorkspaceFile(runnerId,scope,name),/Исходники/);
+ }
  const share=await createFileShare('user',runnerId,{sessionId:'6655170d-2987-4c61-97a6-c826030849cb'},'result.txt');
  const token=share.url.split('/').at(-1)!;
  assert.match(token,/^[A-Za-z0-9_-]{48}$/);

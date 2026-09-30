@@ -13,6 +13,19 @@ const directory=path.join(dataRoot,'file-shares');
 const tokenPattern=/^[A-Za-z0-9_-]{48}$/;
 const MAX_SIZE=100*1024*1024;
 const CHUNK=256*1024;
+const sourceDirectories=new Set(['backend','frontend','runner','src','test','tests','scripts','ops','dist','build','coverage','node_modules']);
+const artifactDirectories=new Set(['input','inputs','output','outputs','uploads','downloads','attachments','artifacts','results']);
+const serviceFile=/^(?:README(?:\.[^/]+)?|LICENSE(?:\.[^/]+)?|Dockerfile(?:\.[^/]+)?|Makefile|compose(?:\.[^/]+)?\.ya?ml|docker-compose(?:\.[^/]+)?\.ya?ml|package(?:-lock)?\.json|tsconfig(?:\.[^/]+)?\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
+export function visibleWorkspaceFile(name:string):boolean{
+ const parts=name.split('/');
+ if(parts.some(part=>!part||part.startsWith('.')||part.includes('\\')||part.includes('\0')))return false;
+ if(artifactDirectories.has(parts[0]))return true;
+ return !parts.some(part=>sourceDirectories.has(part)||serviceFile.test(part));
+}
+function requireVisibleFile(name:string){
+ if(!visibleWorkspaceFile(name))throw new Error('Исходники и служебные файлы недоступны в разделе «Файлы»');
+}
+
 function socketFor(runnerId:string){const socket=runnerSocket(runnerId);if(!socket)throw new Error('Исполнитель не в сети');return socket;}
 async function ask(runnerId:string,event:string,input:object):Promise<any>{
  try{const answer=await socketFor(runnerId).timeout(15000).emitWithAck(event,input);if(!answer?.ok)throw new Error(answer?.error||'Исполнитель не ответил');return answer;}
@@ -21,10 +34,11 @@ async function ask(runnerId:string,event:string,input:object):Promise<any>{
 export async function listWorkspaceFiles(runnerId:string,scope:Scope):Promise<FileRow[]>{
  const reply=await ask(runnerId,'file:list',scope);
  return Array.isArray(reply.files)?reply.files.filter((row:unknown)=>{
-  const file=row as FileRow;return typeof file?.name==='string'&&typeof file.size==='number'&&typeof file.modified==='string';
+  const file=row as FileRow;return typeof file?.name==='string'&&typeof file.size==='number'&&typeof file.modified==='string'&&visibleWorkspaceFile(file.name);
  }):[];
 }
 export async function deleteWorkspaceFile(runnerId:string,scope:Scope,name:string){
+ requireVisibleFile(name);
  await ask(runnerId,'file:delete',{...scope,name});
  const entries=await readdir(directory).catch(()=>[]);
  await Promise.all(entries.filter(entry=>tokenPattern.test(entry.replace(/\.json$/, ''))).map(async entry=>{
@@ -43,6 +57,7 @@ export async function getWorkspaceGitSummary(runnerId:string,scope:Scope):Promis
  }
 }
 export async function createFileShare(userId:string,runnerId:string,scope:Scope,name:string){
+ requireVisibleFile(name);
  const info=await ask(runnerId,'file:info',{...scope,name});
  if(!Number.isSafeInteger(info.size)||info.size<0||info.size>MAX_SIZE||!Number.isFinite(info.modified))throw new Error('Файл недоступен');
  const token=randomBytes(36).toString('base64url');
@@ -60,6 +75,7 @@ export async function downloadSharedFile(token:string,response:ServerResponse):P
   response.writeHead(404).end();return;
  }
  try{
+  requireVisibleFile(share.name);
   const info=await ask(share.runnerId,'file:info',{...share.scope,name:share.name});
   if(info.size!==share.size||info.modified!==share.modified)throw new Error('Файл изменился после создания ссылки');
  }catch(error){response.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}).end(error instanceof Error?error.message:'Файл недоступен');return;}
@@ -92,6 +108,7 @@ export function previewMime(name:string):string|undefined {
 }
 export async function readWorkspacePreview(runnerId:string,scope:Scope,name:string){
  const mime=previewMime(name);if(!mime)throw new Error('Для этого формата доступно скачивание');
+ requireVisibleFile(name);
  const info=await ask(runnerId,'file:info',{...scope,name});
  const limit=mime.startsWith('text/')?1024*1024:10*1024*1024;
  if(!Number.isSafeInteger(info.size)||info.size<0||info.size>limit||!Number.isFinite(info.modified))throw new Error('Файл слишком большой для просмотра');

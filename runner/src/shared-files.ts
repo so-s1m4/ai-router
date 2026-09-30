@@ -13,6 +13,20 @@ const forbidden=new Set(['node_modules','.git','.ai-router','.env','.next','.ang
 const MAX_SIZE=100*1024*1024;
 const CHUNK=256*1024;
 function allowed(name:string){return name!=='.'&&name!=='..'&&!name.startsWith('.')&&!forbidden.has(name)&&!name.includes('\\')&&!name.includes('\0');}
+const sourceDirectories=new Set(['backend','frontend','runner','src','test','tests','scripts','ops','dist','build','coverage']);
+const artifactDirectories=new Set(['input','inputs','output','outputs','uploads','downloads','attachments','artifacts','results']);
+const serviceFile=/^(?:README(?:\.[^/]+)?|LICENSE(?:\.[^/]+)?|Dockerfile(?:\.[^/]+)?|Makefile|compose(?:\.[^/]+)?\.ya?ml|docker-compose(?:\.[^/]+)?\.ya?ml|package(?:-lock)?\.json|tsconfig(?:\.[^/]+)?\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
+// Keep generated code in output folders previewable, but hide repository sources.
+async function workspaceFileFilter(directory:string){
+ const tracked=await exec('git',['ls-files','--cached','-z'],{cwd:directory,timeout:5000,maxBuffer:8*1024*1024})
+  .then(result=>new Set(result.stdout.split('\0').filter(Boolean))).catch(()=>new Set<string>());
+ return (name:string)=>{
+  const parts=name.split('/');
+  if(parts.some(part=>!allowed(part)))return false;
+  if(artifactDirectories.has(parts[0]))return true;
+  return !parts.some(part=>sourceDirectories.has(part)||serviceFile.test(part))&&!tracked.has(name);
+ };
+}
 function base(input:z.infer<typeof request>){return path.join(root,input.projectId?'projects':'workspaces',input.projectId||input.sessionId);}
 async function checkedBase(input:z.infer<typeof request>){
  const directory=base(input);
@@ -24,6 +38,7 @@ async function checked(input:z.infer<typeof fileRequest>){
  const parts=input.name.split('/');
  if(!parts.length||parts.some(part=>!allowed(part)))throw new Error('Недопустимый путь');
  const directory=await checkedBase(input),target=path.resolve(directory,...parts);
+ if(!(await workspaceFileFilter(directory))(input.name))throw new Error('Исходники и служебные файлы недоступны в разделе «Файлы»');
  if(!target.startsWith(directory+path.sep))throw new Error('Недопустимый путь');
  const actual=await realpath(target),actualRoot=await realpath(directory);
  if(!actual.startsWith(actualRoot+path.sep))throw new Error('Файл вне рабочего каталога');
@@ -134,17 +149,19 @@ export function attachSharedFiles(socket:Socket){
  socket.on('file:list',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверная задача'});
   const files:{name:string;size:number;modified:string}[]=[];
+  let visible:(name:string)=>boolean;
   const walk=async(dir:string,prefix:string,depth:number):Promise<void>=>{
    if(depth>5||files.length>=500)return;
    for(const entry of await readdir(dir,{withFileTypes:true})){
     if(!allowed(entry.name)||entry.isSymbolicLink())continue;
     const name=prefix?prefix+'/'+entry.name:entry.name,full=path.join(dir,entry.name);
+    if(!visible(name))continue;
     if(entry.isDirectory())await walk(full,name,depth+1);
     else if(entry.isFile()){const info=await stat(full);if(info.size<=MAX_SIZE)files.push({name,size:info.size,modified:info.mtime.toISOString()});}
     if(files.length>=500)break;
    }
   };
-  try{await walk(await checkedBase(parsed.data),'',0);ack?.({ok:true,files});}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')ack?.({ok:true,files:[]});else ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось получить файлы'});}
+  try{const directory=await checkedBase(parsed.data);visible=await workspaceFileFilter(directory);await walk(directory,'',0);ack?.({ok:true,files});}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')ack?.({ok:true,files:[]});else ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось получить файлы'});}
  });
  socket.on('file:delete',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=fileRequest.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверный файл'});
