@@ -21,15 +21,15 @@ type ReasoningEffort = {id:string;label:string};
 type Model = {id:string;label:string;reasoning?:ReasoningEffort[];defaultReasoning?:string};
 
 export const DEFAULT_CODEX_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Codex' }
+  { id: 'default', label: 'Codex default' }
 ];
 
 export const DEFAULT_GEMINI_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Gemini' }
+  { id: 'default', label: 'Gemini default' }
 ];
 
 export const DEFAULT_CHATGPT_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию ChatGPT' }
+  { id: 'default', label: 'ChatGPT default' }
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
 type Account = {shared?:boolean;id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
@@ -132,18 +132,18 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if(!id)return;this.closePreview();this.previewReturnFocus=document.activeElement as HTMLElement;const request=++this.previewRequest;this.previewOpen.set(true);this.previewLoading.set(true);this.previewName.set(name);requestAnimationFrame(()=>document.querySelector<HTMLElement>('.file-preview-dialog')?.focus());
     try{
       const response=await fetch('/api/workspaces/'+kind+'/'+id+'/preview?name='+encodeURIComponent(name),{credentials:'same-origin'});
-      if(!response.ok){const data=await response.json();throw new Error(data.error||'Файл недоступен');}
+      if(!response.ok){const data=await response.json();throw new Error(data.error||'File not available');}
       const mime=response.headers.get('Content-Type')||'';
       const blob=await response.blob();if(request!==this.previewRequest)return;
       if(mime.startsWith('text/')){this.previewKind.set('text');this.previewText.set(await blob.text());}
       else if(mime.startsWith('image/')||mime==='application/pdf'){
         const url=URL.createObjectURL(blob);this.previewUrl.set(url);this.previewKind.set(mime==='application/pdf'?'pdf':'image');
         if(mime==='application/pdf')this.previewPdf.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
-      }else throw new Error('Формат не поддерживает просмотр');
+      }else throw new Error('Format does not support viewing');
     }catch(e){if(request===this.previewRequest)this.previewError.set((e as Error).message);}finally{if(request===this.previewRequest)this.previewLoading.set(false);}
   }
   closePreview(){this.previewRequest++;if(this.previewUrl())URL.revokeObjectURL(this.previewUrl());this.previewOpen.set(false);this.previewUrl.set('');this.previewPdf.set(null);this.previewText.set('');this.previewError.set('');this.previewKind.set('');this.previewReturnFocus?.focus();this.previewReturnFocus=undefined;}
-  async libraryShare(group:FileGroup,name:string,download=false){try{const result=await this.api<{url:string}>('/workspaces/'+group.kind+'/'+group.id+'/share',{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,location.origin).href;if(download){const a=document.createElement('a');a.href=url;a.download=name.split('/').pop()||name;a.click();}else{await this.copy(url,'library-share');this.notice.set('Ссылка скопирована. Действует 7 дней.');}}catch(e){this.error.set((e as Error).message);}}
+  async libraryShare(group:FileGroup,name:string,download=false){try{const result=await this.api<{url:string}>('/workspaces/'+group.kind+'/'+group.id+'/share',{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,location.origin).href;if(download){const a=document.createElement('a');a.href=url;a.download=name.split('/').pop()||name;a.click();}else{await this.copy(url,'library-share');this.notice.set('Link copied. Valid for 7 days.');}}catch(e){this.error.set((e as Error).message);}}
   libraryVisibleKeys=computed(()=>this.libraryGroups().flatMap(g=>g.files.map(f=>this.librarySelectionKey(g,f.name))));
   allLibraryFilesSelected=computed(()=>this.libraryVisibleKeys().length>0&&this.libraryVisibleKeys().every(key=>this.selectedLibraryFiles().has(key)));
   someLibraryFilesSelected=computed(()=>this.libraryVisibleKeys().some(key=>this.selectedLibraryFiles().has(key)));
@@ -167,8 +167,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   private async deleteFiles(targets:{kind:'projects'|'sessions';id:string;name:string}[]){
     if(!targets.length||this.deletingFile())return;
-    const message=targets.length===1?'Удалить файл «'+targets[0].name+'»?':'Удалить выбранные файлы ('+targets.length+')?';
-    if(!confirm(message+' Файлы и ссылки на них станут недоступны.'))return;
+    const message=targets.length===1?'Delete file “'+targets[0].name+'”?':'Delete selected files ('+targets.length+')?';
+    if(!confirm(message+' Files and links to them will become unavailable.'))return;
     this.deletingFile.set('bulk');this.error.set('');this.notice.set('');
     let deleted=0;const failures:string[]=[];
     try{
@@ -188,8 +188,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
           }
         }catch(e){failures.push(target.name+': '+(e as Error).message);}
       }
-      this.notice.set('Удалено файлов: '+deleted+' из '+targets.length);
-      if(failures.length)this.error.set('Не удалось удалить: '+failures.join('; '));
+      this.notice.set('Files deleted: '+deleted+' of '+targets.length);
+      if(failures.length)this.error.set('Failed to remove: '+failures.join('; '));
     }finally{this.deletingFile.set('');}
   }
   openFileSource(group:FileGroup){if(group.kind==='projects'){this.selectedProjectId.set(group.id);this.selectProject(group.id);}else void this.openSession(group.id);}
@@ -197,12 +197,12 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async connectTelegram(){this.telegramBusy.set(true);this.error.set('');try{this.telegramLink.set((await this.api<{url:string}>('/notifications/telegram/connect',{method:'POST',body:'{}'})).url);}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
   async disconnectTelegram(){this.telegramBusy.set(true);try{await this.api('/notifications/telegram',{method:'DELETE'});this.telegramLink.set('');await this.refreshTelegram();}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
   async toggleTelegram(){this.telegramBusy.set(true);try{await this.api('/notifications/telegram',{method:'PATCH',body:JSON.stringify({enabled:!this.telegram()?.enabled})});await this.refreshTelegram();}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
-  async enableBrowserNotifications(){if(!('Notification' in window)){this.error.set('Браузер не поддерживает уведомления');return;}if(this.browserNotifications()){this.browserNotifications.set(false);return;}const permission=await Notification.requestPermission();this.browserNotifications.set(permission==='granted');if(permission!=='granted')this.error.set('Разрешите уведомления в настройках браузера');}
+  async enableBrowserNotifications(){if(!('Notification' in window)){this.error.set('Browser doesn’t support notifications');return;}if(this.browserNotifications()){this.browserNotifications.set(false);return;}const permission=await Notification.requestPermission();this.browserNotifications.set(permission==='granted');if(permission!=='granted')this.error.set('Allow notifications in your browser settings');}
   async steer(){
     const prompt=this.draft.trim(),sessionId=this.current()?.id,runId=this.runId();
     if(!prompt||!sessionId||!runId||!this.steeringAvailable()||this.steeringSending()||!this.socket?.connected)return;
     this.steeringSending.set(true);this.error.set('');
-    try{const reply=await this.socket.timeout(40000).emitWithAck('steer',{runId,prompt});if(!reply?.ok)throw new Error(reply?.error||'Не удалось передать уточнение');if(this.current()?.id===sessionId&&this.draft.trim()===prompt){this.draft='';this.adjustTextareaHeight();}this.notice.set('Уточнение передано модели');}
+    try{const reply=await this.socket.timeout(40000).emitWithAck('steer',{runId,prompt});if(!reply?.ok)throw new Error(reply?.error||'Failed to send clarification');if(this.current()?.id===sessionId&&this.draft.trim()===prompt){this.draft='';this.adjustTextareaHeight();}this.notice.set('The refinement is passed to the model');}
     catch(e){this.error.set((e as Error).message);}finally{this.steeringSending.set(false);}
   }
 
@@ -273,7 +273,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       if (s === 'chatgpt') return 'ChatGPT';
       if (s === 'gemini') return 'Gemini';
       if (s === 'codex') return 'Codex';
-      return 'Модель';
+      return 'Model';
     }
     const m = this.models().find(item => item.id === modelId)
            || this.allGeminiModels().find(item => item.id === modelId)
@@ -294,14 +294,14 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         const opt = currentModel.reasoning?.find((o: ReasoningEffort) => o.id === currentModel.defaultReasoning);
         if (opt) return opt.label;
       }
-      return 'Усилие';
+      return 'Reasoning effort';
     }
     const opt = this.reasoningOptions().find(o => o.id === r);
     if (opt && opt.id !== 'default') return opt.label;
-    if (r === 'high') return 'Высокое';
-    if (r === 'medium') return 'Среднее';
-    if (r === 'low') return 'Низкое';
-    if (r === 'max') return 'Макс';
+    if (r === 'high') return 'High';
+    if (r === 'medium') return 'Medium';
+    if (r === 'low') return 'Low';
+    if (r === 'max') return 'Max';
     return r.charAt(0).toUpperCase() + r.slice(1);
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
@@ -313,10 +313,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   toggleGrantModel(id:string){this.grantModels=this.grantModels.includes(id)?this.grantModels.filter(m=>m!==id):[...this.grantModels,id];}
   openGrantEditor(g?:AccessGrant){this.grantId=g?.id||'';this.grantUsername=g?.recipientName||'';this.grantBudget=g?.budget||1000000;this.grantPeriod=g?.period||'monthly';this.grantModels=g?[...g.models]:this.grantAvailableModels().filter(m=>m.id!=='default').map(m=>m.id);this.grantEditor.set(true);}
   async refreshGrants(){try{this.grants.set(await this.api<AccessGrant[]>('/access-grants'));}catch(e){this.error.set((e as Error).message);}}
-  async saveGrant(){if(this.grantBusy())return;this.grantBusy.set(true);this.error.set('');try{const body=this.grantId?{budget:this.grantBudget,models:this.grantModels}:{username:this.grantUsername,budget:this.grantBudget,models:this.grantModels,period:this.grantPeriod};await this.api('/access-grants'+(this.grantId?'/'+this.grantId:''),{method:this.grantId?'PATCH':'POST',body:JSON.stringify(body)});this.grantEditor.set(false);await this.refreshGrants();await this.refreshAccounts();this.notice.set(this.grantId?'Настройки доступа сохранены':'Приглашение отправлено. Друг может принять его в подключениях.');}catch(e){this.error.set((e as Error).message);}finally{this.grantBusy.set(false);}}
-  async setGrantState(g:AccessGrant,state:'active'|'revoked'){if(this.grantBusy())return;this.grantBusy.set(true);try{await this.api('/access-grants/'+g.id,{method:'PATCH',body:JSON.stringify({state})});await this.refreshGrants();await this.refreshAccounts();this.notice.set(state==='active'?'Доступ принят — модели доступны в чате':'Доступ отозван, текущая задача остановлена');}catch(e){this.error.set((e as Error).message);}finally{this.grantBusy.set(false);}}
+  async saveGrant(){if(this.grantBusy())return;this.grantBusy.set(true);this.error.set('');try{const body=this.grantId?{budget:this.grantBudget,models:this.grantModels}:{username:this.grantUsername,budget:this.grantBudget,models:this.grantModels,period:this.grantPeriod};await this.api('/access-grants'+(this.grantId?'/'+this.grantId:''),{method:this.grantId?'PATCH':'POST',body:JSON.stringify(body)});this.grantEditor.set(false);await this.refreshGrants();await this.refreshAccounts();this.notice.set(this.grantId?'Access settings saved':'The invitation has been sent. A friend can accept it in connections.');}catch(e){this.error.set((e as Error).message);}finally{this.grantBusy.set(false);}}
+  async setGrantState(g:AccessGrant,state:'active'|'revoked'){if(this.grantBusy())return;this.grantBusy.set(true);try{await this.api('/access-grants/'+g.id,{method:'PATCH',body:JSON.stringify({state})});await this.refreshGrants();await this.refreshAccounts();this.notice.set(state==='active'?'Access accepted - models available in chat':'Access revoked, current task stopped');}catch(e){this.error.set((e as Error).message);}finally{this.grantBusy.set(false);}}
   grantUsage(g:AccessGrant){return Object.entries(g.usageByModel).map(([model,tokens])=>({model,tokens}));}
-  accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); deletingAccount=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
+  accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); deletingAccount=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='My computer'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
@@ -527,7 +527,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       const map=new Map<string,Model>();
       for(const m of DEFAULT_GEMINI_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
-      map.set('default',{id:'default',label:'По умолчанию Gemini'});
+      map.set('default',{id:'default',label:'Gemini default'});
       return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
     }
 
@@ -536,7 +536,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       const map=new Map<string,Model>();
       for(const m of DEFAULT_CODEX_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
-      map.set('default',{id:'default',label:'По умолчанию Codex'});
+      map.set('default',{id:'default',label:'Codex default'});
       return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
     }
 
@@ -545,12 +545,12 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       const map=new Map<string,Model>();
       for(const m of DEFAULT_CHATGPT_MODELS)map.set(m.id,{...m});
       for(const m of accModels)if(m.id!=='default')map.set(m.id,m);
-      map.set('default',{id:'default',label:'По умолчанию ChatGPT'});
+      map.set('default',{id:'default',label:'ChatGPT default'});
       return [...map.values()].filter(m=>m.id==='default'||!blacklist.has(m.id));
     }
 
     const map=new Map<string,Model>();
-    map.set('default',{id:'default',label:'По умолчанию (Auto)'});
+    map.set('default',{id:'default',label:'Default (Auto)'});
     for(const m of DEFAULT_GEMINI_MODELS)if(m.id!=='default')map.set(m.id,{...m,label:`${m.label} · Gemini`});
     for(const a of scoped.filter(x=>x.provider==='antigravity')){
       for(const m of a.models||[])if(m.id!=='default'&&!map.has(m.id))map.set(m.id,{...m,label:`${m.label} · Gemini`});
@@ -726,7 +726,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       ]);
       if(res?.blacklist)this.modelBlacklist.set(res.blacklist);
       await this.refreshAccounts();
-      this.notice.set(refresh.requested?'Обновление моделей запущено':'Нет подключённых runner для обновления моделей');
+      this.notice.set(refresh.requested?'Model update launched':'There are no connected runners to update models');
     }catch(e){
       if(this.page()==='providers')this.error.set((e as Error).message);
     }
@@ -740,24 +740,24 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
                       || this.allChatGPTModels().find(m => m.id === modelId);
     const options = currentModel?.reasoning;
     if (options && options.length > 0) {
-      return [{ id: 'default', label: 'По умолчанию' }, ...options.filter(r => r.id !== 'default')];
+      return [{ id: 'default', label: 'Default' }, ...options.filter(r => r.id !== 'default')];
     }
     if (modelId !== 'default' && this.selectedService() === 'codex') {
       return [
-        { id: 'default', label: 'По умолчанию' },
-        { id: 'low', label: 'Низкое (Low)' },
-        { id: 'medium', label: 'Среднее (Medium)' },
-        { id: 'high', label: 'Высокое (High)' },
-        { id: 'xhigh', label: 'Очень высокое (XHigh)' }
+        { id: 'default', label: 'Default' },
+        { id: 'low', label: 'Low' },
+        { id: 'medium', label: 'Medium' },
+        { id: 'high', label: 'High' },
+        { id: 'xhigh', label: 'Extra high (XHigh)' }
       ];
     }
     if (modelId === 'default') {
       return [
-        { id: 'default', label: 'По умолчанию' },
-        { id: 'high', label: 'Высокое (High)' },
-        { id: 'medium', label: 'Среднее (Medium)' },
-        { id: 'low', label: 'Низкое (Low)' },
-        ...(this.selectedService() === 'codex' ? [{ id: 'xhigh', label: 'Очень высокое (XHigh)' }] : [])
+        { id: 'default', label: 'Default' },
+        { id: 'high', label: 'High' },
+        { id: 'medium', label: 'Medium' },
+        { id: 'low', label: 'Low' },
+        ...(this.selectedService() === 'codex' ? [{ id: 'xhigh', label: 'Extra high (XHigh)' }] : [])
       ];
     }
     return [];
@@ -820,14 +820,14 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     } catch {
       const error = new Error(
         !r.ok
-          ? (r.status === 404 ? 'Запрашиваемый ресурс не найден' : `Ошибка сервера (${r.status})`)
-          : 'Неверный ответ сервера (ожидался JSON)'
+          ? (r.status === 404 ? 'The requested resource was not found' : `Server error ( ${r.status})`)
+          : 'Invalid server response (JSON expected)'
       ) as Error & { status: number };
       error.status = r.status;
       throw error;
     }
     if(!r.ok){
-      const error=new Error(body?.error||`Ошибка запроса (${r.status})`) as Error&{status:number};
+      const error=new Error(body?.error||`Request error ( ${r.status})`) as Error&{status:number};
       error.status=r.status;
       throw error;
     }
@@ -837,17 +837,12 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.sidebarOpen.update(v => !v);
   }
   formatChatsCount(n: number): string {
-    const mod10 = n % 10;
-    const mod100 = n % 100;
-    if (mod100 >= 11 && mod100 <= 19) return `${n} чатов`;
-    if (mod10 === 1) return `${n} чат`;
-    if (mod10 >= 2 && mod10 <= 4) return `${n} чата`;
-    return `${n} чатов`;
+    return `${n} ${n === 1 ? 'chat' : 'chats'}`;
   }
   async refreshUsers(){if(!this.isOwner())return;try{this.users.set(await this.api<{id:string;username:string;createdAt:string}[]>('/users'));this.userAdminError='';}catch(e){this.userAdminError=(e as Error).message;}}
-  async createUser(){this.userAdminError='';this.userAdminNotice='';try{await this.api('/users',{method:'POST',body:JSON.stringify({username:this.newUsername,password:this.newUserPassword})});this.newUsername='';this.newUserPassword='';this.userAdminNotice='Пользователь создан';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
-  async resetUserPassword(id:string){const password=window.prompt('Новый пароль (минимум 12 символов)');if(password===null)return;try{await this.api(`/users/${encodeURIComponent(id)}/password`,{method:'PUT',body:JSON.stringify({password})});this.userAdminNotice='Пароль обновлён';this.userAdminError='';}catch(e){this.userAdminError=(e as Error).message;}}
-  async removeUser(id:string,username:string){if(!window.confirm(`Удалить пользователя ${username}?`))return;try{await this.api(`/users/${encodeURIComponent(id)}`,{method:'DELETE'});this.userAdminNotice='Пользователь удалён';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
+  async createUser(){this.userAdminError='';this.userAdminNotice='';try{await this.api('/users',{method:'POST',body:JSON.stringify({username:this.newUsername,password:this.newUserPassword})});this.newUsername='';this.newUserPassword='';this.userAdminNotice='User created';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
+  async resetUserPassword(id:string){const password=window.prompt('New password (minimum 12 characters)');if(password===null)return;try{await this.api(`/users/${encodeURIComponent(id)}/password`,{method:'PUT',body:JSON.stringify({password})});this.userAdminNotice='Password updated';this.userAdminError='';}catch(e){this.userAdminError=(e as Error).message;}}
+  async removeUser(id:string,username:string){if(!window.confirm(`Delete user ${username}?`))return;try{await this.api(`/users/${encodeURIComponent(id)}`,{method:'DELETE'});this.userAdminNotice='User deleted';await this.refreshUsers();}catch(e){this.userAdminError=(e as Error).message;}}
 
   toggleProjectExpand(nameOrId: string) {
     this.expandedProjects.update(set => {
@@ -936,20 +931,15 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   toggleTaskFiles(){this.filesOpen.update(open=>!open);if(this.filesOpen())void this.refreshTaskFiles();}
   async deleteTaskFile(name:string){const id=this.current()?.id;if(id)await this.deleteFiles([{kind:'sessions',id,name}]);}
   async deleteSelectedTaskFiles(){const id=this.current()?.id;if(id)await this.deleteFiles([...this.selectedTaskFiles()].map(name=>({kind:'sessions' as const,id,name})));}
-  async shareTaskFile(name:string,download=false){const id=this.current()?.id;if(!id)return;try{const result=await this.api<{url:string;expiresAt:string}>(`/sessions/${id}/files/share`,{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,window.location.origin).href;if(this.current()?.id!==id)return;this.sharedFileLinks.update(links=>({...links,[name]:url}));if(download){const anchor=document.createElement('a');anchor.href=url;anchor.download=name.split('/').pop()||name;document.body.appendChild(anchor);anchor.click();anchor.remove();return;}try{await this.copy(url,'share-'+name);this.notice.set('Ссылка скопирована. Действует 7 дней.');}catch{this.notice.set('Ссылка готова. Скопируйте её из списка файлов.');}}catch(e){this.error.set((e as Error).message);}}
+  async shareTaskFile(name:string,download=false){const id=this.current()?.id;if(!id)return;try{const result=await this.api<{url:string;expiresAt:string}>(`/sessions/${id}/files/share`,{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,window.location.origin).href;if(this.current()?.id!==id)return;this.sharedFileLinks.update(links=>({...links,[name]:url}));if(download){const anchor=document.createElement('a');anchor.href=url;anchor.download=name.split('/').pop()||name;document.body.appendChild(anchor);anchor.click();anchor.remove();return;}try{await this.copy(url,'share-'+name);this.notice.set('Link copied. Valid for 7 days.');}catch{this.notice.set('The link is ready. Copy it from the list of files.');}}catch(e){this.error.set((e as Error).message);}}
   formatFileSize(bytes?: number): string {
-    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 Б';
-    if (bytes < 1024) return bytes + ' Б';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' МБ';
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   }
   pluralizeFiles(count: number): string {
-    const n = Math.abs(count) % 100;
-    const n1 = n % 10;
-    if (n > 10 && n < 20) return 'файлов';
-    if (n1 > 1 && n1 < 5) return 'файла';
-    if (n1 === 1) return 'файл';
-    return 'файлов';
+    return count === 1 ? 'file' : 'files';
   }
   hasDirectories = computed(() => this.taskFiles().some(f => f.name.includes('/')));
   totalFilesSize = computed(() => {
@@ -1114,7 +1104,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if (!query) return all;
     return all.filter(p => p.name.toLowerCase().includes(query));
   });
-  projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Исполнитель';}
+  projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Runner';}
   selectProject(id:string){this.selectedProjectId.set(id);const latest=this.chatsFor(id)[0];if(latest)void this.openSession(latest.id);else this.newSession();}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
   createProject(){
@@ -1137,7 +1127,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     const name=this.newProjectName.trim();
     const runnerId=this.newProjectRunner;
     if(!name || this.projectSaving())return;
-    if(!runnerId){this.projectCreateError.set('Сначала подключите исполнителя в разделе «Исполнители».');return;}
+    if(!runnerId){this.projectCreateError.set('First, connect a runner in the “Runners” section.');return;}
     this.projectSaving.set(true);this.projectCreateError.set('');
     try{
       const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name,runnerId})});
@@ -1231,11 +1221,11 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if (!projectId) {
       const activeRunner = this.runners().find(r => !r.revokedAt);
       if (!activeRunner) {
-        throw new Error('Для загрузки файлов подключите исполнитель (runner)');
+        throw new Error('Connect a runner to upload files');
       }
       const newProj = await this.api<Project>('/projects', {
         method: 'POST',
-        body: JSON.stringify({ name: 'Основной проект', runnerId: activeRunner.id })
+        body: JSON.stringify({ name: 'Main project', runnerId: activeRunner.id })
       });
       this.projects.update(list => [newProj, ...list]);
       projectId = newProj.id;
@@ -1249,7 +1239,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       this.current.set(updated);
       this.sessions.update(list => list.map(s => s.id === updated.id ? updated : s));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Не удалось привязать файлы к проекту');
+      throw new Error(error instanceof Error ? error.message : 'Failed to link files to project');
     }
     this.selectedProjectId.set(projectId);
     return projectId;
@@ -1270,7 +1260,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       for (let i = 0; i < rawFiles.length; i++) {
         const file = rawFiles[i];
         if (file.size > 20 * 1024 * 1024) {
-          errors.push(`«${file.name}» больше 20 МБ`);
+          errors.push(`“${file.name}” exceeds 20 MB`);
           continue;
         }
 
@@ -1295,9 +1285,9 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         }
 
         if (rawFiles.length > 1) {
-          this.notice.set(`Загрузка файлов (${i + 1}/${rawFiles.length}): «${finalName}»...`);
+          this.notice.set(`Uploading files (${i + 1}/${rawFiles.length}): “${finalName}”...`);
         } else {
-          this.notice.set(`Загрузка «${finalName}»...`);
+          this.notice.set(`Uploading “${finalName}”...`);
         }
 
         try {
@@ -1312,11 +1302,11 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
           });
           const body = await response.json() as { name?: string; size?: number; error?: string };
           if (!response.ok) {
-            throw new Error(body.error || `Не удалось загрузить «${finalName}»`);
+            throw new Error(body.error || `Failed to upload “${finalName}”`);
           }
           uploadedNames.push(body.name || finalName);
         } catch (err) {
-          errors.push(err instanceof Error ? err.message : `Ошибка загрузки «${finalName}»`);
+          errors.push(err instanceof Error ? err.message : `Upload error for “${finalName}”`);
         }
       }
 
@@ -1325,9 +1315,9 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         this.filesOpen.set(true);
         await this.refreshTaskFiles();
         if (uploadedNames.length === 1) {
-          this.notice.set(`Файл «${uploadedNames[0]}» добавлен в проект и упомянут в сообщении`);
+          this.notice.set(`File “${uploadedNames[0]}” added to the project and mentioned in the message`);
         } else {
-          this.notice.set(`Загружено ${uploadedNames.length} файлов в проект и упомянуто в сообщении`);
+          this.notice.set(`Uploaded ${uploadedNames.length} files to the project and mentioned in the message`);
         }
       }
 
@@ -1335,7 +1325,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
         this.error.set(errors.join(' · '));
       }
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Не удалось загрузить файлы');
+      this.error.set(err instanceof Error ? err.message : 'Failed to upload files');
     } finally {
       this.uploading.set(false);
     }
@@ -1406,18 +1396,18 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     else this.cleanupResizeObserver();
   }
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
-  async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'Сайт открыт':'Сайт скрыт');}catch(e){this.error.set((e as Error).message);}}
+  async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'The site is open':'Site hidden');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
-  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='Соединение с сервером потеряно')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Соединение потеряно. Восстанавливаем статус задачи…');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('Соединение с сервером потеряно'));}
+  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='The connection to the server is lost')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Connection lost. Restoring the task status...');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('The connection to the server is lost'));}
   resetRun(){this.steeringAvailable.set(false);this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
-  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('Соединение восстановлено, но статус задачи недоступен. Обновите чат или повторите запрос.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Готово');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Задача выполняется');this.error.set('');this.requestScrollToBottom();});}
+  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('The connection has been restored, but the task status is unavailable. Refresh the chat or try again.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Done');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Task in progress');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){
-    if(e.type==='completed'&&this.browserNotifications()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||e.sessionId!==this.current()?.id||this.page()!=='chat')){const n=new Notification('Ответ готов',{body:this.sessions().find(s=>s.id===e.sessionId)?.title||'AI Router'});n.onclick=()=>{window.focus();void this.openSession(e.sessionId);n.close();};}
+    if(e.type==='completed'&&this.browserNotifications()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||e.sessionId!==this.current()?.id||this.page()!=='chat')){const n=new Notification('The answer is ready',{body:this.sessions().find(s=>s.id===e.sessionId)?.title||'AI Router'});n.onclick=()=>{window.focus();void this.openSession(e.sessionId);n.close();};}
     if(e.sessionId!==this.current()?.id)return;
     if(e.type==='fallback'||e.type==='handoff_started')this.steeringAvailable.set(false);
     if(typeof e.data?.steeringAvailable==='boolean')this.steeringAvailable.set(e.data.steeringAvailable);
     if(e.data?.steeringMessage){const message=e.data.steeringMessage;this.current.update(s=>s&&!s.messages.some(m=>m.id===message.id)?{...s,messages:[...s.messages,message],updatedAt:message.at||s.updatedAt}:s);}
-if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Запрос принят');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Ошибка');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Готово');this.reloadCurrent();void this.refreshTaskFiles();}}
+if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Request accepted');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Error');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Done');this.reloadCurrent();void this.refreshTaskFiles();}}
   async reloadCurrent(){
     const id=this.current()?.id;
     if(!id)return;
@@ -1448,11 +1438,11 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     }
 
     if(!s){
-      this.error.set('Не удалось создать чат');
+      this.error.set('Failed to create chat');
       return;
     }
     if(!this.socket?.connected){
-      this.error.set('Соединение с сервером потеряно');
+      this.error.set('The connection to the server is lost');
       return;
     }
     this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);
@@ -1461,7 +1451,7 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     const userMsg:Message={id:'pending',role:'user',text:prompt,at:now};
     const updatedSession:ChatSession={
       ...s,
-      title:s.title==='Новый чат'?(prompt.length>28?prompt.slice(0,28)+'...':prompt):s.title,
+      title:s.title==='New chat'?(prompt.length>28?prompt.slice(0,28)+'...':prompt):s.title,
       messages:[...(s.messages||[]),userMsg],
       updatedAt:now
     };
@@ -1471,7 +1461,7 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
     const targetService = this.selectedService();
     const targetMode = 'task';
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:targetService==='codex'&&this.codexFast(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom();}else{this.resetRun();this.error.set(ack.error||'Ошибка');this.draft=prompt;this.reloadCurrent();if(ack.error==='Этот чат уже занят')this.syncRun(s!.id);}});
+    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:targetService==='codex'&&this.codexFast(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom();}else{this.resetRun();this.error.set(ack.error||'Error');this.draft=prompt;this.reloadCurrent();if(ack.error==='This chat is already busy')this.syncRun(s!.id);}});
   }
 
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
@@ -1483,14 +1473,14 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
       const isApi=this.accountProvider==='openai-api';
       await this.api('/accounts',{method:'POST',body:JSON.stringify({provider:isApi?'codex':this.accountProvider,name:this.accountName,runnerId:this.selectedRunner,...(isApi?{authType:'api_key'}:{})})});
       this.accountName='';await this.refreshAccounts();
-      this.notice.set(isApi?'Подключение создано. Введите API-ключ в его карточке.':'Аккаунт добавлен. Выполните команду входа на своём контейнере.');
+      this.notice.set(isApi?'The connection has been created. Enter the API key in its card.':'Account added. Run the login command on your container.');
     }catch(e){this.error.set((e as Error).message);}finally{this.addingAccount.set(false);}
   }
   async saveOpenAIKey(a:Account){
     if(this.savingApiKey())return;
     const apiKey=(this.apiKeyDrafts[a.id]||'').trim();if(!apiKey)return;
     this.savingApiKey.set(a.id);this.error.set('');
-    try{await this.api('/accounts/'+a.id+'/api-key',{method:'PUT',body:JSON.stringify({apiKey})});this.apiKeyDrafts[a.id]='';await this.refreshAccounts();this.notice.set('API-ключ сохранён. Модели появятся в выборе Codex после обновления статуса.');}
+    try{await this.api('/accounts/'+a.id+'/api-key',{method:'PUT',body:JSON.stringify({apiKey})});this.apiKeyDrafts[a.id]='';await this.refreshAccounts();this.notice.set('The API key has been saved. Models will appear in the Codex selection after the status update.');}
     catch(e){this.error.set((e as Error).message);}finally{this.savingApiKey.set('');}
   }
   async assignAccount(a:Account,runnerId:string){try{await this.api('/accounts/'+a.id,{method:'PATCH',body:JSON.stringify({runnerId})});await this.refreshAccounts();}catch(e){this.error.set((e as Error).message);}}
@@ -1500,13 +1490,13 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     try{
       await this.api('/accounts/'+a.id+'/priority',{method:'PATCH',body:JSON.stringify({priority})});
       await this.refreshAccounts();
-      this.notice.set('Приоритет аккаунта сохранён');
+      this.notice.set('Account priority preserved');
     }catch(e){this.error.set((e as Error).message);await this.refreshAccounts();}
   }
   async removeAccount(a:Account){
-    if(this.deletingAccount()||!window.confirm(`Удалить подключение «${a.name}»? Данные входа и API-ключ на runner будут удалены.`))return;
+    if(this.deletingAccount()||!window.confirm(`Delete connection “${a.name}”? Login data and the API key on the runner will be deleted.`))return;
     this.deletingAccount.set(a.id);this.error.set('');
-    try{await this.api('/accounts/'+encodeURIComponent(a.id),{method:'DELETE'});delete this.apiKeyDrafts[a.id];await this.refreshAccounts();this.notice.set('Подключение удалено');}
+    try{await this.api('/accounts/'+encodeURIComponent(a.id),{method:'DELETE'});delete this.apiKeyDrafts[a.id];await this.refreshAccounts();this.notice.set('Connection deleted');}
     catch(e){this.error.set((e as Error).message);}finally{this.deletingAccount.set('');}
   }
   runnerInstructionTab = signal<'quick' | 'detailed'>('quick');
@@ -1517,7 +1507,7 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     return 'https://ai.s1m4.com';
   }
   pairingCodePlaceholder(): string {
-    return this.pairing()?.code || '<ВАШ_КОД_ПРИВЯЗКИ>';
+    return this.pairing()?.code || '<YOUR_PAIRING_CODE>';
   }
   quickStartCommand(): string {
     const url = this.serverOrigin();
@@ -1531,7 +1521,7 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
   }
 
   async createPairing(){this.error.set('');try{this.pairing.set(await this.api<Pairing>('/runners/pairing',{method:'POST',body:JSON.stringify({name:this.runnerName})}));}catch(e){this.error.set((e as Error).message);}}
-  async revokeRunner(r:Runner){if(!confirm(`Отключить ${r.name}? Его задачи остановятся.`))return;try{await this.api('/runners/'+r.id,{method:'DELETE'});await this.refreshRunners();}catch(e){this.error.set((e as Error).message);}}
+  async revokeRunner(r:Runner){if(!confirm(`Disable ${r.name}? Its tasks will stop.`))return;try{await this.api('/runners/'+r.id,{method:'DELETE'});await this.refreshRunners();}catch(e){this.error.set((e as Error).message);}}
   loginCommand(a:Account){return `docker compose -f runner/compose.yaml exec runner /app/scripts/provider-login.sh ${a.provider} ${a.id}`;}
   async copy(text:string, id:string=''){
     await navigator.clipboard.writeText(text);
@@ -1539,26 +1529,26 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
       this.copiedId.set(id);
       setTimeout(()=>{if(this.copiedId()===id)this.copiedId.set('');},2000);
     }
-    this.notice.set('Скопировано в буфер обмена');
+    this.notice.set('Copied to clipboard');
   }
   accountLabel(id:string){return this.accounts().find(a=>a.id===id)?.name||'';}
   providerLabel(id?:ProviderId|string){return id==='codex'?'Codex':(id==='antigravity'||id==='gemini')?'Gemini':id==='chatgpt'?'ChatGPT':'';}
   tokenLabel(usage?:TokenUsage){return usage?`${new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(usage.totalTokens)} tokens`:'— tokens';}
   tokenTitle(usage?:TokenUsage){
-    if(!usage)return 'Провайдер не передал расход токенов для этого запроса';
-    const format=(value:number)=>new Intl.NumberFormat('ru-RU').format(value);
-    const rows=[`Всего за запрос: ${format(usage.totalTokens)} токенов`];
-    if(usage.inputTokens!==undefined)rows.push(`Вход: ${format(usage.inputTokens)}`);
-    if(usage.outputTokens!==undefined)rows.push(`Выход: ${format(usage.outputTokens)}`);
-    if(usage.cachedInputTokens!==undefined)rows.push(`Из кеша: ${format(usage.cachedInputTokens)}`);
-    if(usage.reasoningOutputTokens!==undefined)rows.push(`Рассуждения: ${format(usage.reasoningOutputTokens)}`);
+    if(!usage)return 'The provider did not transmit the token consumption for this request';
+    const format=(value:number)=>new Intl.NumberFormat('en-US').format(value);
+    const rows=[`Total per request: ${format(usage.totalTokens)} tokens`];
+    if(usage.inputTokens!==undefined)rows.push(`Input: ${format(usage.inputTokens)}`);
+    if(usage.outputTokens!==undefined)rows.push(`Output: ${format(usage.outputTokens)}`);
+    if(usage.cachedInputTokens!==undefined)rows.push(`Cached input: ${format(usage.cachedInputTokens)}`);
+    if(usage.reasoningOutputTokens!==undefined)rows.push(`Reasoning: ${format(usage.reasoningOutputTokens)}`);
     return rows.join('\n');
   }
-  limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Ограничен';if(a.limit.primary||a.limit.secondary)return 'Квота аккаунта';return 'Провайдер';}
-  windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 ч';if(minutes===10080)return 'Неделя';if(minutes===43200)return 'Месяц';if(minutes&&minutes%60===0)return `${minutes/60} ч`;return 'Окно';}
+  limitLabel(a:Account){if(a.limit.cooldownUntil)return 'Limited';if(a.limit.primary||a.limit.secondary)return 'Account quota';return 'Provider';}
+  windowLabel(window:UsageWindow){const minutes=window.windowMinutes;if(minutes===300)return '5 h';if(minutes===10080)return 'Week';if(minutes===43200)return 'Month';if(minutes&&minutes%60===0)return `${minutes/60} h`;return 'Window';}
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
-  resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Сброс ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
-  accountMode(a:Account){return a.mode==='runner'?'Контейнер в сети':a.mode==='offline'?'Не в сети':'Без контейнера';}
+  resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Resets ${new Intl.DateTimeFormat('en-US',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
+  accountMode(a:Account){return a.mode==='runner'?'Container online':a.mode==='offline'?'Offline':'No container';}
   hasAccountsFor(service:ServiceId):boolean{const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];if(service==='auto')return accounts.length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId || this.selectedProjectId();const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?accounts.filter(a=>a.runnerId===project.runnerId):accounts;return list.some(a=>a.provider===provider);}
   selectTaskProject(id:string){this.selectedProjectId.set(id);this.selectService(this.selectedService());}
   selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();}
@@ -1656,7 +1646,7 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
         method: 'POST',
         body: JSON.stringify(payload)
       });
-      this.notice.set('Сессия ChatGPT успешно сохранена!');
+      this.notice.set('ChatGPT session saved successfully!');
       this.closeChatGPTSessionModal();
       await this.refreshAccounts();
     } catch (e) {
@@ -1683,14 +1673,14 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     navigator.clipboard.writeText(codeText).then(() => {
       copyBtn.classList.add('copied');
       const label = copyBtn.querySelector('.copy-label');
-      if (label) label.textContent = 'Скопировано!';
+      if (label) label.textContent = 'Copied!';
       setTimeout(() => {
         copyBtn.classList.remove('copied');
-        if (label) label.textContent = 'Копировать';
+        if (label) label.textContent = 'Copy';
       }, 2000);
-      this.notice.set('Код скопирован в буфер обмена');
+      this.notice.set('The code has been copied to the clipboard');
     }).catch(() => {
-      this.notice.set('Не удалось скопировать код');
+      this.notice.set('Failed to copy code');
     });
   }
 

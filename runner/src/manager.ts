@@ -29,7 +29,7 @@ async function executeAccountHelper(op: string, payload: Record<string, unknown>
     child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); if (out.length > 100_000) child.kill('SIGKILL'); });
     child.stderr.on('data', (chunk: Buffer) => { err = (err + chunk.toString()).slice(-2_000); });
     child.on('error', error => { if (!finished) { finished = true; clearTimeout(timer); reject(error); } });
-    child.on('close', code => { if (finished) return; finished = true; clearTimeout(timer); if (code !== 0) return reject(new Error(err || `Настройка аккаунта завершилась: ${code}`)); try { resolve(JSON.parse(out)); } catch { reject(new Error('Неверный ответ настройки аккаунта')); } });
+    child.on('close', code => { if (finished) return; finished = true; clearTimeout(timer); if (code !== 0) return reject(new Error(err || `Account setup completed: ${code}`)); try { resolve(JSON.parse(out)); } catch { reject(new Error('Invalid account setup answer')); } });
     child.stdin.end(JSON.stringify({ op, payload }));
   });
 }
@@ -48,8 +48,8 @@ async function device(): Promise<Device> {
 
 const authSessions = new Map<string, { child: ChildProcess; output: string; running: boolean; code?: number; accountId: string; createdAt: number }>();
 async function startCodexLogin(accountId: string) {
-  if (!/^[a-f0-9-]{36}$/.test(accountId)) throw new Error('Неверный аккаунт');
-  if ([...authSessions.values()].some(session => session.accountId === accountId && session.running)) throw new Error('Вход для этого аккаунта уже запущен');
+  if (!/^[a-f0-9-]{36}$/.test(accountId)) throw new Error('Invalid account');
+  if ([...authSessions.values()].some(session => session.accountId === accountId && session.running)) throw new Error('Login for this account has already started');
   const home = await runAccountHelper('ensureHome', { accountId }) as string;
   const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: home, CODEX_HOME: path.join(home, '.codex'), SSL_CERT_FILE: process.env.SSL_CERT_FILE, HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY };
   const child = spawn('codex', ['login', '--device-auth'], { uid: 1000, gid: 1000, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -63,11 +63,11 @@ async function startCodexLogin(accountId: string) {
 }
 function authStatus(sessionId: string) {
   const session = authSessions.get(sessionId);
-  if (!session) throw new Error('Сессия входа не найдена');
+  if (!session) throw new Error('Login session not found');
   if (!session.running && Date.now() - session.createdAt > 10 * 60_000) authSessions.delete(sessionId);
   return { sessionId, running: session.running, code: session.code, output: session.output.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').slice(-8_000), accountId: session.accountId };
 }
-function authCancel(sessionId: string) { const session = authSessions.get(sessionId); if (!session) throw new Error('Сессия входа не найдена'); session.child.kill('SIGTERM'); return { ok: true }; }
+function authCancel(sessionId: string) { const session = authSessions.get(sessionId); if (!session) throw new Error('Login session not found'); session.child.kill('SIGTERM'); return { ok: true }; }
 
 const uuid = z.string().uuid();
 const accountInput = z.object({ accountId: uuid, provider: z.enum(['codex', 'antigravity']) });
@@ -77,7 +77,7 @@ async function perform(op: string, payload: Record<string, unknown>) {
   switch (op) {
     case 'overview': {
       let containers: unknown[] = [], dockerError: string | null = null;
-      try { containers = await listContainers(); } catch (error) { dockerError = error instanceof Error ? error.message : 'Docker недоступен'; }
+      try { containers = await listContainers(); } catch (error) { dockerError = error instanceof Error ? error.message : 'Docker is not available'; }
       return { keys: await listKeys(), containers, dockerError };
     }
     case 'keys.create': return createKey(z.object({ label: z.string().min(1).max(60) }).parse(payload).label);
@@ -87,17 +87,17 @@ async function perform(op: string, payload: Record<string, unknown>) {
     case 'containers.start': case 'containers.stop': case 'containers.restart': case 'containers.remove': return controlContainer(op.split('.')[1] as 'start' | 'stop' | 'restart' | 'remove', z.object({ id: containerId }).parse(payload).id);
     case 'containers.recreate': {
       const value = z.object({ id: containerId, image: z.string().min(1).max(300).optional(), envSet: z.record(z.string().max(4000)).optional(), envUnset: z.array(z.string()).max(50).optional(), mountsAdd: z.array(mount).max(30).optional(), mountsRemove: z.array(z.string()).max(30).optional() }).parse(payload);
-      if (Object.keys(value.envSet || {}).some(key => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))) throw new Error('Неверное имя переменной окружения');
+      if (Object.keys(value.envSet || {}).some(key => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))) throw new Error('Invalid environment variable name');
       return recreateContainer(value.id, value);
     }
     case 'mcp.list': return runAccountHelper(op, {});
     case 'mcp.add': return runAccountHelper(op, z.object({}).extend({ name: z.string(), url: z.string().optional(), command: z.string().optional(), args: z.array(z.string()).max(30).optional(), env: z.record(z.string()).optional(), headers: z.record(z.string()).optional() }).parse(payload));
     case 'mcp.headers': return runAccountHelper(op, z.object({ name: z.string(), headers: z.record(z.string()).optional(), removeHeaders: z.array(z.string().max(100)).max(30).optional() }).parse(payload));
     case 'mcp.remove': return runAccountHelper(op, z.object({}).extend({ name: z.string() }).parse(payload));
-    case 'auth.start': { const value = accountInput.parse(payload); if (value.provider !== 'codex') throw new Error('Вход Google пока выполняется в терминале runner'); return startCodexLogin(value.accountId); }
+    case 'auth.start': { const value = accountInput.parse(payload); if (value.provider !== 'codex') throw new Error('Google login is currently running in runner terminal'); return startCodexLogin(value.accountId); }
     case 'auth.status': return authStatus(z.object({ sessionId: uuid }).parse(payload).sessionId);
     case 'auth.cancel': return authCancel(z.object({ sessionId: uuid }).parse(payload).sessionId);
-    default: throw new Error('Операция не поддерживается');
+    default: throw new Error('Operation not supported');
   }
 }
 
@@ -114,14 +114,14 @@ async function start() {
   const socket = io(url + '/manager', { path: '/socket.io', transports: ['websocket'], auth: { runnerId: enrolled.id, secret: enrolled.secret }, reconnection: true, reconnectionDelay: 1000, reconnectionDelayMax: 10_000 });
   socket.on('connect', () => console.log(`Management connected for runner ${enrolled.id}`));
   socket.on('connect_error', error => console.error('Management connection failed:', error.message));
-  socket.on('manage:challenge', (ack?: (value: unknown) => void) => { try { ack?.(gate.challenge()); } catch (error) { ack?.({ error: error instanceof Error ? error.message : 'Недоступно' }); } });
+  socket.on('manage:challenge', (ack?: (value: unknown) => void) => { try { ack?.(gate.challenge()); } catch (error) { ack?.({ error: error instanceof Error ? error.message : 'Not available' }); } });
   socket.on('manage:action', async (raw: unknown, ack?: (value: unknown) => void) => {
     const parsed = z.object({ nonce: z.string(), proof: z.string(), op: z.string(), payload: z.record(z.unknown()) }).safeParse(raw);
-    if (!parsed.success) return ack?.({ ok: false, error: 'Неверный запрос' });
+    if (!parsed.success) return ack?.({ ok: false, error: 'Invalid request' });
     const { nonce, proof, op, payload } = parsed.data;
-    if (!gate.verify(nonce, proof, op, payload)) return ack?.({ ok: false, error: 'Неверный пароль или подтверждение истекло' });
+    if (!gate.verify(nonce, proof, op, payload)) return ack?.({ ok: false, error: 'Invalid password or confirmation has expired' });
     try { const data = await perform(op, payload); await audit(op, payload, true); ack?.({ ok: true, data }); if (op === 'auth.status' && (data as any)?.running === false && (data as any)?.code === 0) socket.emit('manage:account-updated', { accountId: (data as any).accountId }); }
-    catch (error) { await audit(op, payload, false).catch(() => {}); ack?.({ ok: false, error: error instanceof Error ? error.message.slice(0, 500) : 'Ошибка управления' }); }
+    catch (error) { await audit(op, payload, false).catch(() => {}); ack?.({ ok: false, error: error instanceof Error ? error.message.slice(0, 500) : 'Control error' }); }
   });
 }
 

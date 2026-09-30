@@ -23,13 +23,13 @@ export function visibleWorkspaceFile(name:string):boolean{
  return !parts.some(part=>sourceDirectories.has(part)||serviceFile.test(part));
 }
 function requireVisibleFile(name:string){
- if(!visibleWorkspaceFile(name))throw new Error('Исходники и служебные файлы недоступны в разделе «Файлы»');
+ if(!visibleWorkspaceFile(name))throw new Error('Sources and service files are not available in the “Files” section');
 }
 
-function socketFor(runnerId:string){const socket=runnerSocket(runnerId);if(!socket)throw new Error('Исполнитель не в сети');return socket;}
+function socketFor(runnerId:string){const socket=runnerSocket(runnerId);if(!socket)throw new Error('The runner is offline');return socket;}
 async function ask(runnerId:string,event:string,input:object):Promise<any>{
- try{const answer=await socketFor(runnerId).timeout(15000).emitWithAck(event,input);if(!answer?.ok)throw new Error(answer?.error||'Исполнитель не ответил');return answer;}
- catch(error){if(error instanceof Error&&/timed out/i.test(error.message))throw new Error('Исполнитель не ответил. Обновите его до версии с файловым обменом.');throw new Error(error instanceof Error?error.message:'Исполнитель не ответил');}
+ try{const answer=await socketFor(runnerId).timeout(15000).emitWithAck(event,input);if(!answer?.ok)throw new Error(answer?.error||'The runner did not respond');return answer;}
+ catch(error){if(error instanceof Error&&/timed out/i.test(error.message))throw new Error('The runner did not respond. Upgrade to file sharing version.');throw new Error(error instanceof Error?error.message:'The runner did not respond');}
 }
 export async function listWorkspaceFiles(runnerId:string,scope:Scope):Promise<FileRow[]>{
  const reply=await ask(runnerId,'file:list',scope);
@@ -59,7 +59,7 @@ export async function getWorkspaceGitSummary(runnerId:string,scope:Scope):Promis
 export async function createFileShare(userId:string,runnerId:string,scope:Scope,name:string){
  requireVisibleFile(name);
  const info=await ask(runnerId,'file:info',{...scope,name});
- if(!Number.isSafeInteger(info.size)||info.size<0||info.size>MAX_SIZE||!Number.isFinite(info.modified))throw new Error('Файл недоступен');
+ if(!Number.isSafeInteger(info.size)||info.size<0||info.size>MAX_SIZE||!Number.isFinite(info.modified))throw new Error('File not available');
  const token=randomBytes(36).toString('base64url');
  const share:Share={token,runnerId,userId,scope,name,size:info.size,modified:info.modified,expiresAt:new Date(Date.now()+7*86400000).toISOString()};
  await mkdir(directory,{recursive:true,mode:0o700});
@@ -77,8 +77,8 @@ export async function downloadSharedFile(token:string,response:ServerResponse):P
  try{
   requireVisibleFile(share.name);
   const info=await ask(share.runnerId,'file:info',{...share.scope,name:share.name});
-  if(info.size!==share.size||info.modified!==share.modified)throw new Error('Файл изменился после создания ссылки');
- }catch(error){response.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}).end(error instanceof Error?error.message:'Файл недоступен');return;}
+  if(info.size!==share.size||info.modified!==share.modified)throw new Error('The file has changed since the link was created');
+ }catch(error){response.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}).end(error instanceof Error?error.message:'File not available');return;}
  const filename=path.basename(share.name).replace(/[\r\n"\\]/g,'_');
  response.setHeader('Content-Type','application/octet-stream');
  response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase())}`);
@@ -91,11 +91,11 @@ export async function downloadSharedFile(token:string,response:ServerResponse):P
    if(response.destroyed)return;
    const reply=await ask(share.runnerId,'file:chunk',{...share.scope,name:share.name,offset,modified:share.modified});
    const bytes=Buffer.isBuffer(reply.data)?reply.data:reply.data instanceof Uint8Array?Buffer.from(reply.data):null;
-   if(!bytes||bytes.length!==Math.min(CHUNK,share.size-offset))throw new Error('Неполный файл');
+   if(!bytes||bytes.length!==Math.min(CHUNK,share.size-offset))throw new Error('Incomplete file');
    if(!response.write(bytes))await once(response,'drain');
   }
   response.end();
- }catch(error){if(response.headersSent)response.destroy();else{response.removeHeader('Content-Length');response.statusCode=503;response.end(error instanceof Error?error.message:'Файл недоступен');}}
+ }catch(error){if(response.headersSent)response.destroy();else{response.removeHeader('Content-Length');response.statusCode=503;response.end(error instanceof Error?error.message:'File not available');}}
 }
 
 export function previewMime(name:string):string|undefined {
@@ -107,16 +107,16 @@ export function previewMime(name:string):string|undefined {
  return undefined;
 }
 export async function readWorkspacePreview(runnerId:string,scope:Scope,name:string){
- const mime=previewMime(name);if(!mime)throw new Error('Для этого формата доступно скачивание');
+ const mime=previewMime(name);if(!mime)throw new Error('Download available for this format');
  requireVisibleFile(name);
  const info=await ask(runnerId,'file:info',{...scope,name});
  const limit=mime.startsWith('text/')?1024*1024:10*1024*1024;
- if(!Number.isSafeInteger(info.size)||info.size<0||info.size>limit||!Number.isFinite(info.modified))throw new Error('Файл слишком большой для просмотра');
+ if(!Number.isSafeInteger(info.size)||info.size<0||info.size>limit||!Number.isFinite(info.modified))throw new Error('File too large to view');
  const chunks:Buffer[]=[];
  for(let offset=0;offset<info.size;offset+=CHUNK){
   const reply=await ask(runnerId,'file:chunk',{...scope,name,offset,modified:info.modified});
   const bytes=Buffer.isBuffer(reply.data)?reply.data:reply.data instanceof Uint8Array?Buffer.from(reply.data):null;
-  if(!bytes||bytes.length!==Math.min(CHUNK,info.size-offset))throw new Error('Неполный файл');chunks.push(bytes);
+  if(!bytes||bytes.length!==Math.min(CHUNK,info.size-offset))throw new Error('Incomplete file');chunks.push(bytes);
  }
  return {mime,bytes:Buffer.concat(chunks)};
 }

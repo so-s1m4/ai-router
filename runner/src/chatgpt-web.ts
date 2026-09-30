@@ -6,7 +6,7 @@ import type { AccountModel, AccountStatus, Event, Job } from './cli.js';
 import { RunnerError } from './cli.js';
 
 export const DEFAULT_CHATGPT_MODELS: AccountModel[] = [
-  { id: 'default', label: 'По умолчанию ChatGPT' }
+  { id: 'default', label: 'ChatGPT default' }
 ];
 
 export interface ChatGPTSessionData {
@@ -76,7 +76,7 @@ async function withProfile<T>(home: string, run: () => Promise<T>): Promise<T> {
 
 export function parseChatGPTModels(payload: unknown): AccountModel[] {
   const rows = (payload as { models?: unknown })?.models;
-  if (!Array.isArray(rows)) throw new RunnerError('ChatGPT не вернул список моделей', 'unavailable');
+  if (!Array.isArray(rows)) throw new RunnerError('ChatGPT did not return a list of models', 'unavailable');
   const models = new Map<string, AccountModel>();
   for (const row of rows) {
     if (!row || typeof row !== 'object' || row.enabled === false || row.disabled === true) continue;
@@ -84,7 +84,7 @@ export function parseChatGPTModels(payload: unknown): AccountModel[] {
     if (typeof id !== 'string' || !id.trim() || id.length > 100 || typeof label !== 'string' || !label.trim() || label.length > 160) continue;
     models.set(id, { id, label });
   }
-  if (!models.size) throw new RunnerError('В сессии ChatGPT нет доступных моделей', 'unavailable');
+  if (!models.size) throw new RunnerError('There are no models available in the ChatGPT session', 'unavailable');
   models.delete('default');
   return [...DEFAULT_CHATGPT_MODELS, ...models.values()];
 }
@@ -116,16 +116,16 @@ async function executeChatGPTWebInternal(
   emit: (e: Event) => void,
   onModels?: (models: AccountModel[]) => void
 ): Promise<string> {
-  if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+  if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
 
   if (onModels && process.env.MOCK_MODE === 'true') {
-    throw new RunnerError('Runner работает в демо-режиме (MOCK_MODE=true). Установите MOCK_MODE=false и обновите runner.', 'unavailable');
+    throw new RunnerError('Runner works in demo mode (MOCK_MODE=true). Set MOCK_MODE=false and update the runner.', 'unavailable');
   }
   if (process.env.MOCK_MODE === 'true') {
-    emit({ type: 'status', message: 'Демо-режим: Chromium эмулируется' });
-    const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
+    emit({ type: 'status', message: 'Demo mode: Chromium emulated' });
+    const text = `Demo response (ChatGPT Web): “${job.prompt.slice(0, 300)}”. Install Chromium in a runner container and authorize the session via cookies/profile.`;
     for (const chunk of text.match(/.{1,24}/gu) || [text]) {
-      if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+      if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
       emit({ type: 'delta', text: chunk });
       await new Promise(r => setTimeout(r, 10));
     }
@@ -135,16 +135,16 @@ async function executeChatGPTWebInternal(
   const chromePath = findChromePath();
   if (!chromePath) {
     if (!onModels && process.env.MOCK_MODE !== 'false') {
-      emit({ type: 'status', message: 'Демо-режим: Chromium не установлен' });
-      const text = `Демо-ответ (ChatGPT Web): «${job.prompt.slice(0, 300)}». Установите Chromium в контейнере runner и авторизуйте сессию через cookies/профиль.`;
+      emit({ type: 'status', message: 'Demo mode: Chromium not installed' });
+      const text = `Demo response (ChatGPT Web): “${job.prompt.slice(0, 300)}”. Install Chromium in a runner container and authorize the session via cookies/profile.`;
       for (const chunk of text.match(/.{1,24}/gu) || [text]) {
-        if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+        if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
         emit({ type: 'delta', text: chunk });
         await new Promise(r => setTimeout(r, 10));
       }
       return text;
     }
-    throw new RunnerError('Chromium не найден в контейнере runner. Обновите образ и пересоздайте контейнер runner.', 'unavailable');
+    throw new RunnerError('Chromium not found in runner container. Update the image and rebuild the runner container.', 'unavailable');
   }
 
   const profileDir = path.join(home, 'chrome-profile');
@@ -152,11 +152,11 @@ async function executeChatGPTWebInternal(
   const hasSavedAuth = Boolean((session && (session.sessionToken || session.cookies?.length)) || existsSync(profileDir));
 
   if (!hasSavedAuth) {
-    throw new RunnerError('Требуется вход в аккаунт ChatGPT: сохраните session token или cookies в настройках аккаунта', 'auth');
+    throw new RunnerError('ChatGPT account login required: save session token or cookies in account settings', 'auth');
   }
 
   await mkdir(profileDir, { recursive: true, mode: 0o700 });
-  emit({ type: 'status', message: 'Запуск браузера ChatGPT Web...' });
+  emit({ type: 'status', message: 'Launching the ChatGPT Web browser...' });
 
   let browser: Browser | null = null;
   const onAbort = () => {
@@ -184,7 +184,7 @@ async function executeChatGPTWebInternal(
       defaultViewport: { width: 1280, height: 800 }
     });
 
-    if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+    if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
 
     const pages = await browser.pages();
     const page: Page = pages[0] || await browser.newPage();
@@ -216,7 +216,7 @@ async function executeChatGPTWebInternal(
       });
     }
 
-    emit({ type: 'status', message: 'Открытие chatgpt.com...' });
+    emit({ type: 'status', message: 'Opening chatgpt.com...' });
 
     const targetUrl = (job.model && job.model !== 'default')
       ? `https://chatgpt.com/?model=${encodeURIComponent(job.model)}`
@@ -224,12 +224,12 @@ async function executeChatGPTWebInternal(
 
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
 
-    if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+    if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
 
     const title = await page.title();
     const bodyText = await page.evaluate(() => document.body?.innerText || '');
     if (title.includes('Just a moment...') || bodyText.includes('Cloudflare') || bodyText.includes('Verify you are human')) {
-      throw new RunnerError('Cloudflare заблокировал доступ к chatgpt.com. Для работы на сервере требуется прокси или домашний runner.', 'rate_limit');
+      throw new RunnerError('Cloudflare has blocked access to chatgpt.com. To work on the server, a proxy or home runner is required.', 'rate_limit');
     }
 
     // Dismiss cookie consent banner if present
@@ -252,9 +252,9 @@ async function executeChatGPTWebInternal(
         return Boolean(document.querySelector('a[href*="/login"], button[data-testid="login-button"], [data-testid="welcome-login-button"]'));
       });
       if (isLoggedOut) {
-        throw new RunnerError('Сессия ChatGPT истекла или недействительна. Обновите session token / cookies.', 'auth');
+        throw new RunnerError('The ChatGPT session has expired or is invalid. Update session token/cookies.', 'auth');
       }
-      throw new RunnerError('Интерфейс ChatGPT не загрузился', 'unavailable');
+      throw new RunnerError('ChatGPT interface did not load', 'unavailable');
     }
 
     if (job.model && job.model !== 'default') {
@@ -262,7 +262,7 @@ async function executeChatGPTWebInternal(
         return Boolean(document.querySelector('a[href*="/login"], button[data-testid="login-button"], [data-testid="welcome-login-button"]'));
       });
       if (isLoggedOut) {
-        throw new RunnerError(`Для использования модели ${job.model} требуется авторизация в ChatGPT. Обновите session token или cookies в настройках аккаунта.`, 'auth');
+        throw new RunnerError(`To use model ${job.model} ChatGPT authorization is required. Update the session token or cookies in your account settings.`, 'auth');
       }
     }
 
@@ -282,16 +282,16 @@ async function executeChatGPTWebInternal(
     });
     if (catalog.error) throw new RunnerError(
       catalog.error === 'auth'
-        ? 'Сессия ChatGPT не даёт доступ к списку моделей. Обновите токен или cookies аккаунта.'
-        : 'Не удалось получить список моделей ChatGPT. Проверьте подключение runner.',
+        ? 'The ChatGPT session does not provide access to the list of models. Update your account token or cookies.'
+        : 'Failed to get list of ChatGPT models. Check your runner’s connection.',
       catalog.error === 'auth' ? 'auth' : 'unavailable'
     );
     const availableModels = parseChatGPTModels(catalog.payload);
     if (onModels) { onModels(availableModels); return ''; }
     if (job.model && !availableModels.some(m => m.id === job.model)) {
-      throw new RunnerError('Выбранная модель больше недоступна в сессии ChatGPT. Обновите список моделей.', 'unavailable');
+      throw new RunnerError('The selected model is no longer available in the ChatGPT session. Update the list of models.', 'unavailable');
     }
-    emit({ type: 'status', message: 'Отправка сообщения в ChatGPT...' });
+    emit({ type: 'status', message: 'Sending a message to ChatGPT...' });
 
     // Focus and fill prompt with ProseMirror compatibility
     const promptInputSelector = '#prompt-textarea, div[contenteditable="true"], textarea';
@@ -333,7 +333,7 @@ async function executeChatGPTWebInternal(
       await page.keyboard.press('Enter');
     }
 
-    emit({ type: 'status', message: 'Генерация ответа ChatGPT...' });
+    emit({ type: 'status', message: 'Generating ChatGPT response...' });
 
     let fullText = '';
     let lastLength = 0;
@@ -388,8 +388,8 @@ async function executeChatGPTWebInternal(
       }
     }
 
-    if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
-    if (!fullText.trim()) throw new RunnerError('ChatGPT не вернул ответ', 'failed');
+    if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
+    if (!fullText.trim()) throw new RunnerError('ChatGPT did not return a response', 'failed');
     return fullText;
 
   } finally {

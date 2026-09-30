@@ -26,9 +26,9 @@ test('keys are isolated, permission restricted, validated before replacement, an
     assert.equal((await stat(path.join(home,'.codex/auth.json'))).mode&0o777,0o600);
     assert.deepEqual((await accountStatus('codex',home,new AbortController().signal)).models,[{id:'gpt-99-sol',label:'gpt-99-sol'}]);
     globalThis.fetch=async()=>new Response(`Invalid API key ${key}`,{status:401});
-    await assert.rejects(saveApiKey(home,'sk-invalid-key-123456789'),error=>!error.message.includes(key)&&/неверный/.test(error.message));
+    await assert.rejects(saveApiKey(home,'sk-invalid-key-123456789'),error=>!error.message.includes(key)&&/invalid/.test(error.message));
     assert.equal(await readApiKey(home),key);
     assert.equal((JSON.parse(await readFile(path.join(home,'.codex/auth.json'),'utf8'))).auth_mode,'apikey');
-    await assert.rejects(fetchApiModels(key),/неверный/);
+    await assert.rejects(fetchApiModels(key),/invalid/);
   }finally{await rm(home,{recursive:true,force:true});}
 });

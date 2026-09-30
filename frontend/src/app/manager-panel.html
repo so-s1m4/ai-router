@@ -1,102 +1,102 @@
 <section class="manager-panel">
   <div class="manager-heading">
-    <button class="icon-button" (click)="close.emit()" aria-label="Назад"><svg lucideArrowLeft [size]="19"></svg></button>
-    <div><small>УПРАВЛЕНИЕ RUNNER</small><h2>{{runner.name}}</h2></div>
-    @if(unlocked()){<button class="quiet" (click)="lock()">Заблокировать</button>}
+    <button class="icon-button" (click)="close.emit()" aria-label="Back"><svg lucideArrowLeft [size]="19"></svg></button>
+    <div><small>RUNNER MANAGEMENT</small><h2>{{runner.name}}</h2></div>
+    @if(unlocked()){<button class="quiet" (click)="lock()">Lock</button>}
   </div>
   @if(error()){<div class="manager-error">{{error()}}</div>}
   @if(notice()){<div class="manager-notice">{{notice()}}</div>}
 
   @if(!runner.managementOnline){
     <div class="manager-card setup-card">
-      <svg lucideSettings2 [size]="26"></svg><h3>Включите управление</h3>
-      <p>Сервис управления запускается рядом с runner. Пароль и доступ к Docker остаются в отдельном контейнере.</p>
-      <button class="action" (click)="getPairing()">Получить код управления</button>
-      @if(pairing()){<div class="pair-code"><span>КОД НА 10 МИНУТ</span><code>{{pairing()!.code}}</code><button class="quiet" (click)="copy(pairing()!.code)"><svg lucideCopy [size]="15"></svg> Скопировать</button></div>}
-      <ol><li>В <code>runner/.env</code> задайте <code>RUNNER_MANAGER_PASSWORD</code> (не короче 16 символов) и <code>RUNNER_MANAGER_PAIRING_CODE</code>.</li><li>Обновите тот же стек runner с профилем <code>management</code>. Для Compose: <code>docker compose -f runner/compose.yaml --profile management up --build -d</code>.</li><li>Вернитесь сюда и обновите список исполнителей.</li></ol>
+      <svg lucideSettings2 [size]="26"></svg><h3>Turn on control</h3>
+      <p>The management service runs next to the runner. The password and Docker access remain in a separate container.</p>
+      <button class="action" (click)="getPairing()">Get control code</button>
+      @if(pairing()){<div class="pair-code"><span>CODE FOR 10 MINUTES</span><code>{{pairing()!.code}}</code><button class="quiet" (click)="copy(pairing()!.code)"><svg lucideCopy [size]="15"></svg> Copy</button></div>}
+      <ol><li>In <code>runner/.env</code> set <code>RUNNER_MANAGER_PASSWORD</code> (no shorter than 16 characters) and <code>RUNNER_MANAGER_PAIRING_CODE</code>.</li><li>Update the same runner stack with profile <code>management</code>. For Compose: <code>docker compose -f runner/compose.yaml --profile management up --build -d</code>.</li><li>Come back here and update the runner list.</li></ol>
     </div>
   } @else if(!unlocked()){
     <form class="manager-card unlock-card" (submit)="$event.preventDefault();unlock()">
-      <svg lucideKeyRound [size]="27"></svg><h3>Пароль управления</h3>
-      <p>Введите пароль из <code>RUNNER_MANAGER_PASSWORD</code>. Он останется в этой вкладке браузера и не сохраняется на сайте.</p>
-      <input type="password" [(ngModel)]="password" name="managerPassword" autocomplete="off" placeholder="Пароль runner" aria-label="Пароль runner">
-      <button class="action" [disabled]="busy() || !password" type="submit">Открыть настройки</button>
+      <svg lucideKeyRound [size]="27"></svg><h3>Management password</h3>
+      <p>Enter the password from <code>RUNNER_MANAGER_PASSWORD</code>. It will remain in this browser tab and is not saved on the site.</p>
+      <input type="password" [(ngModel)]="password" name="managerPassword" autocomplete="off" placeholder="Runner password" aria-label="Runner password">
+      <button class="action" [disabled]="busy() || !password" type="submit">Open settings</button>
     </form>
   } @else {
-    <nav class="manager-tabs" aria-label="Разделы управления">
-      <button [class.active]="tab()==='keys'" (click)="tab.set('keys')">SSH-ключи</button>
+    <nav class="manager-tabs" aria-label="Control Sections">
+      <button [class.active]="tab()==='keys'" (click)="tab.set('keys')">SSH keys</button>
       <button [class.active]="tab()==='containers'" (click)="tab.set('containers')">Docker</button>
       <button [class.active]="tab()==='mcp'" (click)="tab.set('mcp');loadMcp()">MCP</button>
-      <button [class.active]="tab()==='accounts'" (click)="tab.set('accounts')">Вход в аккаунт</button>
+      <button [class.active]="tab()==='accounts'" (click)="tab.set('accounts')">Login</button>
     </nav>
     @if(tab()==='keys'){
-      <div class="manager-card"><div class="card-head"><div><h3>Ключи для GitHub</h3><p>Публичный ключ добавьте в GitHub → Settings → SSH and GPG keys. Закрытый ключ хранится только в manager; runner использует SSH-agent.</p></div><button class="quiet" (click)="refresh()"><svg lucideRefreshCw [size]="15"></svg> Обновить</button></div>
-        <div class="inline-form"><input [(ngModel)]="keyLabel" placeholder="Название ключа, например VPS" aria-label="Название ключа"><button class="action" [disabled]="busy() || !keyLabel.trim()" (click)="createKey()"><svg lucidePlus [size]="16"></svg> Создать</button></div>
-        @for(key of keys();track key.id){<div class="key-row"><div><strong>{{key.label}}</strong><small>{{key.fingerprint}}</small></div><button class="quiet" (click)="copy(key.publicKey)"><svg lucideCopy [size]="15"></svg> Ключ</button><button class="icon-button danger" (click)="deleteKey(key.id)" aria-label="Удалить ключ"><svg lucideTrash2 [size]="16"></svg></button><code>{{key.publicKey}}</code></div>}
-        @if(!keys().length){<p class="empty-hint">Ключей пока нет.</p>}
-        <button class="quiet test-button" (click)="testGithub()">Проверить GitHub SSH</button>@if(githubResult()){<pre class="result-box">{{githubResult()}}</pre>}
+      <div class="manager-card"><div class="card-head"><div><h3>Keys for GitHub</h3><p>Add the public key to GitHub → Settings → SSH and GPG keys. The private key is stored only in manager; runner uses SSH agent.</p></div><button class="quiet" (click)="refresh()"><svg lucideRefreshCw [size]="15"></svg> Refresh</button></div>
+        <div class="inline-form"><input [(ngModel)]="keyLabel" placeholder="Key name, for example VPS" aria-label="Key name"><button class="action" [disabled]="busy() || !keyLabel.trim()" (click)="createKey()"><svg lucidePlus [size]="16"></svg> Create</button></div>
+        @for(key of keys();track key.id){<div class="key-row"><div><strong>{{key.label}}</strong><small>{{key.fingerprint}}</small></div><button class="quiet" (click)="copy(key.publicKey)"><svg lucideCopy [size]="15"></svg> Key</button><button class="icon-button danger" (click)="deleteKey(key.id)" aria-label="Delete key"><svg lucideTrash2 [size]="16"></svg></button><code>{{key.publicKey}}</code></div>}
+        @if(!keys().length){<p class="empty-hint">No keys yet.</p>}
+        <button class="quiet test-button" (click)="testGithub()">Check GitHub SSH</button>@if(githubResult()){<pre class="result-box">{{githubResult()}}</pre>}
       </div>
     }
     @if(tab()==='containers'){
-      <div class="manager-card"><div class="card-head"><div><h3>Контейнеры Docker</h3><p>Управление контейнерами на хосте runner. Пересоздание сохраняет тома и оставляет старый контейнер как резервную копию.</p></div><button class="quiet" (click)="refresh()"><svg lucideRefreshCw [size]="15"></svg> Обновить</button></div>
+      <div class="manager-card"><div class="card-head"><div><h3>Docker containers</h3><p>Managing containers on the runner host. Recreation preserves the volumes and leaves the old container as a backup.</p></div><button class="quiet" (click)="refresh()"><svg lucideRefreshCw [size]="15"></svg> Refresh</button></div>
         @if(dockerError()){<div class="manager-error">{{dockerError()}}</div>}
-        <div class="container-list">@for(container of containers();track container.id){<div class="container-row"><div><strong>{{container.name}}</strong><small>{{container.image}} · {{container.status}}</small></div><button class="quiet" (click)="openContainer(container.id)">Настроить</button><div class="container-actions">@if(container.state==='running'){<button (click)="control('restart',container.id)">Перезапустить</button><button (click)="control('stop',container.id)">Остановить</button>}@else{<button (click)="control('start',container.id)">Запустить</button><button class="danger-text" (click)="control('remove',container.id)">Удалить</button>}</div></div>}</div>
-        @if(!containers().length&&!dockerError()){<p class="empty-hint">Контейнеров нет.</p>}
+        <div class="container-list">@for(container of containers();track container.id){<div class="container-row"><div><strong>{{container.name}}</strong><small>{{container.image}} · {{container.status}}</small></div><button class="quiet" (click)="openContainer(container.id)">Configure</button><div class="container-actions">@if(container.state==='running'){<button (click)="control('restart',container.id)">Restart</button><button (click)="control('stop',container.id)">Stop</button>}@else{<button (click)="control('start',container.id)">Launch</button><button class="danger-text" (click)="control('remove',container.id)">Delete</button>}</div></div>}</div>
+        @if(!containers().length&&!dockerError()){<p class="empty-hint">There are no containers.</p>}
       </div>
-      @if(details()){<div class="manager-card edit-card"><div class="card-head"><div><h3>Изменить {{details()!.name}}</h3><p>Текущие значения переменных скрыты. Неуказанные значения сохранятся.</p></div><button class="icon-button" (click)="details.set(null)" aria-label="Закрыть"><svg lucideX [size]="17"></svg></button></div>
-        <label>Образ<input [(ngModel)]="image" placeholder="image:tag"></label>
-        <h4>Переменные окружения</h4>@for(name of details()!.envNames;track name){<label class="check-row"><input type="checkbox" [checked]="envUnset.has(name)" (change)="toggleEnv(name,$any($event.target).checked)"> Удалить {{name}}</label>}
-        @for(row of envRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="ИМЯ" aria-label="Имя переменной"><input [(ngModel)]="row.value" placeholder="Новое значение" aria-label="Значение переменной"><button class="icon-button" (click)="envRows.splice(i,1)" aria-label="Удалить строку"><svg lucideX [size]="15"></svg></button></div>}
-        <button class="quiet" (click)="envRows.push({key:'',value:''})"><svg lucidePlus [size]="15"></svg> Добавить переменную</button>
-        <h4>Тома и папки</h4>@for(mount of details()!.mounts;track mount.target){<label class="check-row"><input type="checkbox" [checked]="mountRemove.has(mount.target)" (change)="toggleMount(mount.target,$any($event.target).checked)"> Убрать {{mount.source}} → {{mount.target}}</label>}
-        @for(row of mountRows;track row;let i=$index){<div class="mount-row"><select [(ngModel)]="row.type" aria-label="Тип тома"><option value="volume">Том</option><option value="bind">Папка хоста</option></select><input [(ngModel)]="row.source" placeholder="Источник" aria-label="Источник"><input [(ngModel)]="row.target" placeholder="Путь в контейнере" aria-label="Путь в контейнере"><label><input type="checkbox" [(ngModel)]="row.readOnly"> Только чтение</label><button class="icon-button" (click)="mountRows.splice(i,1)" aria-label="Удалить строку"><svg lucideX [size]="15"></svg></button></div>}
-        <button class="quiet" (click)="mountRows.push({type:'volume',source:'',target:'',readOnly:false})"><svg lucidePlus [size]="15"></svg> Добавить том</button>
-        <button class="action full-action" [disabled]="busy()" (click)="recreate()">Пересоздать контейнер</button>
+      @if(details()){<div class="manager-card edit-card"><div class="card-head"><div><h3>Change {{details()!.name}}</h3><p>The current variable values are hidden. Unspecified values will be retained.</p></div><button class="icon-button" (click)="details.set(null)" aria-label="Close"><svg lucideX [size]="17"></svg></button></div>
+        <label>Image<input [(ngModel)]="image" placeholder="image:tag"></label>
+        <h4>Environment Variables</h4>@for(name of details()!.envNames;track name){<label class="check-row"><input type="checkbox" [checked]="envUnset.has(name)" (change)="toggleEnv(name,$any($event.target).checked)"> Delete {{name}}</label>}
+        @for(row of envRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="NAME" aria-label="Variable name"><input [(ngModel)]="row.value" placeholder="New value" aria-label="Variable value"><button class="icon-button" (click)="envRows.splice(i,1)" aria-label="Delete line"><svg lucideX [size]="15"></svg></button></div>}
+        <button class="quiet" (click)="envRows.push({key:'',value:''})"><svg lucidePlus [size]="15"></svg> Add a variable</button>
+        <h4>Volumes and folders</h4>@for(mount of details()!.mounts;track mount.target){<label class="check-row"><input type="checkbox" [checked]="mountRemove.has(mount.target)" (change)="toggleMount(mount.target,$any($event.target).checked)"> Remove {{mount.source}} → {{mount.target}}</label>}
+        @for(row of mountRows;track row;let i=$index){<div class="mount-row"><select [(ngModel)]="row.type" aria-label="Volume type"><option value="volume">Volume</option><option value="bind">Host folder</option></select><input [(ngModel)]="row.source" placeholder="Source" aria-label="Source"><input [(ngModel)]="row.target" placeholder="Path in container" aria-label="Path in container"><label><input type="checkbox" [(ngModel)]="row.readOnly"> Read only</label><button class="icon-button" (click)="mountRows.splice(i,1)" aria-label="Delete line"><svg lucideX [size]="15"></svg></button></div>}
+        <button class="quiet" (click)="mountRows.push({type:'volume',source:'',target:'',readOnly:false})"><svg lucidePlus [size]="15"></svg> Add volume</button>
+        <button class="action full-action" [disabled]="busy()" (click)="recreate()">Recreate container</button>
       </div>}
     }
     @if(tab()==='mcp'){
-      <div class="manager-card"><h3>MCP-серверы и браузер</h3><p>Глобальные инструменты для всех аккаунтов Codex и Antigravity на этом runner. Изменения применяются к новым запускам задач. ChatGPT Web не поддерживается. Команды MCP выполняются в контейнере runner; добавляйте только доверенные серверы.</p>
-          <h4>Браузер</h4><p>Chromium на runner: страницы, клики и скриншоты через Playwright MCP. Профиль браузера изолирован от входа ChatGPT.</p>
-          @if(!browserEnabled){<button class="action full-action" [disabled]="busy()" (click)="addBrowser()">Подключить браузер</button>}
+      <div class="manager-card"><h3>MCP servers and browser</h3><p>Global tools for all Codex and Antigravity accounts on this runner. Changes are applied to new task runs. ChatGPT Web is not supported. MCP commands are executed in the runner container; add only trusted servers.</p>
+          <h4>Browser</h4><p>Chromium on runner: pages, clicks and screenshots via Playwright MCP. The browser profile is isolated from the ChatGPT login.</p>
+          @if(!browserEnabled){<button class="action full-action" [disabled]="busy()" (click)="addBrowser()">Connect browser</button>}
           @for(server of mcp();track server.name){
             <div class="mcp-row">
-              <div><strong>{{server.name === 'browser' ? 'Браузер (Playwright)' : server.name}}</strong><small>{{server.url||server.command}} {{server.args.join(' ')}}</small>@if(server.headerNames?.length){<small>Headers: {{server.headerNames!.join(', ')}}</small>}</div>
+              <div><strong>{{server.name === 'browser' ? 'Browser (Playwright)' : server.name}}</strong><small>{{server.url||server.command}} {{server.args.join(' ')}}</small>@if(server.headerNames?.length){<small>Headers: {{server.headerNames!.join(', ')}}</small>}</div>
               <div class="mcp-actions">
-                @if(server.url){<button class="quiet" [disabled]="busy()" (click)="editMcpHeaders(server)" [attr.aria-label]="'Редактировать headers ' + server.name">Headers</button>}
-                <button class="icon-button danger" [disabled]="busy()" (click)="removeMcp(server.name)" aria-label="Удалить MCP"><svg lucideTrash2 [size]="16"></svg></button>
+                @if(server.url){<button class="quiet" [disabled]="busy()" (click)="editMcpHeaders(server)" [attr.aria-label]="'Edit headers ' + server.name">Headers</button>}
+                <button class="icon-button danger" [disabled]="busy()" (click)="removeMcp(server.name)" aria-label="Remove MCP"><svg lucideTrash2 [size]="16"></svg></button>
               </div>
             </div>
             @if(editingMcp()?.name === server.name){
-              <section class="mcp-header-editor" aria-label="Редактирование HTTP headers">
+              <section class="mcp-header-editor" aria-label="Editing HTTP headers">
                 <h4>HTTP headers · {{server.name}}</h4>
-                <p>Оставьте значение пустым, чтобы сохранить текущий header. Для замены введите новое значение, для удаления — удалите строку.</p>
+                <p>Leave the value empty to keep the current header. To replace, enter a new value; to delete, delete the line.</p>
                 @for(row of editHeaderRows;track row;let i=$index){
                   <div class="edit-row">
-                    <input [(ngModel)]="row.key" placeholder="Authorization" aria-label="Имя header" autocomplete="off" [disabled]="busy()">
-                    <input type="password" [(ngModel)]="row.value" [placeholder]="row.original ? 'Сохранить текущее значение' : 'Значение'" aria-label="Новое значение header" autocomplete="new-password" [disabled]="busy()">
-                    <button class="icon-button" [disabled]="busy()" (click)="editHeaderRows.splice(i,1)" aria-label="Удалить header"><svg lucideX [size]="15"></svg></button>
+                    <input [(ngModel)]="row.key" placeholder="Authorization" aria-label="Header name" autocomplete="off" [disabled]="busy()">
+                    <input type="password" [(ngModel)]="row.value" [placeholder]="row.original ? 'Save current value' : 'Value'" aria-label="New header value" autocomplete="new-password" [disabled]="busy()">
+                    <button class="icon-button" [disabled]="busy()" (click)="editHeaderRows.splice(i,1)" aria-label="Remove header"><svg lucideX [size]="15"></svg></button>
                   </div>
                 }
-                <button class="quiet" [disabled]="busy() || editHeaderRows.length >= 30" (click)="editHeaderRows.push({key:'',value:''})">Добавить header</button>
+                <button class="quiet" [disabled]="busy() || editHeaderRows.length >= 30" (click)="editHeaderRows.push({key:'',value:''})">Add header</button>
                 <div class="mcp-editor-actions">
-                  <button class="action" [disabled]="busy()" (click)="saveMcpHeaders()">Сохранить headers</button>
-                  <button class="quiet" [disabled]="busy()" (click)="cancelHeaderEdit()">Отмена</button>
+                  <button class="action" [disabled]="busy()" (click)="saveMcpHeaders()">Save headers</button>
+                  <button class="quiet" [disabled]="busy()" (click)="cancelHeaderEdit()">Cancel</button>
                 </div>
               </section>
             }
           }
-          <h4>Добавить сервер</h4><input [(ngModel)]="mcpName" placeholder="Название MCP" aria-label="Название MCP"><select [(ngModel)]="mcpKind" aria-label="Тип MCP"><option value="url">Удалённый HTTPS</option><option value="command">Команда в контейнере</option></select>
-          @if(mcpKind==='url'){<input [(ngModel)]="mcpUrl" placeholder="https://example.com/mcp" aria-label="URL MCP"><h4>HTTP headers</h4><small>Например, Authorization → Bearer token или X-API-Key → ключ.</small>@for(row of mcpHeaderRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="Authorization" aria-label="Имя header" autocomplete="off"><input type="password" [(ngModel)]="row.value" placeholder="Значение" aria-label="Значение header" autocomplete="new-password"><button class="icon-button" (click)="mcpHeaderRows.splice(i,1)" aria-label="Удалить header"><svg lucideX [size]="15"></svg></button></div>}<button class="quiet" [disabled]="mcpHeaderRows.length >= 30" (click)="mcpHeaderRows.push({key:'',value:''})">Добавить header</button>}
-          @else{<input [(ngModel)]="mcpCommand" placeholder="Команда, например npx" aria-label="Команда MCP"><textarea [(ngModel)]="mcpArgs" placeholder="Аргументы, по одному на строке" aria-label="Аргументы MCP"></textarea>@for(row of mcpEnvRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="ENV NAME"><input [(ngModel)]="row.value" placeholder="Значение"><button class="icon-button" (click)="mcpEnvRows.splice(i,1)" aria-label="Удалить"><svg lucideX [size]="15"></svg></button></div>}<button class="quiet" (click)="mcpEnvRows.push({key:'',value:''})">Добавить переменную</button>}
-          <button class="action full-action" [disabled]="busy() || !mcpName.trim()" (click)="addMcp()">Добавить MCP</button>
+          <h4>Add server</h4><input [(ngModel)]="mcpName" placeholder="MCP name" aria-label="MCP name"><select [(ngModel)]="mcpKind" aria-label="Type MCP"><option value="url">Remote HTTPS</option><option value="command">Command in container</option></select>
+          @if(mcpKind==='url'){<input [(ngModel)]="mcpUrl" placeholder="https://example.com/mcp" aria-label="URL MCP"><h4>HTTP headers</h4><small>For example, Authorization → Bearer token or X-API-Key → key.</small>@for(row of mcpHeaderRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="Authorization" aria-label="Header name" autocomplete="off"><input type="password" [(ngModel)]="row.value" placeholder="Value" aria-label="Header value" autocomplete="new-password"><button class="icon-button" (click)="mcpHeaderRows.splice(i,1)" aria-label="Remove header"><svg lucideX [size]="15"></svg></button></div>}<button class="quiet" [disabled]="mcpHeaderRows.length >= 30" (click)="mcpHeaderRows.push({key:'',value:''})">Add header</button>}
+          @else{<input [(ngModel)]="mcpCommand" placeholder="Command like npx" aria-label="MCP command"><textarea [(ngModel)]="mcpArgs" placeholder="Arguments, one per line" aria-label="MCP Arguments"></textarea>@for(row of mcpEnvRows;track row;let i=$index){<div class="edit-row"><input [(ngModel)]="row.key" placeholder="ENV NAME"><input [(ngModel)]="row.value" placeholder="Value"><button class="icon-button" (click)="mcpEnvRows.splice(i,1)" aria-label="Delete"><svg lucideX [size]="15"></svg></button></div>}<button class="quiet" (click)="mcpEnvRows.push({key:'',value:''})">Add a variable</button>}
+          <button class="action full-action" [disabled]="busy() || !mcpName.trim()" (click)="addMcp()">Add MCP</button>
       </div>
     }
     @if(tab()==='accounts'){
-      <div class="manager-card"><h3>Вход в аккаунт</h3><p>Codex покажет ссылку и код устройства. Данные входа сохранятся в каталоге выбранного аккаунта runner.</p>
-        <select [(ngModel)]="selectedAccountId" aria-label="Аккаунт для входа"><option value="">Выберите аккаунт</option>@for(account of localAccounts;track account.id){<option [value]="account.id">{{account.name}} · {{account.provider}}</option>}</select>
-        @if(selectedAccount?.provider==='codex'){<button class="action full-action" [disabled]="busy() || loginSession()?.running" (click)="startLogin()">Начать вход Codex</button>}
-        @else if(selectedAccount?.provider==='antigravity'){<div class="manager-help">Antigravity пока требует интерактивный терминал и системный keyring контейнера. Запустите команду входа на хосте runner для этого аккаунта.</div>}
-        @if(loginSession()){<pre class="result-box login-output">{{loginSession()!.output || 'Ожидаем ссылку и код входа…'}}</pre>@if(loginSession()!.running){<button class="quiet" (click)="cancelLogin()">Отменить вход</button>}@else{<p>Код завершения: {{loginSession()!.code}}</p>}}
+      <div class="manager-card"><h3>Login</h3><p>Codex will show the link and device code. Your login information will be saved in the selected runner account directory.</p>
+        <select [(ngModel)]="selectedAccountId" aria-label="Login account"><option value="">Select an account</option>@for(account of localAccounts;track account.id){<option [value]="account.id">{{account.name}} · {{account.provider}}</option>}</select>
+        @if(selectedAccount?.provider==='codex'){<button class="action full-action" [disabled]="busy() || loginSession()?.running" (click)="startLogin()">Start Codex login</button>}
+        @else if(selectedAccount?.provider==='antigravity'){<div class="manager-help">Antigravity currently requires an interactive terminal and a system keyring container. Run the login command on the runner host for this account.</div>}
+        @if(loginSession()){<pre class="result-box login-output">{{loginSession()!.output || 'Waiting for the login link and code…'}}</pre>@if(loginSession()!.running){<button class="quiet" (click)="cancelLogin()">Cancel login</button>}@else{<p>Exit code: {{loginSession()!.code}}</p>}}
       </div>
     }
   }

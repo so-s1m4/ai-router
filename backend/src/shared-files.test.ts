@@ -25,9 +25,9 @@ test('a 48-character secret link downloads the selected file without a session',
  const scope={sessionId:'6655170d-2987-4c61-97a6-c826030849cb'};
  assert.deepEqual((await listWorkspaceFiles(runnerId,scope)).map(file=>file.name),['result.txt','outputs/frontend/app.ts']);
  for(const name of ['backend/src/server.ts','frontend/package.json','compose.prod.yaml','ops/setup.sh']){
-  await assert.rejects(createFileShare('user',runnerId,scope,name),/Исходники/);
-  await assert.rejects(readWorkspacePreview(runnerId,scope,name),/Исходники/);
-  await assert.rejects(deleteWorkspaceFile(runnerId,scope,name),/Исходники/);
+  await assert.rejects(createFileShare('user',runnerId,scope,name),/Source/);
+  await assert.rejects(readWorkspacePreview(runnerId,scope,name),/Source/);
+  await assert.rejects(deleteWorkspaceFile(runnerId,scope,name),/Source/);
  }
  const share=await createFileShare('user',runnerId,{sessionId:'6655170d-2987-4c61-97a6-c826030849cb'},'result.txt');
  const token=share.url.split('/').at(-1)!;

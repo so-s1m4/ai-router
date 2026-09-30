@@ -18,10 +18,10 @@ export function parseAgyModels(output: string): AccountModel[] {
       const baseId = match[1];
       const effort = match[2].toLowerCase();
       const effortLabels: Record<string, string> = {
-        low: 'Низкое',
-        medium: 'Среднее',
-        high: 'Высокое',
-        max: 'Максимальное'
+        low: 'Low',
+        medium: 'Medium',
+        high: 'High',
+        max: 'Maximum'
       };
       const baseLabel = fullLabel.replace(/\s*\((?:High|Medium|Low|Max)\)$/i, '');
 

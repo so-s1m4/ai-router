@@ -7,10 +7,10 @@ async function request(method: string, route: string, body?: unknown, maxBytes =
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath, method, path: `/v1.45${route}`, timeout: timeoutMs, headers: data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {} }, res => {
       const chunks: Buffer[] = []; let bytes = 0;
-      res.on('data', (chunk: Buffer) => { bytes += chunk.length; if (bytes > maxBytes) { req.destroy(new Error('Ответ Docker слишком большой')); return; } chunks.push(chunk); });
+      res.on('data', (chunk: Buffer) => { bytes += chunk.length; if (bytes > maxBytes) { req.destroy(new Error('Docker response is too big')); return; } chunks.push(chunk); });
       res.on('end', () => { const raw = Buffer.concat(chunks).toString('utf8'); let value: any; try { value = raw ? JSON.parse(raw) : {}; } catch { value = { message: raw }; } if ((res.statusCode || 500) >= 400) reject(new Error(String(value.message || `Docker HTTP ${res.statusCode}`).slice(0, 400))); else resolve(value); });
     });
-    req.on('timeout', () => req.destroy(new Error('Docker не ответил')));
+    req.on('timeout', () => req.destroy(new Error('Docker didn’t respond')));
     req.on('error', reject);
     if (data) req.write(data);
     req.end();
@@ -18,12 +18,12 @@ async function request(method: string, route: string, body?: unknown, maxBytes =
 }
 
 const containerPath = (id: string) => {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(id)) throw new Error('Неверный ID контейнера');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(id)) throw new Error('Invalid container ID');
   return `/containers/${encodeURIComponent(id)}`;
 };
 function assertNotSelf(row: any) {
   const hostname = process.env.HOSTNAME;
-  if (hostname && hostname.length >= 12 && String(row.Id || '').startsWith(hostname)) throw new Error('Контейнер управления нельзя изменить из его собственной сессии');
+  if (hostname && hostname.length >= 12 && String(row.Id || '').startsWith(hostname)) throw new Error('The control container cannot be modified from its own session');
 }
 
 export async function listContainers() {
@@ -61,8 +61,8 @@ export async function recreateContainer(id: string, patch: RecreatePatch) {
   const old = await request('GET', `${containerPath(id)}/json`);
   assertNotSelf(old);
   const name = String(old.Name || '').replace(/^\//, '');
-  if (!name || name === process.env.HOSTNAME || old.Id === process.env.HOSTNAME) throw new Error('Этот контейнер нельзя пересоздать отсюда');
-  if (old.HostConfig?.AutoRemove) throw new Error('Контейнер с AutoRemove нельзя безопасно пересоздать');
+  if (!name || name === process.env.HOSTNAME || old.Id === process.env.HOSTNAME) throw new Error('This container cannot be recreated from here');
+  if (old.HostConfig?.AutoRemove) throw new Error('A container with AutoRemove cannot be safely recreated');
   const config: any = pick(old.Config || {}, configKeys);
   const host: any = pick(old.HostConfig || {}, hostKeys);
   if (patch.image) config.Image = patch.image;
@@ -87,7 +87,7 @@ export async function recreateContainer(id: string, patch: RecreatePatch) {
     const aliases = primaryNetwork ? (oldNetworks[primaryNetwork]?.Aliases || []).filter((alias: string) => alias !== old.Id?.slice(0, 12)) : [];
     const networking = primaryNetwork ? { EndpointsConfig: { [primaryNetwork]: { Aliases: aliases } } } : undefined;
     const created = await request('POST', `/containers/create?name=${encodeURIComponent(name)}`, { ...config, HostConfig: host, NetworkingConfig: networking });
-    if (typeof created.Id !== 'string') throw new Error('Docker не вернул ID нового контейнера');
+    if (typeof created.Id !== 'string') throw new Error('Docker did not return the ID of the new container');
     replacement = created.Id;
     for (const [network, settings] of Object.entries(oldNetworks) as [string, any][]) {
       if (network === primaryNetwork) continue;

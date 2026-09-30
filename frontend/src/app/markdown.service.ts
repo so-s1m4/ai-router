@@ -66,7 +66,7 @@ export class MarkdownService {
           return `<div class="code-block">
   <div class="code-header">
     <span class="code-lang">${safeLang}</span>
-    <button type="button" class="copy-code-btn" aria-label="Скопировать код" title="Скопировать код">
+    <button type="button" class="copy-code-btn" aria-label="Copy code" title="Copy code">
       <svg class="copy-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
         <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
@@ -74,7 +74,7 @@ export class MarkdownService {
       <svg class="check-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="20 6 9 17 4 12"/>
       </svg>
-      <span class="copy-label">Копировать</span>
+      <span class="copy-label">Copy</span>
     </button>
   </div>
   <pre><code class="hljs language-${safeLang}">${highlighted}</code></pre>

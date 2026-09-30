@@ -21,7 +21,7 @@ function tokenCounts(value: Json | undefined): TokenCounts | undefined {
 const activeSteering = new Map<string, (text: string) => Promise<void>>();
 export async function steerCodexJob(jobId: string, text: string) {
   const steer = activeSteering.get(jobId);
-  if (!steer) throw new RunnerError('Steering доступен только для активного Codex App Server turn', 'unavailable');
+  if (!steer) throw new RunnerError('Steering is only available for active Codex App Server turn', 'unavailable');
   await steer(text);
 }
 const processes = new Map<string, AppServerConnection>();
@@ -59,16 +59,16 @@ class AppServerConnection {
     this.child.stdout.on('data', data => this.consume(data.toString()));
     this.child.stderr.on('data', () => undefined);
     this.child.on('error', error => this.fail(new RunnerError(error.message, 'unavailable')));
-    this.child.on('close', code => this.fail(new RunnerError(`app-server завершился (${code ?? 1})`, 'unavailable')));
+    this.child.on('close', code => this.fail(new RunnerError(`app-server exited ( ${code ?? 1})`, 'unavailable')));
     this.initialized = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(0); this.close(); reject(new RunnerError('Инициализация App Server истекла', 'timeout')); }, Number(process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS || 30) * 1000);
+      const timer = setTimeout(() => { this.pending.delete(0); this.close(); reject(new RunnerError('App Server initialization timed out', 'timeout')); }, Number(process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS || 30) * 1000);
       this.pending.set(0, { resolve: () => { clearTimeout(timer); resolve(); }, reject: error => { clearTimeout(timer); reject(error); } });
       this.send({ method: 'initialize', id: 0, params: { clientInfo: { name: 'ai_router_runner', title: 'AI Router Runner', version: '0.2.0' } } });
     });
   }
 
   private send(message: Json) {
-    if (this.closed || !this.child.stdin.writable) throw new RunnerError('Соединение App Server закрыто', 'unavailable');
+    if (this.closed || !this.child.stdin.writable) throw new RunnerError('App Server connection closed', 'unavailable');
     this.child.stdin.write(JSON.stringify(message) + '\n');
   }
 
@@ -106,7 +106,7 @@ class AppServerConnection {
     await this.initialized;
     const id = this.nextId++;
     return new Promise<Json>((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new RunnerError(`${method}: время ожидания истекло`, 'timeout')); }, Number(process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS || 30) * 1000);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new RunnerError(`${method}: timed out`, 'timeout')); }, Number(process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS || 30) * 1000);
       this.pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
       try { this.send({ method, id, params }); } catch (error) { this.pending.delete(id); clearTimeout(timer); reject(error); }
     });
@@ -115,7 +115,7 @@ class AppServerConnection {
   private onNotification(handler: NotificationHandler) { this.notifications.add(handler); return () => this.notifications.delete(handler); }
 
   async ready() { await this.initialized; }
-  close() { this.child.kill('SIGTERM'); this.fail(new RunnerError('App Server остановлен', 'unavailable')); }
+  close() { this.child.kill('SIGTERM'); this.fail(new RunnerError('App Server has stopped', 'unavailable')); }
 
   retire() { this.retired = true; if (!this.activeRuns) this.close(); }
 
@@ -140,13 +140,13 @@ class AppServerConnection {
       });
       threadId = String(started.thread?.id || '');
     }
-    if (!threadId) throw new RunnerError('App Server не вернул thread', 'unavailable');
+    if (!threadId) throw new RunnerError('App Server did not return thread', 'unavailable');
     this.threads.set(job.taskId, threadId);
     // Thread totals include previous requests; subtract the pre-turn snapshot.
     // A newly resumed process may learn that baseline from its first update.
     let tokenBaseline = this.threadTokens.get(threadId);
     if (!cached || threadId !== cached) tokenBaseline = Object.fromEntries(tokenFields.map(key => [key, 0])) as TokenCounts;
-    emit({ type: 'checkpoint', message: 'Используется сохранённый App Server thread', data: { threadId } });
+    emit({ type: 'checkpoint', message: 'The saved App Server thread is used', data: { threadId } });
     let turnId = '';
     let text = '';
     let failure = '';
@@ -166,7 +166,7 @@ class AppServerConnection {
       String(info?.codexErrorInfo?.type || info?.codexErrorInfo?.code || '').includes('UsageLimit') || isQuotaError(message) ? 'rate_limit' : 'failed';
     const handle = (value: Json) => {
       const params = value.params || {};
-      if (value.method === '__closed') { finish(new RunnerError(String(params.error || 'App Server закрыт'), 'unavailable')); return; }
+      if (value.method === '__closed') { finish(new RunnerError(String(params.error || 'App Server is closed'), 'unavailable')); return; }
       if (params.threadId && params.threadId !== threadId) return;
       if (!turnId) { queued.push(value); return; }
       if (params.turnId && params.turnId !== turnId) return;
@@ -182,11 +182,11 @@ class AppServerConnection {
       } else if (value.method === 'item/agentMessage/delta' && typeof (params.delta ?? params.text) === 'string') {
         const delta = String(params.delta ?? params.text); text += delta; emit({ type: 'delta', text: delta });
       } else if (value.method === 'item/started' && ['commandExecution', 'command_execution', 'fileChange', 'file_change'].includes(String(params.item?.type))) {
-        emit({ type: 'tool', message: 'Инструмент', data: { type: params.item.type } });
+        emit({ type: 'tool', message: 'Tool', data: { type: params.item.type } });
       } else if (value.method === 'item/completed' && ['agentMessage', 'agent_message'].includes(String(params.item?.type)) && !text && typeof params.item.text === 'string') {
         text = params.item.text; emit({ type: 'delta', text });
       } else if (value.method === 'error') {
-        failure = String(params.error?.message || params.message || 'Провайдер завершил запрос с ошибкой');
+        failure = String(params.error?.message || params.message || 'The provider completed the request with an error');
         errorInfo = params.error;
       } else if (value.method === 'turn/completed' && (!params.turn?.id || params.turn.id === turnId)) {
         const status = String(params.turn?.status || 'failed');
@@ -200,15 +200,15 @@ class AppServerConnection {
     const remove = this.onNotification(handle);
     const abort = () => {
       if (turnId) void this.request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
-      finish(new RunnerError('Остановлено', 'canceled'));
+      finish(new RunnerError('Stopped', 'canceled'));
     };
     signal.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(() => {
       if (turnId) void this.request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
-      finish(new RunnerError('Время ожидания App Server истекло', 'timeout'));
+      finish(new RunnerError('App Server timed out', 'timeout'));
     }, cliTimeoutSeconds(job.mode) * 1000);
     try {
-      if (signal.aborted) throw new RunnerError('Остановлено', 'canceled');
+      if (signal.aborted) throw new RunnerError('Stopped', 'canceled');
       const turn = await this.request('turn/start', {
         threadId, input: [{ type: 'text', text: job.prompt }], cwd,
         approvalPolicy: 'never',
@@ -218,14 +218,14 @@ class AppServerConnection {
         serviceTierForTurn: job.fast ? 'fast' : 'default'
       });
       turnId = String(turn.turn?.id || '');
-      if (!turnId) throw new RunnerError('App Server не вернул turn', 'unavailable');
+      if (!turnId) throw new RunnerError('App Server did not return turn', 'unavailable');
       for (const value of queued.splice(0)) handle(value);
       if (!settled) {
         activeSteering.set(job.jobId, async text => {
-          if (settled || signal.aborted) throw new RunnerError('Задача уже завершена', 'unavailable');
+          if (settled || signal.aborted) throw new RunnerError('The task has already been completed', 'unavailable');
           await this.request('turn/steer', { threadId, expectedTurnId: turnId, input: [{ type: 'text', text }] });
         });
-        emit({ type: 'status', message: 'Можно отправить уточнение во время выполнения', data: { steeringAvailable: true } });
+        emit({ type: 'status', message: 'Can send refinement at runtime', data: { steeringAvailable: true } });
       }
       await completed;
     } finally {
@@ -234,7 +234,7 @@ class AppServerConnection {
       signal.removeEventListener('abort', abort);
       remove();
     }
-    if (!text.trim()) throw new RunnerError(failure || 'CLI не вернул ответ', errorCode(failure, errorInfo));
+    if (!text.trim()) throw new RunnerError(failure || 'CLI did not return a response', errorCode(failure, errorInfo));
     return { text, threadId };
   }
 }
@@ -263,7 +263,7 @@ async function currentConnection(home: string) {
 }
 
 export async function runCodexAppServer(job: Job, home: string, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string) {
-  if (!(await commandExists(codexBin))) throw new RunnerError('CLI не установлен', 'unavailable');
+  if (!(await commandExists(codexBin))) throw new RunnerError('CLI not installed', 'unavailable');
   const connection = await currentConnection(home);
   return connection.run(job, cwd, signal, emit, existingThreadId);
 }

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { AccountModel } from './cli.js';
 
 export function apiTextModels(data: unknown): AccountModel[] {
-  if (!Array.isArray(data)) throw new Error('OpenAI API вернул неверный каталог моделей');
+  if (!Array.isArray(data)) throw new Error('OpenAI API returned incorrect model directory');
   const ids = data.flatMap(row => typeof row?.id === 'string' ? [row.id] : []);
   // Codex uses Responses with text and tools; specialized media/legacy models are not task models.
   return [...new Set(ids)].filter(id => /^(gpt-\d|o[134](?:-|$)|codex-)/.test(id)
@@ -19,13 +19,13 @@ export async function fetchApiModels(apiKey: string, signal?: AbortSignal): Prom
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000)
     });
-  } catch { throw new Error('OpenAI API недоступен или время ожидания истекло'); }
+  } catch { throw new Error('OpenAI API is unavailable or timed out'); }
   if (!response.ok) {
     // Never forward provider bodies: they can contain fragments of credentials.
-    throw new Error(response.status === 401 ? 'OpenAI API: неверный или отозванный ключ'
-      : response.status === 403 ? 'OpenAI API: ключу запрещено чтение моделей'
-      : response.status === 429 ? 'OpenAI API: превышен лимит запросов'
-      : `OpenAI API: ошибка HTTP ${response.status}`);
+    throw new Error(response.status === 401 ? 'OpenAI API: invalid or revoked key'
+      : response.status === 403 ? 'OpenAI API: key is not allowed to read models'
+      : response.status === 429 ? 'OpenAI API: Request limit exceeded'
+      : `OpenAI API: HTTP error ${response.status}`);
   }
   const value = await response.json() as {data?:unknown};
   return apiTextModels(value.data);
@@ -37,14 +37,14 @@ export async function readApiKey(home: string): Promise<string | undefined> {
     return typeof auth.OPENAI_API_KEY === 'string' && auth.OPENAI_API_KEY ? auth.OPENAI_API_KEY : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw new Error('Не удалось прочитать авторизацию API на runner');
+    throw new Error('Failed to read API authorization on runner');
   }
 }
 
 export async function saveApiKey(home: string, apiKey: string): Promise<void> {
-  if (!/^sk-[A-Za-z0-9_-]{17,509}$/.test(apiKey)) throw new Error('Неверный формат API-ключа OpenAI');
+  if (!/^sk-[A-Za-z0-9_-]{17,509}$/.test(apiKey)) throw new Error('OpenAI API key format is incorrect');
   const models = await fetchApiModels(apiKey);
-  if (!models.length) throw new Error('У ключа нет текстовых моделей для задач Codex');
+  if (!models.length) throw new Error('The key does not have text models for Codex tasks');
   const dir = path.join(home,'.codex');
   await mkdir(dir,{recursive:true,mode:0o700});
   const tmp = path.join(dir,`auth-${randomUUID()}.tmp`);

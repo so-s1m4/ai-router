@@ -31,20 +31,20 @@ function base(input:z.infer<typeof request>){return path.join(root,input.project
 async function checkedBase(input:z.infer<typeof request>){
  const directory=base(input);
  const expected=path.join(await realpath(root),input.projectId?'projects':'workspaces',input.projectId||input.sessionId);
- if(await realpath(directory)!==expected)throw new Error('Рабочий каталог является ссылкой');
+ if(await realpath(directory)!==expected)throw new Error('The working directory is a link');
  return directory;
 }
 async function checked(input:z.infer<typeof fileRequest>){
  const parts=input.name.split('/');
- if(!parts.length||parts.some(part=>!allowed(part)))throw new Error('Недопустимый путь');
+ if(!parts.length||parts.some(part=>!allowed(part)))throw new Error('Invalid path');
  const directory=await checkedBase(input),target=path.resolve(directory,...parts);
- if(!(await workspaceFileFilter(directory))(input.name))throw new Error('Исходники и служебные файлы недоступны в разделе «Файлы»');
- if(!target.startsWith(directory+path.sep))throw new Error('Недопустимый путь');
+ if(!(await workspaceFileFilter(directory))(input.name))throw new Error('Sources and service files are not available in the “Files“ section');
+ if(!target.startsWith(directory+path.sep))throw new Error('Invalid path');
  const actual=await realpath(target),actualRoot=await realpath(directory);
- if(!actual.startsWith(actualRoot+path.sep))throw new Error('Файл вне рабочего каталога');
- if(actual!==path.join(actualRoot,...parts))throw new Error('Ссылки на файлы недоступны');
+ if(!actual.startsWith(actualRoot+path.sep))throw new Error('File outside the working directory');
+ if(actual!==path.join(actualRoot,...parts))throw new Error('File links not available');
  const info=await stat(actual);
- if(!info.isFile()||info.size>MAX_SIZE)throw new Error('Файл недоступен или больше 100 МБ');
+ if(!info.isFile()||info.size>MAX_SIZE)throw new Error('File is unavailable or larger than 100 MB');
  return {actual,size:info.size,modified:info.mtimeMs};
 }
 
@@ -125,11 +125,11 @@ export async function getGitSummary(directory: string): Promise<WorkspaceGitSumm
 export function attachSharedFiles(socket:Socket){
  socket.on('file:write',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=z.object({transferId:z.string().uuid(),projectId:z.string().uuid(),name:z.string().min(1).max(180),data:z.any()}).safeParse(raw);
-  if(!parsed.success)return ack?.({ok:false,error:'Неверный файл'});
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid file'});
   const {projectId,name,data}=parsed.data;
   const bytes=Buffer.isBuffer(data)?data:data instanceof Uint8Array?Buffer.from(data):null;
-  if(!bytes||!bytes.length||bytes.length>20*1024*1024)return ack?.({ok:false,error:'Файл пустой или больше 20 МБ'});
-  if(!allowed(name)||name.includes('/'))return ack?.({ok:false,error:'Недопустимое имя файла'});
+  if(!bytes||!bytes.length||bytes.length>20*1024*1024)return ack?.({ok:false,error:'The file is empty or larger than 20 MB'});
+  if(!allowed(name)||name.includes('/'))return ack?.({ok:false,error:'Invalid file name'});
   try{
    const scope={sessionId:projectId,projectId};
    await mkdir(base(scope),{recursive:true,mode:0o700});
@@ -143,11 +143,11 @@ export function attachSharedFiles(socket:Socket){
     try{await handle.writeFile(bytes);}finally{await handle.close();}
     return ack?.({ok:true,name:filename,size:bytes.length});
    }
-   throw new Error('Слишком много файлов с таким именем');
-  }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось сохранить файл'});}
+   throw new Error('There are too many files with the same name');
+  }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Failed to save file'});}
  });
  socket.on('file:list',async(raw:unknown,ack?:(value:unknown)=>void)=>{
-  const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверная задача'});
+  const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Wrong task'});
   const files:{name:string;size:number;modified:string}[]=[];
   let visible:(name:string)=>boolean;
   const walk=async(dir:string,prefix:string,depth:number):Promise<void>=>{
@@ -161,36 +161,36 @@ export function attachSharedFiles(socket:Socket){
     if(files.length>=500)break;
    }
   };
-  try{const directory=await checkedBase(parsed.data);visible=await workspaceFileFilter(directory);await walk(directory,'',0);ack?.({ok:true,files});}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')ack?.({ok:true,files:[]});else ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось получить файлы'});}
+  try{const directory=await checkedBase(parsed.data);visible=await workspaceFileFilter(directory);await walk(directory,'',0);ack?.({ok:true,files});}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')ack?.({ok:true,files:[]});else ack?.({ok:false,error:error instanceof Error?error.message:'Failed to receive files'});}
  });
  socket.on('file:delete',async(raw:unknown,ack?:(value:unknown)=>void)=>{
-  const parsed=fileRequest.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверный файл'});
+  const parsed=fileRequest.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Invalid file'});
   try{const file=await checked(parsed.data);await unlink(file.actual);ack?.({ok:true});}
-  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось удалить файл'});}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Failed to delete file'});}
  });
  socket.on('file:info',async(raw:unknown,ack?:(value:unknown)=>void)=>{
-  const parsed=fileRequest.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверный файл'});
-  try{const file=await checked(parsed.data);ack?.({ok:true,size:file.size,modified:file.modified});}catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Файл недоступен'});}
+  const parsed=fileRequest.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Invalid file'});
+  try{const file=await checked(parsed.data);ack?.({ok:true,size:file.size,modified:file.modified});}catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'File not available'});}
  });
  socket.on('file:chunk',async(raw:unknown,ack?:(value:unknown)=>void)=>{
   const parsed=fileRequest.extend({offset:z.number().int().nonnegative(),modified:z.number()}).safeParse(raw);
-  if(!parsed.success)return ack?.({ok:false,error:'Неверный запрос'});
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid request'});
   try{
    const file=await checked(parsed.data);
-   if(file.modified!==parsed.data.modified||parsed.data.offset>file.size)throw new Error('Файл изменился после создания ссылки');
+   if(file.modified!==parsed.data.modified||parsed.data.offset>file.size)throw new Error('The file has changed since the link was created');
    const handle=await open(file.actual,'r');
    try{const buffer=Buffer.allocUnsafe(Math.min(CHUNK,file.size-parsed.data.offset));const {bytesRead}=await handle.read(buffer,0,buffer.length,parsed.data.offset);ack?.({ok:true,data:buffer.subarray(0,bytesRead)});}
    finally{await handle.close();}
-  }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось прочитать файл'});}
+  }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Failed to read file'});}
  });
  socket.on('workspace:git-summary',async(raw:unknown,ack?:(value:unknown)=>void)=>{
-  const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Неверная задача'});
+  const parsed=request.safeParse(raw);if(!parsed.success)return ack?.({ok:false,error:'Wrong task'});
   try{
    const directory=await checkedBase(parsed.data);
    const summary=await getGitSummary(directory);
    ack?.({ok:true,summary});
   }catch(error){
-   ack?.({ok:false,error:error instanceof Error?error.message:'Каталог недоступен'});
+   ack?.({ok:false,error:error instanceof Error?error.message:'Catalog unavailable'});
   }
  });
 }

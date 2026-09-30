@@ -9,15 +9,15 @@ export interface Message { id: string; role: 'user' | 'assistant'; text: string;
 export interface ChatSession { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[]; projectId?: string; runnerId?: string; sharedAccessId?: string; }
 
 export const DEFAULT_CODEX_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Codex' }
+  { id: 'default', label: 'Codex default' }
 ];
 
 export const DEFAULT_GEMINI_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию Gemini' }
+  { id: 'default', label: 'Gemini default' }
 ];
 
 export const DEFAULT_CHATGPT_MODELS: Model[] = [
-  { id: 'default', label: 'По умолчанию ChatGPT' }
+  { id: 'default', label: 'ChatGPT default' }
 ];
 
 function parseCustomModels(raw: string | undefined): Model[] {
@@ -43,7 +43,7 @@ export function resolveAccountModels(provider: ProviderId, reportedModels?: Mode
   const catalog = modelCatalog[provider] || [];
   if (!reportedModels) return catalog;
   const map = new Map<string, Model>();
-  map.set('default', catalog.find(m => m.id === 'default') || { id: 'default', label: 'По умолчанию аккаунта' });
+  map.set('default', catalog.find(m => m.id === 'default') || { id: 'default', label: 'Account default' });
   for (const m of reportedModels) map.set(m.id, m);
   return [...map.values()];
 }

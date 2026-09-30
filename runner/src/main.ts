@@ -46,7 +46,7 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
   ack?.({ok:true});
   try{
    checkpoint.update({},true);
-   if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint задачи создан',data:{taskId:job.taskId,status:'running'}});
+   if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Task checkpoint created',data:{taskId:job.taskId,status:'running'}});
    const text=await execute(job,controller.signal,e=>{
     if(e.type==='delta'&&e.text){partial=(partial+e.text).slice(-12000);checkpoint.update({partialText:partial,lastEvent:'delta'});}
     else if(e.type==='tool')checkpoint.update({lastEvent:'tool'},true);
@@ -56,41 +56,41 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
    });
    checkpoint.update({status:'completed',partialText:text,lastEvent:'completed'},true);
    await checkpoint.flush();
-   if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint задачи обновлён',data:{taskId:job.taskId,status:'completed'}});
+   if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Task checkpoint updated',data:{taskId:job.taskId,status:'completed'}});
    if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:true,text});
   }catch(e){
    const code=e instanceof RunnerError?e.code:'failed';
-   checkpoint.update({status:code==='rate_limit'?'handoff_pending':'failed',partialText:partial,error:e instanceof Error?e.message:'Ошибка',handoffReason:code==='rate_limit'?'quota':undefined,lastEvent:'error'},true);
+   checkpoint.update({status:code==='rate_limit'?'handoff_pending':'failed',partialText:partial,error:e instanceof Error?e.message:'Error',handoffReason:code==='rate_limit'?'quota':undefined,lastEvent:'error'},true);
    try{await checkpoint.flush();}catch(error){console.error('Checkpoint write failed:',error);}
-   if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint сохранён для продолжения',data:{taskId:job.taskId,status:code==='rate_limit'?'handoff_pending':'failed'}});
-   if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:false,error:e instanceof Error?e.message:'Ошибка',code});
+   if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint saved for continuation',data:{taskId:job.taskId,status:code==='rate_limit'?'handoff_pending':'failed'}});
+   if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:false,error:e instanceof Error?e.message:'Error',code});
   }finally{active.delete(job.jobId);steeringCheckpoints.delete(job.jobId);}
  });
  socket.on('job:steer',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   const parsed=z.object({jobId:z.string().uuid(),text:z.string().trim().min(1).max(16000)}).strict().safeParse(raw);
-  if(!parsed.success)return ack?.({ok:false,error:'Неверное уточнение'});
-  if(!active.has(parsed.data.jobId))return ack?.({ok:false,error:'Задача уже завершена'});
+  if(!parsed.success)return ack?.({ok:false,error:'Incorrect clarification'});
+  if(!active.has(parsed.data.jobId))return ack?.({ok:false,error:'The task has already been completed'});
   try{await steerCodexJob(parsed.data.jobId,parsed.data.text);
    const checkpoint=steeringCheckpoints.get(parsed.data.jobId);
    if(checkpoint){checkpoint.prompt+='\n\nUser steering:\n'+parsed.data.text;checkpoint.writer.update({prompt:checkpoint.prompt},true);}
    ack?.({ok:true});}
-  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось передать уточнение'});}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Failed to send clarification'});}
  });
  socket.on('job:cancel',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid()}).safeParse(raw);if(p.success)active.get(p.data.jobId)?.abort();});
  const accounts=new Map<string,{provider:ProviderId;authType?:'api_key'}>();
- const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{if(accounts.get(accountId)?.authType==='api_key'&&!await readApiKey(home))throw new Error('Подключите API-ключ OpenAI');const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Статус не получен'});}};
+ const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{if(accounts.get(accountId)?.authType==='api_key'&&!await readApiKey(home))throw new Error('Connect OpenAI API key');const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Status not received'});}};
  const refreshAll=()=>{for(const [accountId,account] of accounts)void refresh(accountId,account.provider);};
  socket.on('accounts:list',async(raw:unknown)=>{const list=z.array(z.object({id:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),authType:z.literal('api_key').optional()})).safeParse(raw);if(!list.success)return;accounts.clear();for(const account of list.data)accounts.set(account.id,{provider:account.provider,authType:account.authType});const accountsDir=path.join(root,'accounts');try{for(const entry of await readdir(accountsDir,{withFileTypes:true})){if(!/^[a-f0-9-]{36}$/.test(entry.name)||accounts.has(entry.name))continue;await rm(path.join(accountsDir,entry.name),{recursive:true,force:true});}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')console.error('Account cleanup failed:',error);}refreshAll();});
  socket.on('account:openai-key',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   const parsed=z.object({accountId:z.string().uuid(),apiKey:z.string().min(20).max(512)}).strict().safeParse(raw);
-  if(!parsed.success)return ack?.({ok:false,error:'Неверные данные ключа'});
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid key data'});
   const account=accounts.get(parsed.data.accountId);
-  if(account?.provider!=='codex'||account.authType!=='api_key')return ack?.({ok:false,error:'API-подключение не назначено этому runner'});
+  if(account?.provider!=='codex'||account.authType!=='api_key')return ack?.({ok:false,error:'API connection is not assigned to this runner'});
   const home=path.join(root,'accounts',parsed.data.accountId,'home');
   try{await saveApiKey(home,parsed.data.apiKey);ack?.({ok:true});void refresh(parsed.data.accountId,'codex');}
-  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Не удалось сохранить ключ'});}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Failed to save key'});}
  });
- socket.on('account:chatgpt-session',async(raw:unknown,ack?:(r:unknown)=>void)=>{const p=z.object({accountId:z.string().uuid(),sessionToken:z.string().optional(),cookies:z.array(z.any()).optional()}).safeParse(raw);if(!p.success)return ack?.({ok:false,error:'Неверные данные сессии'});const home=path.join(root,'accounts',p.data.accountId,'home');try{await saveChatGPTSession(home,{sessionToken:p.data.sessionToken,cookies:p.data.cookies});void refresh(p.data.accountId,'chatgpt');ack?.({ok:true});}catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Ошибка сохранения'});}});
+ socket.on('account:chatgpt-session',async(raw:unknown,ack?:(r:unknown)=>void)=>{const p=z.object({accountId:z.string().uuid(),sessionToken:z.string().optional(),cookies:z.array(z.any()).optional()}).safeParse(raw);if(!p.success)return ack?.({ok:false,error:'Invalid session data'});const home=path.join(root,'accounts',p.data.accountId,'home');try{await saveChatGPTSession(home,{sessionToken:p.data.sessionToken,cookies:p.data.cookies});void refresh(p.data.accountId,'chatgpt');ack?.({ok:true});}catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Save error'});}});
  const interval=setInterval(refreshAll,Number(process.env.USAGE_REFRESH_SECONDS||60)*1000);interval.unref();
  socket.on('disconnect',()=>accounts.clear());
 }

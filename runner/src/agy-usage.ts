@@ -20,7 +20,7 @@ export function parseAgyUsage(output: string): AgyLimits | null {
 }
 
 export async function readAgyUsage(command: string, home: string, env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<AgyLimits | null> {
-  if (signal.aborted) throw new Error('Проверка лимита отменена');
+  if (signal.aborted) throw new Error('Limit check canceled');
   return new Promise((resolve, reject) => {
     const child = spawn(command, ['-p', '/usage', '--output-format', 'text'], { env: { ...env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '', error = '', settled = false;
@@ -32,12 +32,12 @@ export async function readAgyUsage(command: string, home: string, env: NodeJS.Pr
       if (failure) reject(failure);
       else resolve(parseAgyUsage(output));
     };
-    const abort = () => { child.kill('SIGTERM'); finish(new Error('Проверка лимита отменена')); };
-    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new Error('Проверка лимита Gemini превысила время ожидания')); }, 20_000);
+    const abort = () => { child.kill('SIGTERM'); finish(new Error('Limit check canceled')); };
+    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new Error('Gemini limit check timed out')); }, 20_000);
     child.stdout.on('data', (part: Buffer) => { output += part.toString(); if (output.length > 64_000) abort(); });
     child.stderr.on('data', (part: Buffer) => { error = (error + part.toString()).slice(-2_000); });
     child.on('error', err => finish(err));
-    child.on('close', code => code === 0 ? finish() : finish(new Error(error || `Antigravity CLI завершился: ${code}`)));
+    child.on('close', code => code === 0 ? finish() : finish(new Error(error || `Antigravity CLI exited: ${code}`)));
     signal.addEventListener('abort', abort, { once: true });
   });
 }

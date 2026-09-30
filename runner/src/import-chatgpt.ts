@@ -6,7 +6,7 @@ const root = path.resolve(process.env.RUNNER_DATA_DIR || '/runner-data');
 const accountId = process.argv[2];
 
 if (!accountId || !/^[a-zA-Z0-9_-]{1,80}$/.test(accountId)) {
-  console.error('Использование: node import-chatgpt.js <accountId> [sessionToken/cookiesJSON]');
+  console.error('Usage: node import-chatgpt.js <accountId> [sessionToken/cookiesJSON]');
   process.exit(1);
 }
 
@@ -21,7 +21,7 @@ async function readInput(): Promise<string> {
   });
 
   return new Promise((resolve) => {
-    rl.question('Введите __Secure-next-auth.session-token или JSON cookies от chatgpt.com:\n', (answer) => {
+    rl.question('Enter __Secure-next-auth.session-token or JSON cookies from chatgpt.com:\n', (answer) => {
       rl.close();
       resolve(answer.trim());
     });
@@ -31,7 +31,7 @@ async function readInput(): Promise<string> {
 async function main() {
   const input = await readInput();
   if (!input) {
-    console.error('Ошибка: пустой ввод');
+    console.error('Error: empty input');
     process.exit(1);
   }
 
@@ -57,7 +57,7 @@ async function main() {
   await writeFile(target + '.tmp', JSON.stringify(sessionData, null, 2), { mode: 0o600 });
   await rename(target + '.tmp', target);
 
-  console.log(`Сессия ChatGPT для аккаунта ${accountId} успешно сохранена в ${target}`);
+  console.log(`ChatGPT session for account ${accountId} successfully saved to ${target}`);
 }
 
 main().catch(err => {

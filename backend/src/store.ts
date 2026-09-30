@@ -37,7 +37,7 @@ export async function listSessions(userId: string): Promise<ChatSession[]> {
       if (!s || !Array.isArray(s.messages) || s.messages.length === 0) {
         return null;
       }
-      return s;
+      return normalizeSessionTitle(s);
     } catch {
       return null;
     }
@@ -61,12 +61,17 @@ export async function listSessions(userId: string): Promise<ChatSession[]> {
       return getMsgTime(b) - getMsgTime(a);
     });
 }
+// Keep the previous built-in placeholder compatible with the English interface.
+function normalizeSessionTitle(session: ChatSession): ChatSession {
+  if (session.title === '\u041d\u043e\u0432\u044b\u0439 \u0447\u0430\u0442') session.title = 'New chat';
+  return session;
+}
 export async function createSession(userId: string,projectId?:string): Promise<ChatSession> {
   await prepareUser(userId); const now = new Date().toISOString();
-  const session: ChatSession = {id:randomUUID(),title:'Новый чат',createdAt:now,updatedAt:now,messages:[],...(projectId?{projectId}: {})};
+  const session: ChatSession = {id:randomUUID(),title:'New chat',createdAt:now,updatedAt:now,messages:[],...(projectId?{projectId}: {})};
   await saveSession(userId,session); return session;
 }
-export async function getSession(userId: string, id: string): Promise<ChatSession | null> { try { return JSON.parse(await readFile(sessionFile(userId,id),'utf8')) as ChatSession; } catch { return null; } }
+export async function getSession(userId: string, id: string): Promise<ChatSession | null> { try { return normalizeSessionTitle(JSON.parse(await readFile(sessionFile(userId,id),'utf8')) as ChatSession); } catch { return null; } }
 export async function saveSession(userId: string, session: ChatSession) { const file=sessionFile(userId,session.id); await mkdir(path.dirname(file),{recursive:true,mode:0o700}); await writeFile(file+'.tmp',JSON.stringify(session,null,2),{mode:0o600}); await rename(file+'.tmp',file); }
 const blacklistFile = (userId: string) => path.join(userDir(userId), 'model-blacklist.json');
 export async function getUserModelBlacklist(userId: string): Promise<string[]> {

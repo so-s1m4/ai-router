@@ -65,7 +65,7 @@ describe('File selection and bulk deletion',()=>{
     expect(app.fileGroups()[0].files.map(f=>f.name)).toEqual(['b.txt']);
     expect(app.selectedLibraryFiles().size).toBe(1);
     expect(app.error()).toContain('b.txt: Runner unavailable');
-    expect(app.notice()).toContain('2 из 3');
+    expect(app.notice()).toContain('2 of 3');
     expect(app.deletingFile()).toBe('');
   });
 

@@ -15,7 +15,7 @@ export class ManagementPasswordGate {
   }
 
   challenge() {
-    if (Date.now() < this.blockedUntil) throw new Error('Слишком много попыток. Повторите позже.');
+    if (Date.now() < this.blockedUntil) throw new Error('Too many tries. Please try again later.');
     for (const [nonce, until] of this.challenges) if (until < Date.now()) this.challenges.delete(nonce);
     if (this.challenges.size >= 100) this.challenges.delete(this.challenges.keys().next().value!);
     const nonce = randomBytes(24).toString('base64url');

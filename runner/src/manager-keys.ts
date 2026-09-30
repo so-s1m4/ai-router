@@ -8,7 +8,7 @@ const dataRoot = process.env.MANAGER_DATA_DIR || '/manager-data';
 const keyRoot = path.join(dataRoot, 'keys');
 const agentSocket = process.env.SSH_AUTH_SOCK || '/ssh-agent/agent.sock';
 const privateAgentSocket = path.join(dataRoot, 'agent.sock');
-const keyId = (id: string) => { if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('Неверный ID ключа'); return path.join(keyRoot, id); };
+const keyId = (id: string) => { if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('Invalid key ID'); return path.join(keyRoot, id); };
 
 function command(bin: string, args: string[], timeoutMs = 20_000): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
@@ -79,15 +79,15 @@ export async function listKeys() {
 }
 
 export async function createKey(label: string) {
-  if (!label.trim() || label.length > 60 || /[\r\n]/.test(label)) throw new Error('Название ключа: 1–60 символов');
+  if (!label.trim() || label.length > 60 || /[\r\n]/.test(label)) throw new Error('Key name: 1–60 characters');
   const id = randomUUID(), file = keyId(id);
   await mkdir(keyRoot, { recursive: true, mode: 0o700 });
   const made = await command('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', label.trim(), '-f', file]);
-  if (made.code !== 0) throw new Error(made.output || 'Не удалось создать SSH-ключ');
+  if (made.code !== 0) throw new Error(made.output || 'Failed to create SSH key');
   await chmod(file, 0o600);
   await writeFile(file + '.name', label.trim(), { mode: 0o600 });
   const added = await command('ssh-add', [file]);
-  if (added.code !== 0) throw new Error(added.output || 'Не удалось загрузить ключ в SSH-agent');
+  if (added.code !== 0) throw new Error(added.output || 'Failed to load key into SSH agent');
   return (await listKeys()).find(key => key.id === id);
 }
 
@@ -100,5 +100,5 @@ export async function deleteKey(id: string) {
 
 export async function testGithub() {
   const result = await command('ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=accept-new', '-o', `UserKnownHostsFile=${path.join(dataRoot, 'known_hosts')}`, 'git@github.com'], 18_000);
-  return { connected: /successfully authenticated/i.test(result.output), message: result.output.trim().slice(-600) || `SSH завершился с кодом ${result.code}` };
+  return { connected: /successfully authenticated/i.test(result.output), message: result.output.trim().slice(-600) || `SSH exited with code ${result.code}` };
 }
