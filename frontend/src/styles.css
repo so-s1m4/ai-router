@@ -577,3 +577,7 @@ code, pre, kbd, samp, .mono {
 .code-lang { color: #b9caff; }
 .copy-code-btn { color: #b1bbcd; }
 .copy-code-btn:hover { color: #fff; background: #333c4b; }
+
+/* Keep scrolling inside the workspace when the on-screen keyboard opens. */
+html, body { height: 100%; overflow: hidden; }
+app-root { min-height: 0; }

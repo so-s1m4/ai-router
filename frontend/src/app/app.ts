@@ -315,9 +315,33 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   private isSmoothScrollingToBottom = false;
   private smoothScrollTimeout?: ReturnType<typeof setTimeout>;
   private lastScrollTop = 0;
+  private viewportRaf?: number;
   private onViewportResize = () => {
-    document.documentElement.style.setProperty('--app-height', `${window.visualViewport?.height || window.innerHeight}px`);
-    if (!this.userScrolledUp()) this.requestScrollToBottom();
+    if (this.viewportRaf !== undefined) return;
+    this.viewportRaf = requestAnimationFrame(() => {
+      this.viewportRaf = undefined;
+      const viewport = window.visualViewport;
+      // Pinch zoom keeps the layout intact; keyboard/browser chrome resize it.
+      if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+      const height = viewport?.height ?? window.innerHeight;
+      const root = document.documentElement;
+      root.style.setProperty('--app-height', height + 'px');
+      root.style.setProperty('--app-top', (viewport?.offsetTop ?? 0) + 'px');
+      const active = document.activeElement;
+      const editing = active instanceof HTMLElement &&
+        active.matches('input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"]');
+      root.classList.toggle('keyboard-open', editing && window.innerHeight - height > 150);
+      if (this.current()?.messages.length && !this.userScrolledUp() && active?.matches('.pill-textarea')) {
+        this.requestScrollToBottom();
+      }
+      if (editing) {
+        const bounds = active.getBoundingClientRect();
+        const top = viewport?.offsetTop ?? 0;
+        if (bounds.top < top || bounds.bottom > top + height) {
+          active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+        }
+      }
+    });
   };
 
   ngAfterViewInit() {
@@ -727,8 +751,12 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       }
       window.addEventListener('dragover', this.preventWindowDrop);
       window.addEventListener('drop', this.preventWindowDrop);
+      window.addEventListener('resize', this.onViewportResize);
+      document.addEventListener('focusin', this.onViewportResize);
+      document.addEventListener('focusout', this.onViewportResize);
       if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', this.onViewportResize);
+        window.visualViewport.addEventListener('scroll', this.onViewportResize);
       }
     }
     this.onViewportResize();
@@ -745,8 +773,16 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if(typeof window !== 'undefined'){
       window.removeEventListener('dragover', this.preventWindowDrop);
       window.removeEventListener('drop', this.preventWindowDrop);
+      window.removeEventListener('resize', this.onViewportResize);
+      document.removeEventListener('focusin', this.onViewportResize);
+      document.removeEventListener('focusout', this.onViewportResize);
+      if (this.viewportRaf !== undefined) cancelAnimationFrame(this.viewportRaf);
+      document.documentElement.classList.remove('keyboard-open');
+      document.documentElement.style.removeProperty('--app-height');
+      document.documentElement.style.removeProperty('--app-top');
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', this.onViewportResize);
+        window.visualViewport.removeEventListener('scroll', this.onViewportResize);
       }
     }
   }

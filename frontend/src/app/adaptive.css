@@ -247,3 +247,24 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .task-tree-file { flex-wrap: wrap; }
 .task-file-share-url { flex: 1 0 100%; min-width: 0; width: 100%; box-sizing: border-box; color: var(--text-main); background: var(--bg-app, #15181e); border: 1px solid var(--border-color, #303640); border-radius: 8px; padding: 10px; font-size: 12px; }
 @media (max-width: 640px) { .task-tree-actions { flex-wrap: wrap; justify-content: flex-end; } .task-tree-meta { min-width: 0; gap: 8px; padding-left: 0; } }
+
+/* Use the visible viewport for the workspace and its modal layers. */
+.auth-wrapper { height: 100%; min-height: 0; overflow-y: auto; }
+.auth-card { margin-block: auto; }
+@media (max-width: 820px) {
+  :host { position: fixed; top: var(--app-top, 0px); left: 0; width: 100%; min-height: 0; }
+  .auth-wrapper { display: flex; flex-direction: column; align-items: center; }
+  .auth-card { flex-shrink: 0; }
+  .hero-view { flex-shrink: 0; }
+  .project-dialog-backdrop, .chatgpt-modal-backdrop, .file-preview-overlay, .drawer-overlay {
+    top: var(--app-top, 0px); bottom: auto; height: var(--app-height, 100dvh);
+  }
+  .file-preview-dialog { height: 100%; max-height: 900px; }
+  :host-context(.keyboard-open) .mobile-bottom-nav { display: none; }
+  :host-context(.keyboard-open) .hero-view { justify-content: flex-start; padding: 16px; }
+  :host-context(.keyboard-open) .composer-floating-wrap { padding-bottom: 8px; }
+}
+
+@media (max-width: 820px) {
+  .sidebar { top: var(--app-top, 0px); height: var(--app-height, 100dvh); }
+}
