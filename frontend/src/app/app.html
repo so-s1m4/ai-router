@@ -350,6 +350,15 @@
               </div>
             </div>
 
+            @if(taskFiles().length){
+              <div class="file-selection-toolbar">
+                <label class="file-select-all"><input type="checkbox" [checked]="allTaskFilesSelected()" [indeterminate]="!allTaskFilesSelected() && someTaskFilesSelected()" (change)="selectAllFiles('task',$any($event.target).checked)" [disabled]="!!deletingFile() || filesLoading()">Выбрать все</label>
+                <span role="status">Выбрано: {{selectedTaskFiles().size}}</span>
+                <button class="btn btn-danger-outline btn-sm" (click)="deleteSelectedTaskFiles()" [disabled]="!selectedTaskFiles().size || !!deletingFile() || filesLoading()">{{deletingFile() ? 'Удаление…' : 'Удалить выбранные ('+selectedTaskFiles().size+')'}}</button>
+                @if(selectedTaskFiles().size){<button class="btn btn-outline btn-sm" (click)="selectedTaskFiles.set(emptyFileSelection())" [disabled]="!!deletingFile()">Снять выбор</button>}
+              </div>
+            }
+
             @if(taskFiles().length > 3){
               <div class="task-files-filter-bar">
                 <div class="task-files-filter-input-wrap">
@@ -410,7 +419,7 @@
                          role="treeitem"
                          [style.padding-left.px]="10 + node.depth * 20">
                       <div class="task-tree-main">
-                        <span class="task-tree-indent-spacer" aria-hidden="true"></span>
+                        <input class="file-select-checkbox" type="checkbox" [checked]="selectedTaskFiles().has(node.path)" (change)="toggleFileSelection('task',node.path,$any($event.target).checked)" [disabled]="!!deletingFile()" [attr.aria-label]="'Выбрать файл '+node.path">
                         <span class="task-tree-icon task-file-icon" aria-hidden="true">
                           <svg lucideFile [size]="15"></svg>
                         </span>
@@ -757,11 +766,19 @@
         <div class="section-hero"><div><span class="section-tag">РАБОЧИЕ ФАЙЛЫ</span><h2>Все файлы</h2><p>Файлы проектов и отдельных диалогов на ваших исполнителях.</p></div><button class="btn btn-outline" (click)="refreshLibrary()" [disabled]="libraryLoading()">Обновить</button></div>
         @if(error()){<div class="banner banner-error">{{error()}}</div>}@if(notice()){<div class="banner">{{notice()}}</div>}
         <div class="library-toolbar"><input type="search" placeholder="Поиск по имени файла…" aria-label="Поиск файлов" [ngModel]="libraryQuery()" (ngModelChange)="libraryQuery.set($event)"><select aria-label="Источник файлов" [ngModel]="librarySource()" (ngModelChange)="librarySource.set($event)"><option value="">Все проекты и чаты</option>@for(group of fileGroups();track group.kind+group.id){<option [value]="group.kind+':'+group.id">{{group.title}}</option>}</select></div>
+        @if(fileGroups().length){
+          <div class="file-selection-toolbar">
+            <label class="file-select-all"><input type="checkbox" [checked]="allLibraryFilesSelected()" [indeterminate]="!allLibraryFilesSelected() && someLibraryFilesSelected()" (change)="selectAllFiles('library',$any($event.target).checked)" [disabled]="!!deletingFile() || libraryLoading()">Выбрать все</label>
+            <span role="status">Выбрано: {{selectedLibraryFiles().size}}</span>
+            <button class="btn btn-danger-outline btn-sm" (click)="deleteSelectedLibraryFiles()" [disabled]="!selectedLibraryFiles().size || !!deletingFile() || libraryLoading()">{{deletingFile() ? 'Удаление…' : 'Удалить выбранные ('+selectedLibraryFiles().size+')'}}</button>
+            @if(selectedLibraryFiles().size){<button class="btn btn-outline btn-sm" (click)="selectedLibraryFiles.set(emptyFileSelection())" [disabled]="!!deletingFile()">Снять выбор</button>}
+          </div>
+        }
         @if(libraryLoading()){<p role="status">Загружаем список файлов…</p>}
         @else {@for(group of libraryGroups();track group.kind+group.id){
           <section class="library-group"><div class="library-group-title"><button class="btn-link" (click)="openFileSource(group)">{{group.title}}</button><span>{{group.kind==='projects'?'Проект':'Диалог'}} · {{group.files.length}} файлов</span></div>
           @if(group.error){<p class="library-source-error">{{group.error}}</p>}
-          @for(file of group.files;track file.name){<div class="library-file"><button class="library-file-name" (click)="previewFile(file.name,group.kind,group.id)"><svg lucideFile [size]="18"></svg><span>{{file.name}}</span></button><div class="library-file-meta"><span>{{formatFileSize(file.size)}}</span><time>{{file.modified | date:'dd.MM.yy HH:mm'}}</time></div><div class="library-file-actions"><button class="btn btn-outline btn-sm" (click)="previewFile(file.name,group.kind,group.id)">Открыть</button><button class="btn btn-outline btn-sm" (click)="libraryShare(group,file.name,true)">Скачать</button><button class="btn btn-outline btn-sm" (click)="libraryShare(group,file.name)">Ссылка</button><button class="btn btn-outline btn-sm" (click)="libraryDelete(group,file.name)" [disabled]="!!deletingFile()" aria-label="Удалить файл"><svg lucideTrash2 [size]="14"></svg></button></div></div>}
+          @for(file of group.files;track file.name){<div class="library-file"><input class="file-select-checkbox" type="checkbox" [checked]="selectedLibraryFiles().has(librarySelectionKey(group,file.name))" (change)="toggleFileSelection('library',librarySelectionKey(group,file.name),$any($event.target).checked)" [disabled]="!!deletingFile()" [attr.aria-label]="'Выбрать файл '+file.name+' из '+group.title"><button class="library-file-name" (click)="previewFile(file.name,group.kind,group.id)"><svg lucideFile [size]="18"></svg><span>{{file.name}}</span></button><div class="library-file-meta"><span>{{formatFileSize(file.size)}}</span><time>{{file.modified | date:'dd.MM.yy HH:mm'}}</time></div><div class="library-file-actions"><button class="btn btn-outline btn-sm" (click)="previewFile(file.name,group.kind,group.id)">Открыть</button><button class="btn btn-outline btn-sm" (click)="libraryShare(group,file.name,true)">Скачать</button><button class="btn btn-outline btn-sm" (click)="libraryShare(group,file.name)">Ссылка</button><button class="btn btn-outline btn-sm" (click)="libraryDelete(group,file.name)" [disabled]="!!deletingFile()" aria-label="Удалить файл"><svg lucideTrash2 [size]="14"></svg></button></div></div>}
           </section>
         }@empty{<div class="library-empty"><svg lucideFolderOpen [size]="32"></svg><h3>Файлы не найдены</h3><p>Создайте файлы в задаче или загрузите их в проект.</p></div>}}
       </div>

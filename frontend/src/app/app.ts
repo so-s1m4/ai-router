@@ -104,6 +104,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   constructor(private sanitizer:DomSanitizer){}
   steeringAvailable=signal(false); steeringSending=signal(false);
   fileGroups=signal<FileGroup[]>([]); libraryLoading=signal(false); libraryQuery=signal(''); librarySource=signal('');
+  selectedLibraryFiles=signal<Set<string>>(new Set());
+  librarySelectionKey(group:Pick<FileGroup,'kind'|'id'>,name:string){return JSON.stringify([group.kind,group.id,name]);}
   libraryGroups=computed(()=>this.fileGroups().filter(g=>!this.librarySource()||g.kind+':'+g.id===this.librarySource()).map(g=>({...g,files:g.files.filter(f=>f.name.toLowerCase().includes(this.libraryQuery().trim().toLowerCase()))})).filter(g=>g.files.length||g.error));
   previewOpen=signal(false); previewLoading=signal(false); previewName=signal(''); previewError=signal(''); previewText=signal(''); previewKind=signal(''); previewUrl=signal(''); previewPdf=signal<SafeResourceUrl|null>(null);
   private previewRequest=0;
@@ -124,7 +126,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   telegram=signal<{configured:boolean;connected:boolean;name:string;enabled:boolean;lastError:string}|null>(null);
   telegramLink=signal(''); telegramBusy=signal(false);
   browserNotifications=signal(false);
-  async refreshLibrary(){if(this.libraryLoading())return;this.libraryLoading.set(true);this.error.set('');try{this.fileGroups.set((await this.api<{groups:FileGroup[]}>('/files')).groups);}catch(e){this.error.set((e as Error).message);}finally{this.libraryLoading.set(false);}}
+  async refreshLibrary(){if(this.libraryLoading())return;this.libraryLoading.set(true);this.error.set('');try{this.fileGroups.set((await this.api<{groups:FileGroup[]}>('/files')).groups);const keys=new Set(this.fileGroups().flatMap(g=>g.files.map(f=>this.librarySelectionKey(g,f.name))));this.selectedLibraryFiles.update(selected=>new Set([...selected].filter(key=>keys.has(key))));}catch(e){this.error.set((e as Error).message);}finally{this.libraryLoading.set(false);}}
   async previewFile(name:string,kind:'projects'|'sessions'='sessions',id=this.current()?.id){
     if(!id)return;this.closePreview();this.previewReturnFocus=document.activeElement as HTMLElement;const request=++this.previewRequest;this.previewOpen.set(true);this.previewLoading.set(true);this.previewName.set(name);requestAnimationFrame(()=>document.querySelector<HTMLElement>('.file-preview-dialog')?.focus());
     try{
@@ -141,7 +143,54 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   closePreview(){this.previewRequest++;if(this.previewUrl())URL.revokeObjectURL(this.previewUrl());this.previewOpen.set(false);this.previewUrl.set('');this.previewPdf.set(null);this.previewText.set('');this.previewError.set('');this.previewKind.set('');this.previewReturnFocus?.focus();this.previewReturnFocus=undefined;}
   async libraryShare(group:FileGroup,name:string,download=false){try{const result=await this.api<{url:string}>('/workspaces/'+group.kind+'/'+group.id+'/share',{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,location.origin).href;if(download){const a=document.createElement('a');a.href=url;a.download=name.split('/').pop()||name;a.click();}else{await this.copy(url,'library-share');this.notice.set('Ссылка скопирована. Действует 7 дней.');}}catch(e){this.error.set((e as Error).message);}}
-  async libraryDelete(group:FileGroup,name:string){if(this.deletingFile()||!confirm('Удалить файл «'+name+'»?'))return;this.deletingFile.set(group.id+':'+name);try{await this.api('/workspaces/'+group.kind+'/'+group.id+'/files',{method:'DELETE',body:JSON.stringify({name})});this.fileGroups.update(groups=>groups.map(g=>g.kind===group.kind&&g.id===group.id?{...g,files:g.files.filter(f=>f.name!==name)}:g));}catch(e){this.error.set((e as Error).message);}finally{this.deletingFile.set('');}}
+  libraryVisibleKeys=computed(()=>this.libraryGroups().flatMap(g=>g.files.map(f=>this.librarySelectionKey(g,f.name))));
+  allLibraryFilesSelected=computed(()=>this.libraryVisibleKeys().length>0&&this.libraryVisibleKeys().every(key=>this.selectedLibraryFiles().has(key)));
+  someLibraryFilesSelected=computed(()=>this.libraryVisibleKeys().some(key=>this.selectedLibraryFiles().has(key)));
+  emptyFileSelection(){return new Set<string>();}
+  toggleFileSelection(scope:'library'|'task',key:string,checked:boolean){
+    if(this.deletingFile())return;
+    const selection=scope==='library'?this.selectedLibraryFiles:this.selectedTaskFiles;
+    selection.update(current=>{const next=new Set(current);if(checked)next.add(key);else next.delete(key);return next;});
+  }
+  selectAllFiles(scope:'library'|'task',checked:boolean){
+    if(this.deletingFile())return;
+    const keys=scope==='library'?this.libraryVisibleKeys():this.filteredTaskFileNames();
+    const selection=scope==='library'?this.selectedLibraryFiles:this.selectedTaskFiles;
+    selection.update(current=>{const next=new Set(current);for(const key of keys){if(checked)next.add(key);else next.delete(key);}return next;});
+  }
+  async libraryDelete(group:FileGroup,name:string){await this.deleteFiles([{kind:group.kind,id:group.id,name}]);}
+  async deleteSelectedLibraryFiles(){
+    const selected=this.selectedLibraryFiles();
+    const targets=this.fileGroups().flatMap(g=>g.files.filter(f=>selected.has(this.librarySelectionKey(g,f.name))).map(f=>({kind:g.kind,id:g.id,name:f.name})));
+    await this.deleteFiles(targets);
+  }
+  private async deleteFiles(targets:{kind:'projects'|'sessions';id:string;name:string}[]){
+    if(!targets.length||this.deletingFile())return;
+    const message=targets.length===1?'Удалить файл «'+targets[0].name+'»?':'Удалить выбранные файлы ('+targets.length+')?';
+    if(!confirm(message+' Файлы и ссылки на них станут недоступны.'))return;
+    this.deletingFile.set('bulk');this.error.set('');this.notice.set('');
+    let deleted=0;const failures:string[]=[];
+    try{
+      for(const target of targets){
+        try{
+          await this.api('/workspaces/'+target.kind+'/'+encodeURIComponent(target.id)+'/files',{method:'DELETE',body:JSON.stringify({name:target.name})});
+          deleted++;
+          const session=this.current();
+          const projectId=target.kind==='projects'?target.id:this.sessions().find(s=>s.id===target.id)?.projectId||(session?.id===target.id?session.projectId:undefined);
+          const matches=(kind:string,id:string):boolean=>projectId?kind==='projects'?id===projectId:this.sessions().some(s=>s.id===id&&s.projectId===projectId)||(session?.id===id&&session?.projectId===projectId):kind===target.kind&&id===target.id;
+          this.fileGroups.update(groups=>groups.map(g=>matches(g.kind,g.id)?{...g,files:g.files.filter(f=>f.name!==target.name)}:g));
+          this.selectedLibraryFiles.update(selected=>new Set([...selected].filter(key=>{const [kind,id,name]=JSON.parse(key);return name!==target.name||!matches(kind,id);})));
+          if(session&&matches('sessions',session.id)){
+            this.taskFiles.update(files=>files.filter(f=>f.name!==target.name));
+            this.selectedTaskFiles.update(selected=>{const next=new Set(selected);next.delete(target.name);return next;});
+            this.sharedFileLinks.update(links=>{const next={...links};delete next[target.name];return next;});
+          }
+        }catch(e){failures.push(target.name+': '+(e as Error).message);}
+      }
+      this.notice.set('Удалено файлов: '+deleted+' из '+targets.length);
+      if(failures.length)this.error.set('Не удалось удалить: '+failures.join('; '));
+    }finally{this.deletingFile.set('');}
+  }
   openFileSource(group:FileGroup){if(group.kind==='projects'){this.selectedProjectId.set(group.id);this.selectProject(group.id);}else void this.openSession(group.id);}
   async refreshTelegram(){try{this.telegram.set(await this.api('/notifications/telegram'));}catch(e){this.error.set((e as Error).message);}}
   async connectTelegram(){this.telegramBusy.set(true);this.error.set('');try{this.telegramLink.set((await this.api<{url:string}>('/notifications/telegram/connect',{method:'POST',body:'{}'})).url);}catch(e){this.error.set((e as Error).message);}finally{this.telegramBusy.set(false);}}
@@ -225,6 +274,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
   copiedId=signal<string>('');
+  selectedTaskFiles=signal<Set<string>>(new Set());
+  filteredTaskFileNames=computed(()=>this.taskFiles().filter(f=>f.name.toLowerCase().includes(this.filesFilter().trim().toLowerCase())).map(f=>f.name));
+  allTaskFilesSelected=computed(()=>this.filteredTaskFileNames().length>0&&this.filteredTaskFileNames().every(name=>this.selectedTaskFiles().has(name)));
+  someTaskFilesSelected=computed(()=>this.filteredTaskFileNames().some(name=>this.selectedTaskFiles().has(name)));
   taskFiles=signal<{name:string;size:number;modified:string}[]>([]);
   sharedFileLinks=signal<Record<string,string>>({});
   deletingFile=signal('');
@@ -777,6 +830,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.mobileMenu.set(false);
     this.current.set(null);
     this.taskFiles.set([]);
+    this.selectedTaskFiles.set(new Set());
     this.sharedFileLinks.set({});
     this.collapsedDirs.set(new Set());
     this.filesFilter.set('');
@@ -794,6 +848,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       const s=await this.api<ChatSession>('/sessions/'+id);
       this.current.set(s);
       this.taskFiles.set([]);
+      this.selectedTaskFiles.set(new Set());
       this.sharedFileLinks.set({});
       this.collapsedDirs.set(new Set());
       this.filesFilter.set('');
@@ -806,21 +861,10 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       this.ensureChatScrollAttached(true);
     }catch(e){this.error.set((e as Error).message);}
   }
-  async refreshTaskFiles(){const id=this.current()?.id;if(!id)return;this.filesLoading.set(true);try{const result=await this.api<{files:{name:string;size:number;modified:string}[]}>(`/sessions/${id}/files`);if(this.current()?.id===id)this.taskFiles.set(result.files);}catch(e){if(this.filesOpen())this.error.set((e as Error).message);}finally{this.filesLoading.set(false);}}
+  async refreshTaskFiles(){const id=this.current()?.id;if(!id)return;this.filesLoading.set(true);try{const result=await this.api<{files:{name:string;size:number;modified:string}[]}>(`/sessions/${id}/files`);if(this.current()?.id===id){this.taskFiles.set(result.files);const names=new Set(result.files.map(f=>f.name));this.selectedTaskFiles.update(selected=>new Set([...selected].filter(name=>names.has(name))));}}catch(e){if(this.filesOpen())this.error.set((e as Error).message);}finally{this.filesLoading.set(false);}}
   toggleTaskFiles(){this.filesOpen.update(open=>!open);if(this.filesOpen())void this.refreshTaskFiles();}
-  async deleteTaskFile(name:string){
-    const id=this.current()?.id;
-    if(!id || this.deletingFile() || !confirm('Удалить «'+name+'» из проекта? Файл и ссылки на него станут недоступны.'))return;
-    this.deletingFile.set(name);
-    try{
-      await this.api('/sessions/'+id+'/files',{method:'DELETE',body:JSON.stringify({name})});
-      if(this.current()?.id!==id)return;
-      this.taskFiles.update(files=>files.filter(file=>file.name!==name));
-      this.sharedFileLinks.update(links=>{const next={...links};delete next[name];return next;});
-      this.notice.set('Файл «'+name+'» удалён');
-    }catch(e){this.error.set((e as Error).message);}
-    finally{this.deletingFile.set('');}
-  }
+  async deleteTaskFile(name:string){const id=this.current()?.id;if(id)await this.deleteFiles([{kind:'sessions',id,name}]);}
+  async deleteSelectedTaskFiles(){const id=this.current()?.id;if(id)await this.deleteFiles([...this.selectedTaskFiles()].map(name=>({kind:'sessions' as const,id,name})));}
   async shareTaskFile(name:string,download=false){const id=this.current()?.id;if(!id)return;try{const result=await this.api<{url:string;expiresAt:string}>(`/sessions/${id}/files/share`,{method:'POST',body:JSON.stringify({name})});const url=new URL(result.url,window.location.origin).href;if(this.current()?.id!==id)return;this.sharedFileLinks.update(links=>({...links,[name]:url}));if(download){const anchor=document.createElement('a');anchor.href=url;anchor.download=name.split('/').pop()||name;document.body.appendChild(anchor);anchor.click();anchor.remove();return;}try{await this.copy(url,'share-'+name);this.notice.set('Ссылка скопирована. Действует 7 дней.');}catch{this.notice.set('Ссылка готова. Скопируйте её из списка файлов.');}}catch(e){this.error.set((e as Error).message);}}
   formatFileSize(bytes?: number): string {
     if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 Б';
