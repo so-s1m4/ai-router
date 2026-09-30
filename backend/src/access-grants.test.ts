@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -9,7 +9,7 @@ test('grant budgets, permissions, monthly reset, concurrent leases and durable c
   process.env.DATA_DIR=root;
   const {createGrant,listGrants,updateGrant,acquireGrant,releaseGrant,chargeGrant,grantSnapshot}=await import('./access-grants.js');
   try {
-    const grant=await createGrant({ownerId:'owner',ownerName:'admin',recipientId:'friend',recipientName:'friend',accountId:'account',accountName:'Codex',models:['allowed'],budget:100,period:'monthly'});
+    const grant=await createGrant({ownerId:'owner',ownerName:'admin',recipientId:'friend',recipientName:'friend',models:['allowed'],budget:100,period:'monthly'});
     assert.equal(await acquireGrant('friend',grant.id,'allowed'),null);
     assert.equal(await updateGrant('stranger',grant.id,{state:'active'}),null);
     assert.equal(await updateGrant('friend',grant.id,{budget:999}),null);
@@ -29,5 +29,9 @@ test('grant budgets, permissions, monthly reset, concurrent leases and durable c
     await updateGrant('owner',grant.id,{budget:200});assert.ok(await acquireGrant('friend',grant.id,'allowed'));releaseGrant(grant.id);
     await updateGrant('owner',grant.id,{state:'revoked'});assert.equal(await acquireGrant('friend',grant.id,'allowed'),null);
     assert.equal((await listGrants('stranger')).length,0);
+    await writeFile(path.join(root,'access-grants.json'),JSON.stringify([{...saved,accountId:'old-account',accountName:'Private name'}]));
+    const migrated=(await listGrants('owner'))[0];
+    assert.equal('accountId' in migrated,false);assert.equal('accountName' in migrated,false);
+    assert.equal(migrated.usedTokens,120);assert.deepEqual(migrated.models,['allowed']);
   } finally {await rm(root,{recursive:true,force:true});}
 });

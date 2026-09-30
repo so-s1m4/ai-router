@@ -5,7 +5,7 @@ import { dataRoot } from './store.js';
 
 export interface AccessGrant {
   id: string; ownerId: string; recipientId: string; recipientName: string; ownerName: string;
-  accountId: string; accountName: string; models: string[]; budget: number;
+  models: string[]; budget: number;
   period: 'once' | 'monthly'; state: 'pending' | 'active' | 'revoked';
   usedTokens: number; lifetimeTokens: number; usageByModel: Record<string, number>;
   month: string; createdAt: string;
@@ -17,7 +17,10 @@ function serial<T>(operation: () => Promise<T>): Promise<T> {
   const task = queue.then(operation); queue = task.catch(() => undefined); return task;
 }
 async function read(): Promise<AccessGrant[]> {
-  try { return JSON.parse(await readFile(file, 'utf8')); }
+  try {
+    // Existing grants use the owner's pool, preserving budgets and permissions.
+    return JSON.parse(await readFile(file, 'utf8')).map(({ accountId, accountName, ...grant }: AccessGrant & { accountId?: string; accountName?: string }) => grant);
+  }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
 }
 async function save(rows: AccessGrant[]) {
