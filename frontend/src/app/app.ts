@@ -244,6 +244,14 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.modelPickerReturnFocus?.focus({preventScroll: true});
     this.modelPickerReturnFocus = undefined;
   }
+  onModelPickerKey(event: KeyboardEvent) {
+    if (event.key === 'Tab') this.trapDialogFocus(event);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeModelPicker();
+    }
+  }
   choosePickerModel(id: string) {
     if (!this.models().some(m => m.id === id)) return;
     this.selectModel(id);

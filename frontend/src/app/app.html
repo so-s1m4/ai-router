@@ -1934,7 +1934,7 @@ INSTALL_AGY_CLI=true</code></pre>
 
 @if(loggedIn() && modelMenuOpen()) {
   <div class="model-picker-backdrop" (click)="closeModelPicker()" (keydown.escape)="$event.stopPropagation(); closeModelPicker()">
-    <section id="model-picker" class="model-picker" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" (click)="$event.stopPropagation()" (keydown.tab)="trapDialogFocus($event)">
+    <section id="model-picker" class="model-picker" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" (click)="$event.stopPropagation()" (keydown)="onModelPickerKey($event)">
       <header class="model-picker-header">
         <div><h2 id="model-picker-title">Выберите модель</h2><p>{{currentServiceLabel()}} · {{models().length}} моделей</p></div>
         <button type="button" class="btn-icon" aria-label="Закрыть выбор моделей" (click)="closeModelPicker()"><svg lucideX [size]="20"></svg></button>
