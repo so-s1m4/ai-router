@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component,inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
 LucideCheck,
@@ -12,6 +12,7 @@ LucideTerminal,
 LucideX,
 } from '@lucide/angular';
 import { WorkspaceStore } from '../core/workspace.store';
+import { AccountDetailsDialogComponent } from '../shared/account-details-dialog';
 import { AccountCardComponent } from '../shared/account-card';
 import { AddAccountFormComponent } from '../shared/add-account-form';
 import { ChatgptSessionDialogComponent } from '../shared/chatgpt-session-dialog';
@@ -33,6 +34,7 @@ import { SharedAccessComponent } from '../shared/shared-access';
     LucideCopy,
 
     AccountCardComponent,
+    AccountDetailsDialogComponent,
     AddAccountFormComponent,
     SharedAccessComponent,
   ],
@@ -41,4 +43,12 @@ import { SharedAccessComponent } from '../shared/shared-access';
 })
 export class AccountsPageComponent {
   readonly vm = inject(WorkspaceStore);
+  readonly sortedAccounts = computed(() =>
+    [...this.vm.accountService.accounts()].sort((a, b) => a.provider.localeCompare(b.provider)),
+  );
+  readonly selectedAccountId = signal<string | null>(null);
+  readonly addingConnection = signal(false);
+  readonly selectedAccount = computed(() =>
+    this.vm.accountService.accounts().find(a => a.id === this.selectedAccountId()) ?? null,
+  );
 }

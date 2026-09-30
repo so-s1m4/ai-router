@@ -49,11 +49,13 @@ export class AccountsService {
       await this.refreshAccounts();
       this.notice.set(
         isApi
-          ? 'The connection has been created. Enter the API key in its card.'
+          ? 'The connection has been created. Open its settings to enter the API key.'
           : 'Account added. Run the login command on your container.',
       );
+      return true;
     } catch (e) {
       this.error.set((e as Error).message);
+      return false;
     } finally {
       this.addingAccount.set(false);
     }
@@ -194,10 +196,5 @@ export class AccountsService {
     if (a.mode === 'offline') return { label: 'Offline', class: 'badge-offline' };
     if (this.accountAvailable(a)) return { label: 'Active', class: 'badge-ready' };
     return { label: 'Quota limit', class: 'badge-limited' };
-  }
-  scrollToAddAccount() {
-    document
-      .getElementById('add-connection-card')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }

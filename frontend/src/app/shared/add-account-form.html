@@ -1,9 +1,17 @@
-<div class="card form-card add-account-card" id="add-connection-card">
+<dialog #dialog class="account-details-dialog add-connection-dialog" aria-labelledby="add-connection-title"
+  (cancel)="$event.preventDefault(); close()" (click)="$event.target === dialog && close()">
+<div class="card form-card add-account-card">
   <div class="form-card-head">
+    <div class="account-dialog-heading">
     <span class="section-tag">NEW CONNECTION</span>
-    <h3>Connect an Account or API Key</h3>
+    <button type="button" class="btn-icon" (click)="close()" aria-label="Close"><svg lucideX [size]="18"></svg></button>
+    </div>
+    <h3 id="add-connection-title">Connect an Account or API Key</h3>
     <p>Tokens and sessions will be isolated inside the selected runner container.</p>
   </div>
+  @if (vm.error()) {
+    <div class="banner banner-error" role="alert">{{ vm.error() }}</div>
+  }
   <div class="add-account-grid">
     <div class="add-account-field">
       <label class="account-field-label">Account Label</label>
@@ -45,7 +53,7 @@
     <div class="add-account-action">
       <button
         class="btn btn-primary"
-        (click)="vm.accountService.addAccount()"
+        (click)="submit()"
         [disabled]="
           vm.accountService.addingAccount() ||
           !vm.accountService.accountName.trim() ||
@@ -58,3 +66,4 @@
     </div>
   </div>
 </div>
+</dialog>

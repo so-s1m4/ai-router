@@ -1,41 +1,17 @@
-import { CommonModule } from '@angular/common';
-import { Component,inject,Input } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import {
-LucideBot,
-LucideCheck,
-LucideClock,
-LucideCopy,
-LucideGlobe2,
-LucideKey,
-LucideRotateCcw,
-LucideSparkles,
-LucideTerminal,
-LucideTrash2,
-} from '@lucide/angular';
+import { Component, EventEmitter, inject, Input, Output } from '@angular/core';
+import { LucideBot, LucideChevronRight, LucideGlobe2, LucideKey, LucideSparkles } from '@lucide/angular';
+import { Account } from '../core/models';
 import { WorkspaceStore } from '../core/workspace.store';
 
 @Component({
   selector: 'app-account-card',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    LucideKey,
-    LucideBot,
-    LucideSparkles,
-    LucideGlobe2,
-    LucideTrash2,
-    LucideRotateCcw,
-    LucideClock,
-    LucideTerminal,
-    LucideCheck,
-    LucideCopy,
-  ],
+  imports: [LucideBot, LucideChevronRight, LucideGlobe2, LucideKey, LucideSparkles],
   templateUrl: './account-card.html',
   host: { style: 'display: contents' },
 })
 export class AccountCardComponent {
   readonly vm = inject(WorkspaceStore);
-  @Input({ required: true }) a!: import('../core/models').Account;
+  @Input({ required: true }) a!: Account;
+  @Output() details = new EventEmitter<Account>();
 }

@@ -10,7 +10,7 @@
       </p>
     </div>
     <div class="section-hero-actions">
-      <button class="btn btn-primary btn-sm" (click)="vm.accountService.scrollToAddAccount()">
+      <button class="btn btn-primary btn-sm" (click)="addingConnection.set(true)">
         <svg lucidePlus [size]="15"></svg>
         <span>Add connection</span>
       </button>
@@ -75,9 +75,9 @@
     </div>
   </div>
 
-  <div class="cards-grid accounts-grid">
-    @for (a of vm.accountService.accounts(); track a.id) {
-      <app-account-card [a]="a"></app-account-card>
+  <div class="accounts-inline-list">
+    @for (a of sortedAccounts(); track a.id) {
+      <app-account-card [a]="a" (details)="selectedAccountId.set($event.id)"></app-account-card>
     } @empty {
       <div class="card account-empty-card">
         <div class="account-empty-icon">
@@ -88,7 +88,7 @@
           Connect your OpenAI Codex, Gemini, or ChatGPT account to begin routing tasks across models
           and accounts.
         </p>
-        <button class="btn btn-primary" (click)="vm.accountService.scrollToAddAccount()">
+        <button class="btn btn-primary" (click)="addingConnection.set(true)">
           <svg lucidePlus [size]="16"></svg>
           <span>Add First Connection</span>
         </button>
@@ -96,8 +96,14 @@
     }
   </div>
 
+  @if (selectedAccount(); as account) {
+    <app-account-details-dialog [a]="account" (closed)="selectedAccountId.set(null)"></app-account-details-dialog>
+  }
+
   <!-- ADD ACCOUNT FORM -->
-  <app-add-account-form></app-add-account-form>
+  @if (addingConnection()) {
+    <app-add-account-form (closed)="addingConnection.set(false)"></app-add-account-form>
+  }
 
   <!-- SHARING SECTION -->
   <app-shared-access></app-shared-access>
@@ -137,33 +143,10 @@
       </div>
     </div>
 
-    <!-- SMART ROUTING OVERVIEW -->
-    <div class="card form-card routing-card">
-      <div class="form-card-head">
-        <span class="section-tag">AUTOMATION</span>
-        <h3>Smart Routing & Automatic Failover</h3>
-        <p>Continuous monitoring of rate limits and quotas.</p>
-      </div>
-      <p class="routing-card-desc">
-        When provider quotas are reached or a service returns rate limit errors, requests
-        immediately fail over to the next priority account without losing conversation context.
-      </p>
-    </div>
   </div>
 
   @if (vm.chatgptSessionModal() && vm.selectedChatGPTAccount()) {
     <app-chatgpt-session-dialog></app-chatgpt-session-dialog>
   }
 
-  <div class="helper-box">
-    <svg lucideInfo [size]="20" class="helper-icon"></svg>
-    <div>
-      <strong>Smart Routing (Auto)</strong>
-      <p>
-        AI Router checks your connections consistently. When limits are reached or the provider
-        fails, the request is seamlessly transferred to the next available account while maintaining
-        the task context.
-      </p>
-    </div>
-  </div>
 </div>

@@ -1891,6 +1891,9 @@ app-root {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 8px 12px;
+  gap: 10px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--text-muted);
 }
