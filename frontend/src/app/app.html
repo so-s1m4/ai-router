@@ -514,12 +514,7 @@
 
                   <!-- MODEL PILL -->
                   <div class="pill-select-wrapper" title="Модель">
-                    <select [ngModel]="selectedModel()" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
-                      @for(m of models(); track m.id) {
-                        <option [value]="m.id">{{m.label}}</option>
-                      }
-                    </select>
-                    <button class="pill-model-badge pill-model-highlight" [class.pill-model-active]="selectedModel() !== 'default'" type="button" tabindex="-1">
+                    <button class="pill-model-badge pill-model-highlight model-picker-trigger" [class.pill-model-active]="selectedModel() !== 'default'" type="button" aria-haspopup="dialog" [attr.aria-expanded]="modelMenuOpen()" (click)="openModelPicker($event)">
                       <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
@@ -707,16 +702,11 @@
 
                 <!-- MODEL PILL -->
                 <div class="pill-select-wrapper" title="Модель">
-                  <select [ngModel]="selectedModel()" (ngModelChange)="selectModel($event)" class="pill-select-overlay" aria-label="Модель">
-                    @for(m of models(); track m.id) {
-                      <option [value]="m.id">{{m.label}}</option>
-                    }
-                  </select>
-                  <button class="pill-model-badge pill-model-highlight" [class.pill-model-active]="selectedModel() !== 'default'" type="button" tabindex="-1">
-                    <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
-                    <svg lucideChevronDown [size]="12"></svg>
-                  </button>
-                </div>
+                    <button class="pill-model-badge pill-model-highlight model-picker-trigger" [class.pill-model-active]="selectedModel() !== 'default'" type="button" aria-haspopup="dialog" [attr.aria-expanded]="modelMenuOpen()" (click)="openModelPicker($event)">
+                      <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
+                      <svg lucideChevronDown [size]="12"></svg>
+                    </button>
+                  </div>
 
                 <!-- REASONING PILL -->
                 @if(reasoningOptions().length > 1) {
@@ -1940,4 +1930,30 @@ INSTALL_AGY_CLI=true</code></pre>
    @else if(previewKind()==='text'){<pre class="preview-code"><code>{{previewText()}}</code></pre>}
   </section>
  </div>
+}
+
+@if(loggedIn() && modelMenuOpen()) {
+  <div class="model-picker-backdrop" (click)="closeModelPicker()" (keydown.escape)="$event.stopPropagation(); closeModelPicker()">
+    <section id="model-picker" class="model-picker" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" (click)="$event.stopPropagation()" (keydown.tab)="trapDialogFocus($event)">
+      <header class="model-picker-header">
+        <div><h2 id="model-picker-title">Выберите модель</h2><p>{{currentServiceLabel()}} · {{models().length}} моделей</p></div>
+        <button type="button" class="btn-icon" aria-label="Закрыть выбор моделей" (click)="closeModelPicker()"><svg lucideX [size]="20"></svg></button>
+      </header>
+      <label class="model-picker-search">
+        <svg lucideSearch [size]="18"></svg>
+        <input type="search" aria-label="Поиск моделей" placeholder="Найти модель…" [ngModel]="modelSearch()" (ngModelChange)="modelSearch.set($event)" autocomplete="off">
+      </label>
+      <div class="model-picker-list" role="group" aria-label="Доступные модели">
+        @for(m of filteredPickerModels(); track m.id) {
+          <button type="button" class="model-picker-option" [class.model-picker-selected]="selectedModel() === m.id" [attr.aria-pressed]="selectedModel() === m.id" (click)="choosePickerModel(m.id)">
+            <svg lucideBot [size]="20"></svg>
+            <span>{{m.label}}@if(m.id === 'default'){<small>Автоматический выбор</small>}</span>
+            @if(selectedModel() === m.id){<svg lucideCheck [size]="18" class="model-picker-check"></svg>}
+          </button>
+        } @empty {
+          <p class="model-picker-empty" role="status">Модели не найдены</p>
+        }
+      </div>
+    </section>
+  </div>
 }

@@ -221,6 +221,34 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   userMenuOpen = signal(false);
   helpModalOpen = signal(false);
   modelMenuOpen = signal(false);
+  modelSearch = signal('');
+  filteredPickerModels = computed(() => {
+    const query = this.modelSearch().trim().toLocaleLowerCase();
+    return this.models().filter(m => !query || (m.label + ' ' + m.id).toLocaleLowerCase().includes(query));
+  });
+  private modelPickerReturnFocus?: HTMLElement;
+  openModelPicker(event: Event) {
+    this.modelPickerReturnFocus = event.currentTarget as HTMLElement;
+    (document.activeElement as HTMLElement)?.blur();
+    this.modelSearch.set('');
+    this.modelMenuOpen.set(true);
+    requestAnimationFrame(() => {
+      const dialog = document.getElementById('model-picker');
+      const selected = dialog?.querySelector<HTMLElement>('.model-picker-selected');
+      (selected || dialog?.querySelector<HTMLElement>('button'))?.focus({preventScroll: true});
+      selected?.scrollIntoView({block: 'nearest'});
+    });
+  }
+  closeModelPicker() {
+    this.modelMenuOpen.set(false);
+    this.modelPickerReturnFocus?.focus({preventScroll: true});
+    this.modelPickerReturnFocus = undefined;
+  }
+  choosePickerModel(id: string) {
+    if (!this.models().some(m => m.id === id)) return;
+    this.selectModel(id);
+    this.closeModelPicker();
+  }
   searchOpen = signal(false);
   sidebarSearch = signal('');
   currentServiceLabel = computed(() => {
