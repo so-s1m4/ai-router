@@ -32,7 +32,8 @@ export const DEFAULT_CHATGPT_MODELS: Model[] = [
   { id: 'default', label: 'По умолчанию ChatGPT' }
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
-type Account = {id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
+type Account = {shared?:boolean;id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
+type AccessGrant = {id:string;direction:'outgoing'|'incoming';ownerName:string;recipientName:string;accountId?:string;accountName:string;models:string[];budget:number;period:'once'|'monthly';state:'pending'|'active'|'revoked';usedTokens:number;lifetimeTokens:number;usageByModel:Record<string,number>};
 type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;createdAt:string;revokedAt?:string};
 type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string};
 type Preview = {subdomain:string;runnerId:string;visible:boolean;online:boolean;expired:boolean;url:string;createdAt:string;updatedAt:string;expiresAt:string};
@@ -269,6 +270,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   });
   currentReasoningOrModelLabel = computed(() => this.currentReasoningBadgeLabel());
   draft=''; selectedService=signal<ServiceId>('auto'); selectedAccount='auto'; selectedModel=signal<string>('default'); selectedReasoning=signal<string>('default'); codexFast=signal(false);
+  grants=signal<AccessGrant[]>([]); grantBusy=signal(false); grantEditor=signal(false);
+  grantId=''; grantUsername=''; grantAccountId=''; grantBudget=1000000; grantPeriod:'once'|'monthly'='monthly'; grantModels:string[]=[];
+  ownAccounts=computed(()=>this.accounts().filter(a=>!a.shared));
+  grantAvailableModels(){return this.ownAccounts().find(a=>a.id===this.grantAccountId)?.models||[];}
+  changeGrantAccount(){this.grantModels=this.grantAvailableModels().filter(m=>m.id!=='default').map(m=>m.id);}
+  toggleGrantModel(id:string){this.grantModels=this.grantModels.includes(id)?this.grantModels.filter(m=>m!==id):[...this.grantModels,id];}
+  openGrantEditor(g?:AccessGrant){this.grantId=g?.id||'';this.grantUsername=g?.recipientName||'';this.grantAccountId=g?.accountId||this.ownAccounts()[0]?.id||'';this.grantBudget=g?.budget||1000000;this.grantPeriod=g?.period||'monthly';this.changeGrantAccount();if(g)this.grantModels=[...g.models];this.grantEditor.set(true);}
+  async refreshGrants(){try{this.grants.set(await this.api<AccessGrant[]>('/access-grants'));}catch(e){this.error.set((e as Error).message);}}
+  async saveGrant(){if(this.grantBusy())return;this.grantBusy.set(true);this.error.set('');try{const body=this.grantId?{budget:this.grantBudget,models:this.grantModels}:{username:this.grantUsername,accountId:this.grantAccountId,budget:this.grantBudget,models:this.grantModels,period:this.grantPeriod};await this.api('/access-grants'+(this.grantId?'/'+this.grantId:''),{method:this.grantId?'PATCH':'POST',body:JSON.stringify(body)});this.grantEditor.set(false);await this.refreshGrants();await this.refreshAccounts();this.notice.set(this.grantId?'Настройки доступа сохранены':'Приглашение отправлено. Друг может принять его в подключениях.');}catch(e){this.error.set((e as Error).message);}finally{this.grantBusy.set(false);}}
+  async setGrantState(g:AccessGrant,state:'active'|'revoked'){if(this.grantBusy())return;this.grantBusy.set(true);try{await this.api('/access-grants/'+g.id,{method:'PATCH',body:JSON.stringify({state})});await this.refreshGrants();await this.refreshAccounts();this.notice.set(state==='active'?'Доступ принят — модели доступны в чате':'Доступ отозван, текущая задача остановлена');}catch(e){this.error.set((e as Error).message);}finally{this.grantBusy.set(false);}}
+  grantUsage(g:AccessGrant){return Object.entries(g.usageByModel).map(([model,tokens])=>({model,tokens}));}
   accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); deletingAccount=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='Мой компьютер'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
   socket?:Socket;
@@ -796,7 +808,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     try{await this.load();const linked=new URLSearchParams(location.search).get('session');if(linked)await this.openSession(linked);}catch(e){this.error.set((e as Error).message);}
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string;isOwner:boolean}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.isOwner.set(!!me.isOwner);this.password='';this.loggedIn.set(true);await this.load();this.connect();const linked=new URLSearchParams(location.search).get('session');if(linked)await this.openSession(linked);}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'}).catch(()=>{});this.socket?.disconnect();this.browserNotifications.set(false);this.closePreview();this.fileGroups.set([]);this.telegram.set(null);this.telegramLink.set('');this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.loggedIn.set(false);this.current.set(null);}
+  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'}).catch(()=>{});this.socket?.disconnect();this.browserNotifications.set(false);this.closePreview();this.fileGroups.set([]);this.telegram.set(null);this.telegramLink.set('');this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.grants.set([]);this.grantEditor.set(false);this.loggedIn.set(false);this.current.set(null);}
   async load(){
     const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([
       this.api<Account[]>('/accounts'),
@@ -806,6 +818,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
       this.api<{blacklist:string[]}>('/user/model-blacklist').catch(()=>({blacklist:[]}))
     ]);
     this.accounts.set(accounts);
+    void this.refreshGrants();
     this.runners.set(runners);
     this.projects.set(projects);
     if(blacklistRes?.blacklist){
@@ -1326,6 +1339,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.mobileMenu.set(false);
     if(page==='runners')this.refreshRunners();
     else this.managedRunner.set(null);
+    if(page==='connections'){void this.refreshAccounts();void this.refreshGrants();}
     if(page==='files')void this.refreshLibrary();
     if(page==='notifications')void this.refreshTelegram();
     if(page==='sites')void this.refreshPreviews();

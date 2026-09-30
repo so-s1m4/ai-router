@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { io } = createRequire(path.join(repo, 'runner/package.json'))('socket.io-client');
+
+async function freePort() {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
+
+async function waitFor(fn) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try { if (await fn()) return; } catch { /* service is starting */ }
+    await new Promise(resolve => setTimeout(resolve, 80));
+  }
+  throw new Error('Timed out waiting for service');
+}
+
+async function connect(url, options) {
+  const socket = io(url, { transports: ['websocket'], forceNew: true, ...options });
+  await new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('connect_error', reject);
+  });
+  return socket;
+}
+
+test('shared access enforces recipient, models, usage, Auto, account privacy and revocation', {timeout:45000}, async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'router-sharing-'));
+ const port=await freePort(),previewPort=await freePort(),base=`http://127.0.0.1:${port}`;
+ const backend=spawn(process.execPath,[path.join(repo,'backend/dist/server.js')],{cwd:repo,env:{...process.env,DATA_DIR:root,PORT:String(port),PREVIEW_PORT:String(previewPort),ADMIN_PASSWORD:'sharing-test-password',SESSION_SECRET:'sharing-test-secret-longer-than-thirty-two-characters',COOKIE_SECURE:'false'},stdio:['ignore','ignore','pipe']});
+ let runner,friend;let log='';backend.stderr.on('data',chunk=>log+=chunk);
+ try {
+  await waitFor(async()=> (await fetch(base+'/api/health')).ok);
+  async function authenticate(username,register=false){const response=await fetch(base+'/api/'+(register?'register':'login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,password:'sharing-test-password'})});assert.ok(response.ok);return response.headers.get('set-cookie').split(';')[0];}
+  const ownerCookie=await authenticate('admin'),friendCookie=await authenticate('friend',true),strangerCookie=await authenticate('stranger',true);
+  async function request(cookie,url,method='GET',body){const response=await fetch(base+'/api'+url,{method,headers:{cookie,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:response.status,body:await response.json()};}
+  const api=async(url,method='GET',body)=>{const r=await request(ownerCookie,url,method,body);assert.ok(r.status<300,JSON.stringify(r));return r.body;};
+  const pairing=await api('/runners/pairing','POST',{name:'Owner runner'});
+  const device=await (await fetch(base+'/api/runner/enroll',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:pairing.code})})).json();
+  runner=await connect(base+'/runner',{auth:{runnerId:device.id,secret:device.secret}});
+  const account=await api('/accounts','POST',{provider:'codex',name:'Private account',runnerId:device.id});
+  runner.emit('account:status',{accountId:account.id,provider:'codex',models:[{id:'allowed',label:'Allowed'},{id:'forbidden',label:'Forbidden'}]});
+  await waitFor(async()=> (await api('/accounts')).some(a=>a.models.some(m=>m.id==='allowed')));
+  const created=await api('/access-grants','POST',{username:'friend',accountId:account.id,budget:100,period:'once',models:['allowed']});
+  const grantId=created.id;
+  assert.equal((await request(strangerCookie,'/access-grants')).body.length,0);
+  assert.equal((await request(friendCookie,'/accounts')).body.length,0);
+  assert.equal((await request(strangerCookie,'/access-grants/'+grantId,'PATCH',{state:'active'})).status,404);
+  assert.equal((await request(friendCookie,'/access-grants/'+grantId,'PATCH',{budget:99999})).status,403);
+  assert.equal((await request(friendCookie,'/access-grants/'+grantId,'PATCH',{state:'active'})).status,200);
+  const shared=(await request(friendCookie,'/accounts')).body[0];
+  assert.equal(shared.id,grantId);assert.deepEqual(shared.models.map(m=>m.id),['allowed']);assert.equal(shared.runnerId,undefined);assert.equal(shared.importKey,undefined);
+  assert.equal((await request(friendCookie,'/accounts/'+account.id+'/priority','PATCH',{priority:2})).status,404);
+  const ownSession=await api('/sessions','POST',{});
+  assert.equal((await request(friendCookie,'/sessions/'+ownSession.id)).status,404);
+  const session=(await request(friendCookie,'/sessions','POST',{})).body;
+  friend=await connect(base,{extraHeaders:{cookie:friendCookie}});
+  let hold=false,lastJob,jobCount=0;
+  runner.on('job:start',(job,ack)=>{ack({ok:true});jobCount++;lastJob=job;if(hold)return;assert.equal(job.accountId,account.id);assert.equal(job.model,'allowed');runner.emit('job:event',{jobId:job.jobId,type:'usage',data:{totalTokens:70}});runner.emit('job:event',{jobId:job.jobId,type:'usage',data:{totalTokens:120}});runner.emit('job:event',{jobId:job.jobId,type:'usage',data:{totalTokens:120}});runner.emit('job:result',{jobId:job.jobId,ok:true,text:'Shared answer'});});
+  function finished(sessionId){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('No terminal event: '+log)),7000);const handler=e=>{if(e.sessionId===sessionId&&['completed','error'].includes(e.type)){clearTimeout(timer);friend.off('ai:event',handler);resolve(e);}};friend.on('ai:event',handler);});}
+  const send=(model='default',accountId='auto',sessionId=session.id)=>friend.timeout(5000).emitWithAck('run',{sessionId,prompt:'Hello',accountId,model,mode:'task'});
+  assert.equal((await send('forbidden')).ok,false);assert.equal((await send('allowed',account.id)).ok,false);assert.equal(jobCount,0);
+  let terminal=finished(session.id);assert.equal((await send()).ok,true);assert.equal((await terminal).type,'completed');
+  const spent=(await request(friendCookie,'/access-grants')).body[0];assert.equal(spent.usedTokens,120);assert.deepEqual(spent.usageByModel,{allowed:120});
+  assert.equal((await send()).ok,false);assert.equal(jobCount,1);
+  await api('/access-grants/'+grantId,'PATCH',{budget:500});hold=true;
+  terminal=finished(session.id);assert.equal((await send('allowed',grantId)).ok,true);await waitFor(()=>jobCount===2);
+  const second=(await request(friendCookie,'/sessions','POST',{})).body;
+  const concurrent=finished(second.id);assert.equal((await send('allowed',grantId,second.id)).ok,true);assert.equal((await concurrent).type,'error');assert.equal(jobCount,2);
+  // File access is restricted to recipient-owned sessions, not owner runner workspaces.
+  runner.on('file:list',(payload,ack)=>{assert.equal(payload.sessionId,session.id);assert.equal(payload.projectId,undefined);ack({ok:true,files:[{name:'outputs/result.txt',size:5,modified:new Date().toISOString()}]});});
+  assert.equal((await request(friendCookie,'/sessions/'+session.id+'/files')).body.files[0].name,'outputs/result.txt');
+  assert.equal((await request(friendCookie,'/sessions/'+ownSession.id+'/files')).status,404);
+  assert.equal((await request(friendCookie,'/runners/'+device.id+'/management/challenge','POST',{})).status,404);
+  await api('/access-grants/'+grantId,'PATCH',{state:'revoked'});assert.equal((await terminal).type,'error');
+  assert.equal((await request(friendCookie,'/accounts')).body.length,0);assert.equal((await send('allowed',grantId)).ok,false);
+  assert.equal((await api('/access-grants'))[0].usedTokens,120);
+ } finally {friend?.disconnect();runner?.disconnect();backend.kill('SIGTERM');await new Promise(resolve=>backend.once('exit',resolve));await rm(root,{recursive:true,force:true});}
+});
