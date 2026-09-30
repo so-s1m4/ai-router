@@ -1,0 +1,46 @@
+@if (vm.loggedIn() && vm.filePreviewService.previewOpen()) {
+  <div
+    class="file-preview-overlay"
+    (click)="vm.filePreviewService.closePreview()"
+    (keydown.escape)="vm.filePreviewService.closePreview()"
+  >
+    <section
+      class="file-preview-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-label="View file"
+      (click)="$event.stopPropagation()"
+      tabindex="-1"
+    >
+      <header>
+        <strong>{{ vm.filePreviewService.previewName() }}</strong
+        ><button
+          class="btn btn-outline btn-sm"
+          (click)="vm.filePreviewService.closePreview()"
+          aria-label="Close viewing"
+        >
+          <svg lucideX [size]="18"></svg>
+        </button>
+      </header>
+      @if (vm.filePreviewService.previewLoading()) {
+        <p role="status">Loading file…</p>
+      } @else if (vm.filePreviewService.previewError()) {
+        <p class="library-source-error">{{ vm.filePreviewService.previewError() }}</p>
+      } @else if (vm.filePreviewService.previewKind() === 'image') {
+        <img
+          class="preview-image"
+          [src]="vm.filePreviewService.previewUrl()"
+          [alt]="vm.filePreviewService.previewName()"
+        />
+      } @else if (vm.filePreviewService.previewKind() === 'pdf') {
+        <iframe
+          class="preview-pdf"
+          [src]="vm.filePreviewService.previewPdf()"
+          title="View PDF"
+        ></iframe>
+      } @else if (vm.filePreviewService.previewKind() === 'text') {
+        <pre class="preview-code"><code>{{vm.filePreviewService.previewText()}}</code></pre>
+      }
+    </section>
+  </div>
+}

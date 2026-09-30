@@ -1,0 +1,271 @@
+<div class="card account-card" [class]="vm.accountService.accountCardTheme(a)">
+  <div class="account-card-head">
+    <div class="account-identity">
+      <div
+        class="provider-badge-icon"
+        [class.provider-gemini]="a.provider === 'antigravity'"
+        [class.provider-chatgpt]="a.provider === 'chatgpt'"
+        [class.provider-apikey]="a.authType === 'api_key'"
+      >
+        @if (a.authType === 'api_key') {
+          <svg lucideKey [size]="20"></svg>
+        } @else if (a.provider === 'codex') {
+          <svg lucideBot [size]="20"></svg>
+        } @else if (a.provider === 'antigravity') {
+          <svg lucideSparkles [size]="20"></svg>
+        } @else {
+          <svg lucideGlobe2 [size]="20"></svg>
+        }
+      </div>
+      <div class="account-title-group">
+        <h3 class="account-name" [title]="a.name">{{ a.name }}</h3>
+        <div class="account-detail-chips">
+          <span class="account-provider-chip">{{
+            a.authType === 'api_key' ? 'OpenAI API' : vm.providerLabel(a.provider)
+          }}</span>
+          <span class="account-runner-chip" [title]="a.detail">{{ a.detail }}</span>
+          @if (a.shared) {
+            <span class="account-shared-chip">Shared</span>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="account-head-actions">
+      <span class="badge" [class]="vm.accountService.accountStatusBadge(a).class">
+        {{ vm.accountService.accountStatusBadge(a).label }}
+      </span>
+      @if (!a.shared) {
+        <button
+          type="button"
+          class="btn-icon btn-icon-danger"
+          (click)="vm.accountService.removeAccount(a)"
+          [disabled]="!!vm.accountService.deletingAccount()"
+          title="Delete connection"
+          aria-label="Delete connection"
+        >
+          <svg lucideTrash2 [size]="15"></svg>
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (!a.shared) {
+    <div class="account-priority-row">
+      <label [for]="'priority-' + a.id" class="account-field-label">Routing Priority</label>
+      <select
+        class="custom-select custom-select-sm"
+        [id]="'priority-' + a.id"
+        [value]="a.priority ?? 1"
+        (change)="vm.accountService.setAccountPriority(a, $any($event.target).value)"
+      >
+        <option value="2">⚡ High priority</option>
+        <option value="1">● Normal priority</option>
+        <option value="0">▾ Low (fallback)</option>
+      </select>
+    </div>
+  }
+
+  @if (a.provider === 'codex' && a.authType !== 'api_key' && !a.shared) {
+    <div class="reset-credits-card">
+      <div class="reset-credits-top">
+        <div class="reset-credits-info">
+          <span class="reset-credits-icon">✦</span>
+          @if (a.limit.resetCredits; as resets) {
+            <div>
+              <strong
+                >{{ resets.availableCount }} Reset{{
+                  resets.availableCount === 1 ? '' : 's'
+                }}
+                Available</strong
+              >
+              @for (credit of resets.credits || []; track credit.id) {
+                <div class="reset-credit-exp">
+                  {{ credit.title || 'Account reset' }} ·
+                  {{ vm.accountService.resetExpiry(credit.expiresAt) }}
+                </div>
+              }
+              @if (
+                resets.availableCount &&
+                (!resets.credits || resets.credits.length < resets.availableCount)
+              ) {
+                <div class="reset-credit-exp">
+                  Expiry details unavailable for
+                  {{ resets.availableCount - (resets.credits?.length || 0) }} reset(s).
+                </div>
+              }
+            </div>
+          } @else {
+            <div>
+              <strong>Codex Resets</strong>
+              <div class="reset-credit-exp">Reset details unavailable</div>
+            </div>
+          }
+        </div>
+        @if (a.limit.resetCredits?.availableCount) {
+          <button
+            class="btn btn-primary btn-xs reset-btn-action"
+            [disabled]="!!vm.accountService.resettingAccount() || a.mode !== 'runner'"
+            (click)="vm.accountService.useAccountReset(a)"
+          >
+            {{ vm.accountService.resettingAccount() === a.id ? 'Applying…' : 'Use reset' }}
+          </button>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="account-quota-box">
+    <div class="quota-head">
+      <span class="quota-head-title">Rate limits & quota</span>
+      <strong class="quota-head-status">{{ vm.limitLabel(a) }}</strong>
+    </div>
+
+    @if (a.limit.primary || a.limit.secondary) {
+      <div class="usage-bars">
+        @if (a.limit.primary; as p) {
+          <div class="usage-bar-row">
+            <div class="usage-bar-label">
+              <span>{{ vm.windowLabel(p) }}</span>
+              <strong class="quota-val">{{ vm.remaining(p) }} remaining</strong>
+            </div>
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                [style.width]="vm.remaining(p)"
+                [class.progress-fill-warn]="p.usedPercent >= 75"
+                [class.progress-fill-danger]="p.usedPercent >= 90"
+              ></div>
+            </div>
+            @if (vm.resetLabel(p)) {
+              <span class="usage-reset"
+                ><svg lucideRotateCcw [size]="11"></svg> {{ vm.resetLabel(p) }}</span
+              >
+            }
+          </div>
+        }
+        @if (a.limit.secondary; as s) {
+          <div class="usage-bar-row">
+            <div class="usage-bar-label">
+              <span>{{ vm.windowLabel(s) }}</span>
+              <strong class="quota-val">{{ vm.remaining(s) }} remaining</strong>
+            </div>
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                [style.width]="vm.remaining(s)"
+                [class.progress-fill-warn]="s.usedPercent >= 75"
+                [class.progress-fill-danger]="s.usedPercent >= 90"
+              ></div>
+            </div>
+            @if (vm.resetLabel(s)) {
+              <span class="usage-reset"
+                ><svg lucideRotateCcw [size]="11"></svg> {{ vm.resetLabel(s) }}</span
+              >
+            }
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="quota-unknown">
+        {{
+          a.authType === 'api_key'
+            ? 'Billed directly via OpenAI API key. Limits managed on OpenAI Platform.'
+            : a.provider === 'antigravity'
+              ? 'Gemini limits are checked dynamically during task execution.'
+              : a.provider === 'chatgpt'
+                ? 'Active browser session. Quotas managed by ChatGPT.'
+                : 'Quota metrics will populate after the first task request.'
+        }}
+      </div>
+    }
+
+    @if (a.limit.cooldownUntil) {
+      <div class="quota-cooldown-note">
+        <svg lucideClock [size]="12"></svg>
+        <span>Cooldown active: retry after {{ a.limit.cooldownUntil | date: 'medium' }}</span>
+      </div>
+    }
+    @if (a.limit.updatedAt) {
+      <div class="quota-updated-note">
+        <span>Updated {{ a.limit.updatedAt | date: 'medium' }}</span>
+      </div>
+    }
+  </div>
+
+  @if (!a.shared) {
+    @if (a.provider === 'chatgpt') {
+      <button
+        class="btn btn-outline btn-sm account-chatgpt-btn"
+        (click)="vm.openChatGPTSessionModal(a)"
+      >
+        <svg lucideGlobe2 [size]="14"></svg>
+        <span>Import Session / Cookies</span>
+      </button>
+    }
+
+    @if (a.mode === 'unassigned') {
+      <div class="assign-box">
+        <label class="account-field-label">Assign runner container</label>
+        <select
+          class="custom-select"
+          (change)="vm.accountService.assignAccount(a, $any($event.target).value)"
+        >
+          <option value="">Select container</option>
+          @for (r of vm.runnerService.runners(); track r.id) {
+            @if (!r.revokedAt) {
+              <option [value]="r.id">{{ r.name }}</option>
+            }
+          }
+        </select>
+      </div>
+    }
+
+    @if (a.authType === 'api_key') {
+      <div class="command-box account-api-box">
+        <label [for]="'api-key-' + a.id" class="account-field-label">OpenAI API Key</label>
+        <div class="account-api-input-group">
+          <input
+            class="custom-input"
+            [id]="'api-key-' + a.id"
+            type="password"
+            autocomplete="new-password"
+            spellcheck="false"
+            [(ngModel)]="vm.accountService.apiKeyDrafts[a.id]"
+            placeholder="sk-proj-…"
+          />
+          <button
+            class="btn btn-primary btn-sm"
+            (click)="vm.accountService.saveOpenAIKey(a)"
+            [disabled]="
+              !!vm.accountService.savingApiKey() ||
+              !(vm.accountService.apiKeyDrafts[a.id] || '').trim() ||
+              a.mode !== 'runner'
+            "
+          >
+            {{ vm.accountService.savingApiKey() === a.id ? 'Checking…' : 'Save key' }}
+          </button>
+        </div>
+        <p class="account-auth-hint">Key is securely saved on the assigned container runner.</p>
+      </div>
+    } @else {
+      <div class="command-box">
+        <div class="command-title">
+          <span class="command-title-text"
+            ><svg lucideTerminal [size]="13"></svg> Container login command</span
+          >
+          <button class="btn-copy" (click)="vm.clipboardService.copy(vm.loginCommand(a), a.id)">
+            @if (vm.clipboardService.copiedId() === a.id) {
+              <svg lucideCheck [size]="13"></svg>
+              <span>Copied</span>
+            } @else {
+              <svg lucideCopy [size]="13"></svg>
+              <span>Copy</span>
+            }
+          </button>
+        </div>
+        <code class="code-snippet">{{ vm.loginCommand(a) }}</code>
+      </div>
+    }
+  }
+</div>

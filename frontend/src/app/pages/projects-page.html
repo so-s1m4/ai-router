@@ -1,0 +1,98 @@
+<div class="page-content">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">WORK FOLDERS</span>
+      <h2>Your projects</h2>
+      <p>Tasks, files and chats - all in one place.</p>
+    </div>
+  </div>
+
+  @if (vm.error()) {
+    <div class="banner banner-error">
+      <svg lucideInfo [size]="16"></svg>
+      <span>{{ vm.error() }}</span>
+      <button type="button" class="btn-banner-close" (click)="vm.error.set('')" aria-label="Close">
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+  @if (vm.notice()) {
+    <div class="banner banner-notice">
+      <svg lucideInfo [size]="16"></svg>
+      <span>{{ vm.notice() }}</span>
+      <button type="button" class="btn-banner-close" (click)="vm.notice.set('')" aria-label="Close">
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+
+  @if (!vm.projectService.projects().length) {
+    <div class="empty-card">
+      <div class="empty-icon"><svg lucideFolder [size]="32"></svg></div>
+      <h3>No projects yet</h3>
+      <p>Create a project to combine chats, tasks, and files in a working folder on your runner.</p>
+      <button class="btn btn-primary" (click)="vm.createProject()">
+        <svg lucidePlus [size]="16"></svg>
+        <span>Create your first project</span>
+      </button>
+    </div>
+  }
+
+  <div class="cards-grid">
+    @for (project of vm.projectService.projects(); track project.id) {
+      <div class="card project-card">
+        <div class="project-header">
+          <div class="project-avatar">
+            <svg lucideFolder [size]="22"></svg>
+          </div>
+          <span
+            class="badge"
+            [class.badge-ready]="vm.chatsFor(project.id).length > 0"
+            [class.badge-neutral]="vm.chatsFor(project.id).length === 0"
+            >{{ vm.formatChatsCount(vm.chatsFor(project.id).length) }}</span
+          >
+        </div>
+        <h3>{{ project.name }}</h3>
+        @if (project.shared) {
+          <span class="badge badge-ready">Shared project</span>
+        }
+        <div class="project-meta">
+          <svg lucideServer [size]="14"></svg>
+          <span>{{ vm.runnerService.projectRunner(project) }}</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-outline btn-sm" (click)="vm.selectProject(project.id)">
+            Open
+          </button>
+          @if (project.shared) {
+            <button
+              class="btn btn-outline btn-sm"
+              (click)="vm.projectService.showProjectMembers(project)"
+            >
+              Members
+            </button>
+          }
+          <button class="btn btn-primary btn-sm" (click)="vm.newSessionFor(project.id)">
+            <svg lucidePlus [size]="14"></svg>
+            <span>New chat</span>
+          </button>
+        </div>
+        @if (vm.chatsFor(project.id).length) {
+          <div class="project-chats-list">
+            <details>
+              <summary class="project-chats-title">
+                Project chats · {{ vm.chatsFor(project.id).length }}
+              </summary>
+              @for (s of vm.chatsFor(project.id); track s.id) {
+                <button class="project-chat-item" (click)="vm.chatService.openSession(s.id)">
+                  <svg lucideMessageSquare [size]="14"></svg>
+                  <span class="truncate">{{ s.title }}</span>
+                </button>
+              }
+            </details>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

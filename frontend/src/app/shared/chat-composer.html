@@ -1,0 +1,65 @@
+<div class="hero-pill-bar" [class.bottom-composer-pill]="!hero">
+  <input #filePicker type="file" multiple hidden (change)="vm.filesService.uploadFile($event)" />
+  <button
+    class="pill-btn-icon pill-btn-plus"
+    type="button"
+    [disabled]="vm.filesService.uploading()"
+    (click)="filePicker.click()"
+    title="Attach files"
+    aria-label="Attach files"
+  >
+    <svg lucidePlus [size]="18"></svg>
+  </button>
+
+  <div class="pill-input-wrap">
+    <textarea
+      #textarea
+      class="pill-textarea"
+      [(ngModel)]="vm.chatService.draft"
+      (input)="resize()"
+      (paste)="vm.filesService.onPaste($event)"
+      placeholder="Describe the task..."
+      aria-label="Message to assistant"
+      rows="1"
+      (keydown)="vm.chatService.onComposerEnter($event)"
+    ></textarea>
+  </div>
+
+  @if (vm.chatService.running()) {
+    <button
+      class="pill-btn-voice btn-circle-stop"
+      type="button"
+      (click)="vm.chatService.cancel()"
+      title="Stop"
+      aria-label="Stop reply"
+    >
+      <svg lucideSquare [size]="16"></svg></button
+    ><button
+      class="pill-btn-send"
+      type="button"
+      [disabled]="
+        !vm.chatService.draft.trim() ||
+        !vm.chatService.steeringAvailable() ||
+        vm.chatService.steeringSending() ||
+        vm.filesService.uploading()
+      "
+      (click)="vm.chatService.steer()"
+      title="Clarify the current task"
+      aria-label="Clarify the current task"
+    >
+      <svg lucideArrowUp [size]="18"></svg>
+    </button>
+  } @else {
+    <button
+      class="pill-btn-send"
+      type="button"
+      [disabled]="!vm.chatService.draft.trim() || vm.filesService.uploading()"
+      (click)="vm.chatService.send()"
+      title="Send"
+      aria-label="Send"
+    >
+      <svg lucideArrowUp [size]="18"></svg>
+    </button>
+  }
+  <app-model-controls></app-model-controls>
+</div>

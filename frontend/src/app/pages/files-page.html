@@ -1,0 +1,162 @@
+<div class="page-content file-library">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">WORKING FILES</span>
+      <h2>All files</h2>
+      <p>Files of projects and individual chats on your runners.</p>
+    </div>
+    <button
+      class="btn btn-outline"
+      (click)="vm.libraryService.refreshLibrary()"
+      [disabled]="vm.libraryService.libraryLoading()"
+    >
+      Refresh
+    </button>
+  </div>
+  @if (vm.error()) {
+    <div class="banner banner-error">{{ vm.error() }}</div>
+  }
+  @if (vm.notice()) {
+    <div class="banner">{{ vm.notice() }}</div>
+  }
+  <div class="library-toolbar">
+    <input
+      type="search"
+      placeholder="Search by file name..."
+      aria-label="Search files"
+      [ngModel]="vm.libraryService.libraryQuery()"
+      (ngModelChange)="vm.libraryService.libraryQuery.set($event)"
+    /><select
+      aria-label="File source"
+      [ngModel]="vm.libraryService.librarySource()"
+      (ngModelChange)="vm.libraryService.librarySource.set($event)"
+    >
+      <option value="">All projects and chats</option>
+      @for (group of vm.libraryService.fileGroups(); track group.kind + group.id) {
+        <option [value]="group.kind + ':' + group.id">{{ group.title }}</option>
+      }
+    </select>
+  </div>
+  @if (vm.libraryService.fileGroups().length) {
+    <div class="file-selection-toolbar">
+      <label class="file-select-all"
+        ><input
+          type="checkbox"
+          [checked]="vm.libraryService.allLibraryFilesSelected()"
+          [indeterminate]="
+            !vm.libraryService.allLibraryFilesSelected() &&
+            vm.libraryService.someLibraryFilesSelected()
+          "
+          (change)="vm.filesService.selectAllFiles('library', $any($event.target).checked)"
+          [disabled]="!!vm.taskFilesService.deletingFile() || vm.libraryService.libraryLoading()"
+        />Select all</label
+      >
+      <span role="status">Selected: {{ vm.libraryService.selectedLibraryFiles().size }}</span>
+      <button
+        class="btn btn-danger-outline btn-sm"
+        (click)="vm.filesService.deleteSelectedLibraryFiles()"
+        [disabled]="
+          !vm.libraryService.selectedLibraryFiles().size ||
+          !!vm.taskFilesService.deletingFile() ||
+          vm.libraryService.libraryLoading()
+        "
+      >
+        {{
+          vm.taskFilesService.deletingFile()
+            ? 'Removing…'
+            : 'Delete selected (' + vm.libraryService.selectedLibraryFiles().size + ')'
+        }}
+      </button>
+      @if (vm.libraryService.selectedLibraryFiles().size) {
+        <button
+          class="btn btn-outline btn-sm"
+          (click)="vm.libraryService.selectedLibraryFiles.set(vm.filesService.emptyFileSelection())"
+          [disabled]="!!vm.taskFilesService.deletingFile()"
+        >
+          Deselect
+        </button>
+      }
+    </div>
+  }
+  @if (vm.libraryService.libraryLoading()) {
+    <p role="status">Loading file list…</p>
+  } @else {
+    @for (group of vm.libraryService.libraryGroups(); track group.kind + group.id) {
+      <section class="library-group">
+        <div class="library-group-title">
+          <button class="btn-link" (click)="vm.filesService.openFileSource(group)">
+            {{ group.title }}</button
+          ><span
+            >{{ group.kind === 'projects' ? 'Project' : 'Chat' }} ·
+            {{ group.files.length }} files</span
+          >
+        </div>
+        @if (group.error) {
+          <p class="library-source-error">{{ group.error }}</p>
+        }
+        @for (file of group.files; track file.name) {
+          <div class="library-file">
+            <input
+              class="file-select-checkbox"
+              type="checkbox"
+              [checked]="
+                vm.libraryService
+                  .selectedLibraryFiles()
+                  .has(vm.libraryService.librarySelectionKey(group, file.name))
+              "
+              (change)="
+                vm.filesService.toggleFileSelection(
+                  'library',
+                  vm.libraryService.librarySelectionKey(group, file.name),
+                  $any($event.target).checked
+                )
+              "
+              [disabled]="!!vm.taskFilesService.deletingFile()"
+              [attr.aria-label]="'Select file ' + file.name + ' of ' + group.title"
+            /><button
+              class="library-file-name"
+              (click)="vm.filePreviewService.previewFile(file.name, group.kind, group.id)"
+            >
+              <svg lucideFile [size]="18"></svg><span>{{ file.name }}</span>
+            </button>
+            <div class="library-file-meta">
+              <span>{{ vm.taskFilesService.formatFileSize(file.size) }}</span
+              ><time>{{ file.modified | date: 'dd.MM.yy HH:mm' }}</time>
+            </div>
+            <div class="library-file-actions">
+              <button
+                class="btn btn-outline btn-sm"
+                (click)="vm.filePreviewService.previewFile(file.name, group.kind, group.id)"
+              >
+                Open</button
+              ><button
+                class="btn btn-outline btn-sm"
+                (click)="vm.filesService.libraryShare(group, file.name, true)"
+              >
+                Download</button
+              ><button
+                class="btn btn-outline btn-sm"
+                (click)="vm.filesService.libraryShare(group, file.name)"
+              >
+                Link</button
+              ><button
+                class="btn btn-outline btn-sm"
+                (click)="vm.filesService.libraryDelete(group, file.name)"
+                [disabled]="!!vm.taskFilesService.deletingFile()"
+                aria-label="Delete file"
+              >
+                <svg lucideTrash2 [size]="14"></svg>
+              </button>
+            </div>
+          </div>
+        }
+      </section>
+    } @empty {
+      <div class="library-empty">
+        <svg lucideFolderOpen [size]="32"></svg>
+        <h3>No files found</h3>
+        <p>Create files in a task or upload them to a project.</p>
+      </div>
+    }
+  }
+</div>

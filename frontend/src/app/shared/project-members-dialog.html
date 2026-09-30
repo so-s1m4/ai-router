@@ -1,0 +1,68 @@
+@if (vm.projectService.membersProject(); as project) {
+  <div
+    class="project-dialog-backdrop"
+    (click)="vm.projectService.closeMembersDialog()"
+    (keydown.escape)="vm.projectService.closeMembersDialog()"
+  >
+    <section
+      class="project-dialog"
+      (keydown.tab)="vm.trapDialogFocus($event)"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="members-dialog-title"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="project-dialog-heading">
+        <div class="project-avatar"><svg lucideFolder [size]="22"></svg></div>
+        <button
+          class="btn-icon"
+          (click)="vm.projectService.closeMembersDialog()"
+          aria-label="Close"
+        >
+          <svg lucideX [size]="20"></svg>
+        </button>
+      </div>
+      <h2 id="members-dialog-title">{{ project.name }} · Members</h2>
+      <p>
+        Members share the project files and use their own AI connections on any runner. Chats stay
+        personal.
+      </p>
+      @if (vm.projectService.membersLoading()) {
+        <p>Loading members…</p>
+      }
+      @for (member of vm.projectService.projectMembers(); track member.id) {
+        <p>
+          {{ member.username }}
+          @if (member.owner) {
+            <span class="badge badge-neutral">Owner</span>
+          }
+        </p>
+      }
+      @if (vm.projectService.membersError()) {
+        <div class="banner banner-error" role="alert">{{ vm.projectService.membersError() }}</div>
+      }
+      @if (vm.projectService.membersCanManage()) {
+        <form (ngSubmit)="vm.projectService.saveProjectMembers()">
+          <div class="input-group">
+            <label for="edit-project-members">Member usernames</label
+            ><input
+              id="edit-project-members"
+              name="editProjectMembers"
+              [(ngModel)]="vm.projectService.editProjectMembers"
+              placeholder="Usernames, separated by commas"
+              [disabled]="vm.projectService.membersSaving()"
+            />
+          </div>
+          <p>Remove a username to revoke access to the project.</p>
+          <button
+            class="btn btn-primary btn-block"
+            type="submit"
+            [disabled]="vm.projectService.membersSaving()"
+          >
+            {{ vm.projectService.membersSaving() ? 'Saving…' : 'Save members' }}
+          </button>
+        </form>
+      }
+    </section>
+  </div>
+}

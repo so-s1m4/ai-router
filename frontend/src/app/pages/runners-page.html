@@ -1,0 +1,593 @@
+<div class="page-content">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">LOCAL CONTAINERS</span>
+      <h2>Task runners</h2>
+      <p>
+        Runner containers run on your servers or computers. They execute code, store secrets, and
+        hold connections to the CLI.
+      </p>
+    </div>
+  </div>
+
+  @if (vm.error()) {
+    <div class="banner banner-error">
+      <svg lucideInfo [size]="16"></svg><span>{{ vm.error() }}</span
+      ><button type="button" class="btn-banner-close" (click)="vm.error.set('')" aria-label="Close">
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+  @if (vm.notice()) {
+    <div class="banner banner-notice">
+      <svg lucideInfo [size]="16"></svg><span>{{ vm.notice() }}</span
+      ><button
+        type="button"
+        class="btn-banner-close"
+        (click)="vm.notice.set('')"
+        aria-label="Close"
+      >
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+
+  @if (vm.runnerService.managedRunner()) {
+    <app-manager-panel
+      [runner]="vm.runnerService.managedRunner()!"
+      [accounts]="vm.accountService.accounts()"
+      (close)="vm.runnerService.managedRunner.set(null); vm.runnerService.refreshRunners()"
+    ></app-manager-panel>
+  } @else {
+    <div class="cards-grid">
+      @for (r of vm.runnerService.runners(); track r.id) {
+        <div class="card runner-card">
+          <div class="runner-card-head">
+            <div class="runner-icon">
+              <svg lucideServer [size]="22"></svg>
+            </div>
+            <span
+              class="badge"
+              [class.badge-ready]="r.online && !r.revokedAt"
+              [class.badge-danger]="r.revokedAt"
+              [class.badge-offline]="!r.online && !r.revokedAt"
+            >
+              {{ r.revokedAt ? 'Disconnected' : r.online ? 'Online' : 'Offline' }}
+            </span>
+          </div>
+
+          <h3>{{ r.name }}</h3>
+          <div class="runner-id">
+            ID: <code>{{ r.id }}</code>
+          </div>
+
+          @if (!r.revokedAt) {
+            <div class="card-actions">
+              <button
+                class="btn btn-outline btn-sm"
+                (click)="vm.runnerService.managedRunner.set(r)"
+              >
+                <svg lucideSettings2 [size]="15"></svg>
+                <span>Settings</span>
+              </button>
+              <button
+                class="btn btn-danger-outline btn-sm"
+                (click)="vm.runnerService.revokeRunner(r)"
+              >
+                <span>Disable</span>
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ADD RUNNER / PAIRING -->
+  <div class="card form-card">
+    <div class="form-card-head">
+      <span class="section-tag">CONNECTING THE DEVICE</span>
+      <h3>Add a new runner</h3>
+      <p>
+        Enter a name and generate an anchor code. Runner uses it once when first launched via Docker
+        Compose.
+      </p>
+    </div>
+    <div class="form-row">
+      <input
+        class="custom-input"
+        [(ngModel)]="vm.runnerService.runnerName"
+        placeholder="For example: Home PC or VPS"
+        aria-label="runner name"
+      />
+      <button
+        class="btn btn-primary"
+        (click)="vm.runnerService.createPairing()"
+        [disabled]="!vm.runnerService.runnerName.trim()"
+      >
+        <svg lucidePlus [size]="16"></svg>
+        <span>Get pairing code</span>
+      </button>
+    </div>
+  </div>
+
+  @if (vm.runnerService.pairing()) {
+    <div class="card pairing-card">
+      <div class="pairing-head">
+        <div>
+          <span class="section-tag">ONE-TIME pairing code</span>
+          <h3>
+            The code is valid until {{ vm.runnerService.pairing()!.expiresAt | date: 'HH:mm' }}
+          </h3>
+        </div>
+        <button
+          class="btn btn-outline btn-sm"
+          (click)="vm.clipboardService.copy(vm.runnerService.pairing()!.code, 'pairing-code')"
+        >
+          @if (vm.clipboardService.copiedId() === 'pairing-code') {
+            <svg lucideCheck [size]="15"></svg>
+            <span>Copied!</span>
+          } @else {
+            <svg lucideCopy [size]="15"></svg>
+            <span>Copy code</span>
+          }
+        </button>
+      </div>
+
+      <div class="pairing-code-display">
+        <code>{{ vm.runnerService.pairing()!.code }}</code>
+      </div>
+
+      <div class="pairing-actions">
+        <button
+          class="btn btn-primary btn-sm"
+          (click)="
+            vm.clipboardService.copy(vm.runnerService.quickStartCommand(), 'pairing-quick-cmd')
+          "
+        >
+          @if (vm.clipboardService.copiedId() === 'pairing-quick-cmd') {
+            <svg lucideCheck [size]="15"></svg>
+            <span>Command copied!</span>
+          } @else {
+            <svg lucideZap [size]="15"></svg>
+            <span>Copy quick start command</span>
+          }
+        </button>
+      </div>
+
+      <div class="pairing-steps">
+        <p>
+          Run the ready-made quick launch command in the terminal or configure it manually according
+          to the instructions below.
+        </p>
+        <code class="code-snippet">{{ vm.runnerService.quickStartCommand() }}</code>
+      </div>
+    </div>
+  }
+
+  <!-- INSTRUCTIONS CARD -->
+  <div class="card instruction-card">
+    <div class="instruction-header">
+      <div>
+        <span class="section-tag">START UP GUIDE</span>
+        <h3>How to start a runner</h3>
+        <p>
+          Choose a convenient launch method: quick start in one command or detailed step-by-step
+          instructions via .env
+        </p>
+      </div>
+
+      <div class="instruction-tabs">
+        <button
+          type="button"
+          class="instruction-tab-btn"
+          [class.active]="vm.runnerService.runnerInstructionTab() === 'quick'"
+          (click)="vm.runnerService.runnerInstructionTab.set('quick')"
+        >
+          <svg lucideZap [size]="15"></svg>
+          <span>Quick start (1 command)</span>
+        </button>
+        <button
+          type="button"
+          class="instruction-tab-btn"
+          [class.active]="vm.runnerService.runnerInstructionTab() === 'detailed'"
+          (click)="vm.runnerService.runnerInstructionTab.set('detailed')"
+        >
+          <svg lucideBookOpen [size]="15"></svg>
+          <span>Detailed instructions</span>
+        </button>
+      </div>
+    </div>
+
+    @if (vm.runnerService.runnerInstructionTab() === 'quick') {
+      <!-- QUICK START -->
+      <div class="instruction-body">
+        <div class="instruction-lead">
+          Run one command in a terminal on your server or computer with <strong>Docker</strong>. The
+          command will automatically download the runner files, pass connection parameters, build
+          the container and run it in the background.
+        </div>
+
+        @if (vm.runnerService.pairing()) {
+          <div class="instruction-callout instruction-callout-success">
+            <svg lucideCheck [size]="16"></svg>
+            <span
+              >Pairing code <code>{{ vm.runnerService.pairing()!.code }}</code> and server address
+              are automatically added to the command below!</span
+            >
+          </div>
+        } @else {
+          <div class="instruction-callout instruction-callout-info">
+            <svg lucideInfo [size]="16"></svg>
+            <span
+              >Generate a pairing code above to insert it into the command automatically, or replace
+              <code>&lt;YOUR_PAIRING_CODE&gt;</code> manually.</span
+            >
+          </div>
+        }
+
+        <div class="command-box">
+          <div class="command-box-header">
+            <div class="command-box-title">
+              <svg lucideTerminal [size]="15"></svg>
+              <span>1. Start from scratch (download and run)</span>
+            </div>
+            <button
+              class="btn btn-primary btn-sm"
+              (click)="vm.clipboardService.copy(vm.runnerService.quickStartCommand(), 'quick-cmd')"
+            >
+              @if (vm.clipboardService.copiedId() === 'quick-cmd') {
+                <svg lucideCheck [size]="14"></svg>
+                <span>Copied!</span>
+              } @else {
+                <svg lucideCopy [size]="14"></svg>
+                <span>Copy command</span>
+              }
+            </button>
+          </div>
+          <pre class="command-code"><code>{{vm.runnerService.quickStartCommand()}}</code></pre>
+        </div>
+
+        <div class="command-box">
+          <div class="command-box-header">
+            <div class="command-box-title">
+              <svg lucideTerminal [size]="15"></svg>
+              <span>2. If the repository is already cloned on the device</span>
+            </div>
+            <button
+              class="btn btn-outline btn-sm"
+              (click)="
+                vm.clipboardService.copy(
+                  vm.runnerService.quickStartExistingCommand(),
+                  'quick-exist-cmd'
+                )
+              "
+            >
+              @if (vm.clipboardService.copiedId() === 'quick-exist-cmd') {
+                <svg lucideCheck [size]="14"></svg>
+                <span>Copied!</span>
+              } @else {
+                <svg lucideCopy [size]="14"></svg>
+                <span>Copy command</span>
+              }
+            </button>
+          </div>
+          <pre
+            class="command-code"
+          ><code>{{vm.runnerService.quickStartExistingCommand()}}</code></pre>
+        </div>
+
+        <div class="instruction-tips">
+          <div class="tip-item">
+            <strong>Checking logs and status:</strong>
+            <code>docker compose -f ai-router/runner/compose.yaml logs -f runner</code>
+            <p>
+              Wait for the line <code>Runner connected</code>. After this, the status on the site
+              will change to “Online”.
+            </p>
+          </div>
+          <div class="tip-item">
+            <strong>Enabling CLI providers immediately:</strong>
+            <p>
+              To immediately install the CLI of models when building, add before
+              <code>docker compose</code>: <code>INSTALL_CODEX_CLI=true INSTALL_AGY_CLI=true</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    } @else {
+      <!-- DETAILED STEP-BY-STEP -->
+      <div class="instruction-body">
+        <div class="instruction-lead">
+          A detailed step-by-step guide to manually deploying runner via Docker Compose and setting
+          up the environment variable file.
+        </div>
+
+        <div class="steps-list">
+          <div class="step-card">
+            <div class="step-badge">1</div>
+            <div class="step-content">
+              <h4>Generate a one-time pairing code</h4>
+              <p>
+                In “Add a new runner” above, enter a name (for example, <em>Server-1</em> or
+                <em>Home PC</em>) and press <strong>“Get pairing code”</strong>. The code is valid
+                for 10 minutes and is needed once upon first start.
+              </p>
+              @if (vm.runnerService.pairing()) {
+                <div class="active-code-inline">
+                  Current code: <code>{{ vm.runnerService.pairing()!.code }}</code> (valid until
+                  {{ vm.runnerService.pairing()!.expiresAt | date: 'HH:mm' }})
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="step-card">
+            <div class="step-badge">2</div>
+            <div class="step-content">
+              <h4>Clone the repository and go to the runner folder</h4>
+              <p>On your computer or server running Docker, open a terminal and run:</p>
+              <div class="snippet-with-copy">
+                <pre class="command-code"><code>git clone https://github.com/so-s1m4/ai-router.git
+cd ai-router/runner</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="
+                    vm.clipboardService.copy(
+                      'git clone https://github.com/so-s1m4/ai-router.git\ncd ai-router/runner',
+                      'step2-code'
+                    )
+                  "
+                >
+                  @if (vm.clipboardService.copiedId() === 'step2-code') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card">
+            <div class="step-badge">3</div>
+            <div class="step-content">
+              <h4>Create and configure the .env file</h4>
+              <p>Copy the environment variables template:</p>
+              <div class="snippet-with-copy">
+                <pre class="command-code"><code>cp .env.example .env</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="vm.clipboardService.copy('cp .env.example .env', 'step3-code')"
+                >
+                  @if (vm.clipboardService.copiedId() === 'step3-code') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+              <p>Specify the following settings in <code>runner/.env</code>:</p>
+              <div class="snippet-with-copy">
+                <pre class="command-code"><code># URL of your AI Router server
+ROUTER_SERVER_URL={{vm.runnerService.serverOrigin()}}
+
+# pairing code from step 1 (needed once)
+ROUTER_PAIRING_CODE={{vm.runnerService.pairingCodePlaceholder()}}
+
+# Installation of official CLI providers (optional)
+INSTALL_CODEX_CLI=true
+INSTALL_AGY_CLI=true</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="
+                    vm.clipboardService.copy(
+                      'ROUTER_SERVER_URL=' +
+                        vm.runnerService.serverOrigin() +
+                        '\nROUTER_PAIRING_CODE=' +
+                        vm.runnerService.pairingCodePlaceholder() +
+                        '\nINSTALL_CODEX_CLI=true\nINSTALL_AGY_CLI=true',
+                      'step3-env'
+                    )
+                  "
+                >
+                  @if (vm.clipboardService.copiedId() === 'step3-env') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+              <p class="step-hint">
+                💡 When working on a local test network without HTTPS, please specify additionally:
+                <code>ROUTER_ALLOW_INSECURE=true</code>.
+              </p>
+            </div>
+          </div>
+
+          <div class="step-card">
+            <div class="step-badge">4</div>
+            <div class="step-content">
+              <h4>Build and run the container</h4>
+              <p>Start building and running the runner container in the background:</p>
+              <div class="snippet-with-copy">
+                <pre class="command-code"><code>docker compose up --build -d</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="vm.clipboardService.copy('docker compose up --build -d', 'step4-code')"
+                >
+                  @if (vm.clipboardService.copiedId() === 'step4-code') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+              <p>Check the container logs:</p>
+              <div class="snippet-with-copy">
+                <pre class="command-code"><code>docker compose logs -f runner</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="vm.clipboardService.copy('docker compose logs -f runner', 'step4-logs')"
+                >
+                  @if (vm.clipboardService.copiedId() === 'step4-logs') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+              <p>
+                When you see <code>Runner connected</code>, the container is successfully bound. On
+                this tab the status will switch to
+                <strong style="color: var(--success)">“Online“</strong>. The secret token is saved
+                in the local Docker volume <code>runner_data</code>, code value in
+                <code>.env</code> can be cleaned.
+              </p>
+            </div>
+          </div>
+
+          <div class="step-card">
+            <div class="step-badge">5</div>
+            <div class="step-content">
+              <h4>Authorize provider accounts</h4>
+              <p>
+                Go to the tab <strong>“Connections“</strong>, add the desired account and assign the
+                running runner to it. Then run the login command on your device:
+              </p>
+              <p><strong>For OpenAI Codex:</strong></p>
+              <div class="snippet-with-copy">
+                <pre
+                  class="command-code"
+                ><code>docker compose exec runner /app/scripts/provider-login.sh codex &lt;ACCOUNT_ID&gt;</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="
+                    vm.clipboardService.copy(
+                      'docker compose exec runner /app/scripts/provider-login.sh codex <ACCOUNT_ID>',
+                      'step5-codex'
+                    )
+                  "
+                >
+                  @if (vm.clipboardService.copiedId() === 'step5-codex') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+              <p class="step-hint">
+                A link will open to log in via a browser using a one-time code (Device Auth).
+              </p>
+
+              <p><strong>For Google Antigravity:</strong></p>
+              <div class="snippet-with-copy">
+                <pre
+                  class="command-code"
+                ><code>docker compose exec runner /app/scripts/provider-login.sh antigravity &lt;ACCOUNT_ID&gt;</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="
+                    vm.clipboardService.copy(
+                      'docker compose exec runner /app/scripts/provider-login.sh antigravity <ACCOUNT_ID>',
+                      'step5-agy'
+                    )
+                  "
+                >
+                  @if (vm.clipboardService.copiedId() === 'step5-agy') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+
+              <p><strong>For ChatGPT Web (Browser):</strong></p>
+              <div class="snippet-with-copy">
+                <pre
+                  class="command-code"
+                ><code>docker compose exec runner /app/scripts/provider-login.sh chatgpt &lt;ACCOUNT_ID&gt;</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="
+                    vm.clipboardService.copy(
+                      'docker compose exec runner /app/scripts/provider-login.sh chatgpt <ACCOUNT_ID>',
+                      'step5-chatgpt'
+                    )
+                  "
+                >
+                  @if (vm.clipboardService.copiedId() === 'step5-chatgpt') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card">
+            <div class="step-badge">6</div>
+            <div class="step-content">
+              <h4>(Optional) Runner Manager web control panel</h4>
+              <p>
+                To manage Docker containers, SSH keys for GitHub and MCP servers directly from the
+                site’s web interface, launch the management service:
+              </p>
+              <div class="snippet-with-copy">
+                <pre
+                  class="command-code"
+                ><code>docker compose --profile management up --build -d</code></pre>
+                <button
+                  class="btn btn-outline btn-sm copy-btn-corner"
+                  (click)="
+                    vm.clipboardService.copy(
+                      'docker compose --profile management up --build -d',
+                      'step6-mgr'
+                    )
+                  "
+                >
+                  @if (vm.clipboardService.copiedId() === 'step6-mgr') {
+                    <svg lucideCheck [size]="14"></svg>
+                    <span>Copied!</span>
+                  } @else {
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Copy</span>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <div class="helper-box">
+    <svg lucideInfo [size]="20" class="helper-icon"></svg>
+    <div>
+      <strong>Runner security</strong>
+      <p>
+        The runner container only establishes an outgoing websocket connection to the site and does
+        not open external ports. All tokens and authorization keys are stored in an isolated Docker
+        volume on your host.
+      </p>
+    </div>
+  </div>
+</div>

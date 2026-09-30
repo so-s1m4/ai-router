@@ -1,0 +1,222 @@
+<aside
+  class="sidebar"
+  [class.collapsed]="!vm.layoutService.sidebarOpen()"
+  [class.drawer-open]="vm.layoutService.mobileMenu()"
+>
+  <div class="sidebar-header">
+    <button class="sidebar-brand-btn" (click)="vm.chatService.newSession()" title="Workspace">
+      <span>AI Router</span>
+    </button>
+    <div class="sidebar-header-actions">
+      <button
+        class="sidebar-icon-btn mobile-drawer-close"
+        (click)="vm.layoutService.mobileMenu.set(false)"
+        aria-label="Close menu"
+      >
+        <svg lucideX [size]="20"></svg>
+      </button>
+      <button
+        class="sidebar-icon-btn"
+        (click)="vm.layoutService.searchOpen.set(!vm.layoutService.searchOpen())"
+        title="Search"
+      >
+        <svg lucideSearch [size]="17"></svg>
+      </button>
+    </div>
+  </div>
+
+  @if (vm.layoutService.searchOpen()) {
+    <div class="sidebar-search-box">
+      <svg lucideSearch [size]="14"></svg>
+      <input
+        type="text"
+        placeholder="Find a chat or project…"
+        [ngModel]="vm.layoutService.sidebarSearch()"
+        (ngModelChange)="vm.layoutService.sidebarSearch.set($event)"
+        class="sidebar-search-input"
+      />
+      @if (vm.layoutService.sidebarSearch()) {
+        <button class="sidebar-search-clear" (click)="vm.layoutService.sidebarSearch.set('')">
+          <svg lucideX [size]="12"></svg>
+        </button>
+      }
+    </div>
+  }
+
+  <div class="sidebar-new-chat">
+    <button class="btn-new-chat-row" (click)="vm.chatService.newSession()">
+      <svg lucideSquarePen [size]="17"></svg>
+      <span>New task</span>
+    </button>
+  </div>
+
+  <div class="mobile-drawer-content">
+    <nav class="mobile-drawer-links" aria-label="Main navigation">
+      <span class="nav-group-label">Workspace</span>
+      <button
+        [class.active]="vm.page() === 'chat'"
+        [attr.aria-current]="vm.page() === 'chat' ? 'page' : null"
+        (click)="vm.showPage('chat')"
+        title="Chats"
+      >
+        <svg lucideMessageSquare [size]="18" aria-hidden="true"></svg><span>Chats</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'projects'"
+        [attr.aria-current]="vm.page() === 'projects' ? 'page' : null"
+        (click)="vm.showPage('projects')"
+        title="Projects"
+      >
+        <svg lucideFolder [size]="18" aria-hidden="true"></svg><span>Projects</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'operations'"
+        [attr.aria-current]="vm.page() === 'operations' ? 'page' : null"
+        (click)="vm.showPage('operations')"
+        title="Usage"
+      >
+        <svg lucideTerminal [size]="18" aria-hidden="true"></svg><span>Usage</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'files'"
+        [attr.aria-current]="vm.page() === 'files' ? 'page' : null"
+        (click)="vm.showPage('files')"
+        title="Files"
+      >
+        <svg lucideFile [size]="18" aria-hidden="true"></svg><span>Files</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'sites'"
+        [attr.aria-current]="vm.page() === 'sites' ? 'page' : null"
+        (click)="vm.showPage('sites')"
+        title="Websites & previews"
+      >
+        <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites & previews</span>
+      </button>
+      <span class="nav-group-label">Settings</span>
+      <button
+        [class.active]="vm.page() === 'providers'"
+        [attr.aria-current]="vm.page() === 'providers' ? 'page' : null"
+        (click)="vm.showPage('providers')"
+        title="Models"
+      >
+        <svg lucideBot [size]="18" aria-hidden="true"></svg><span>Models</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'connections'"
+        [attr.aria-current]="vm.page() === 'connections' ? 'page' : null"
+        (click)="vm.showPage('connections')"
+        title="Accounts & connections"
+      >
+        <svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Accounts & connections</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'runners'"
+        [attr.aria-current]="vm.page() === 'runners' ? 'page' : null"
+        (click)="vm.showPage('runners')"
+        title="Runners"
+      >
+        <svg lucideServer [size]="18" aria-hidden="true"></svg><span>Runners</span>
+      </button>
+      <button
+        [class.active]="vm.page() === 'notifications'"
+        [attr.aria-current]="vm.page() === 'notifications' ? 'page' : null"
+        (click)="vm.showPage('notifications')"
+        title="Notifications & Telegram"
+      >
+        <svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications & Telegram</span>
+      </button>
+      @if (vm.isOwner()) {
+        <button [class.active]="vm.page() === 'users'" (click)="vm.showPage('users')">
+          <svg lucideSettings2 [size]="18" aria-hidden="true"></svg><span>Users</span>
+        </button>
+      }
+    </nav>
+
+    <div class="sidebar-scroll">
+      <!-- RECENTS SECTION -->
+      <div class="sidebar-section">
+        <div class="section-label"><span>Recent chats</span></div>
+        <div class="section-list">
+          @for (s of vm.filteredRecentSessions(); track s.id) {
+            <button
+              class="sidebar-item"
+              [class.active]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'"
+              (click)="vm.chatService.openSession(s.id)"
+              [title]="s.title || 'New chat'"
+            >
+              <span class="truncate">{{ s.title || 'New chat' }}</span>
+              @if (vm.chatService.running() && vm.sessionService.current()?.id === s.id) {
+                <span class="item-running-spinner"></span>
+              }
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- PROJECTS SECTION -->
+      <div class="sidebar-section">
+        <div class="section-label">
+          <span>Projects</span>
+          <button class="btn-subtle-add" (click)="vm.createProject()" title="New project">
+            <svg lucidePlus [size]="14"></svg>
+          </button>
+        </div>
+        <div class="section-list">
+          @for (p of vm.filteredProjects(); track p.id || p.name) {
+            <div class="tree-folder">
+              <button
+                class="tree-folder-head"
+                (click)="vm.layoutService.toggleProjectExpand(p.id || p.name)"
+              >
+                @if (vm.projectIcon(p) === 'graduation-cap') {
+                  <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
+                } @else if (vm.projectIcon(p) === 'origami') {
+                  <svg lucideOrigami [size]="16" class="icon-origami"></svg>
+                } @else if (vm.isProjectExpanded(p)) {
+                  <svg lucideFolderOpen [size]="16" class="item-icon-folder"></svg>
+                } @else {
+                  <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
+                }
+                <span class="truncate">{{ p.name }}</span>
+              </button>
+
+              @if (vm.isProjectExpanded(p)) {
+                <div class="tree-sub-list">
+                  @for (c of vm.chatsForProject(p).slice(0, 4); track c.id) {
+                    <button
+                      class="tree-sub-item truncate"
+                      [class.active]="vm.sessionService.current()?.id === c.id"
+                      (click)="vm.chatService.openSession(c.id)"
+                      [title]="c.title"
+                    >
+                      {{ c.title }}
+                    </button>
+                  }
+                  @if (vm.chatsForProject(p).length > 4) {
+                    <button class="tree-sub-item tree-sub-more" (click)="vm.selectProject(p.id)">
+                      All chats
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mobile-drawer-footer">
+    <button class="mobile-drawer-new-chat" (click)="vm.chatService.newSession()">
+      <svg lucideSquarePen [size]="20"></svg><span>New chat</span>
+    </button>
+    <button
+      class="mobile-drawer-logout"
+      (click)="vm.logout()"
+      aria-label="Log out of your account"
+      title="Log out of your account"
+    >
+      <svg lucideLogOut [size]="20"></svg>
+    </button>
+  </div>
+</aside>

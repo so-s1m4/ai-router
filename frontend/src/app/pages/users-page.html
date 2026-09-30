@@ -1,0 +1,69 @@
+<div class="page-content users-page">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">ACCESS SETTINGS</span>
+      <h2>Users</h2>
+      <p>Create accounts and manage access to the application.</p>
+    </div>
+  </div>
+  @if (vm.usersService.userAdminError) {
+    <div class="banner banner-error">{{ vm.usersService.userAdminError }}</div>
+  }
+  @if (vm.usersService.userAdminNotice) {
+    <div class="banner banner-notice">{{ vm.usersService.userAdminNotice }}</div>
+  }
+  <form class="card form-card user-create-form" (ngSubmit)="vm.usersService.createUser()">
+    <h3>Add user</h3>
+    <div class="form-row">
+      <input
+        class="custom-input"
+        name="newUsername"
+        [(ngModel)]="vm.usersService.newUsername"
+        autocomplete="off"
+        placeholder="Login"
+        aria-label="New user login"
+        required
+      />
+      <input
+        class="custom-input"
+        name="newUserPassword"
+        [(ngModel)]="vm.usersService.newUserPassword"
+        type="password"
+        autocomplete="new-password"
+        placeholder="Password (at least 12 characters)"
+        aria-label="New user password"
+        required
+        minlength="12"
+      />
+      <button class="btn btn-primary" type="submit">Create</button>
+    </div>
+  </form>
+  <div class="user-list">
+    @for (user of vm.usersService.users(); track user.id) {
+      <div class="card user-list-item">
+        <div class="user-list-identity">
+          <strong>{{ user.username }}</strong
+          ><span>{{ user.id === 'owner' ? 'Owner' : 'User' }}</span>
+        </div>
+        <div class="user-list-actions">
+          @if (user.id !== 'owner') {
+            <button
+              class="btn btn-outline btn-sm"
+              (click)="vm.usersService.resetUserPassword(user.id)"
+            >
+              Change password
+            </button>
+          }
+          @if (user.id !== 'owner') {
+            <button
+              class="btn btn-danger-outline btn-sm"
+              (click)="vm.usersService.removeUser(user.id, user.username)"
+            >
+              Delete
+            </button>
+          }
+        </div>
+      </div>
+    }
+  </div>
+</div>

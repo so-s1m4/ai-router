@@ -1,0 +1,270 @@
+<div
+  class="chat-view-layout"
+  (dragenter)="vm.filesService.onDragEnter($event)"
+  (dragover)="vm.filesService.onDragOver($event)"
+  (dragleave)="vm.filesService.onDragLeave($event)"
+  (drop)="vm.filesService.onDrop($event)"
+  (paste)="vm.filesService.onPaste($event)"
+>
+  @if (vm.filesService.isDraggingOver()) {
+    <div
+      class="drag-drop-overlay"
+      (drop)="vm.filesService.onDrop($event)"
+      (dragover)="vm.filesService.onDragOver($event)"
+    >
+      <div class="drag-drop-modal">
+        <div class="drag-drop-icon">
+          <svg lucideUploadCloud [size]="44" aria-hidden="true"></svg>
+        </div>
+        <h3>Drag files here</h3>
+        <p>The files will be uploaded to the project and immediately mentioned in the message</p>
+      </div>
+    </div>
+  }
+
+  @if (vm.taskFilesService.filesOpen()) {
+    <app-task-files></app-task-files>
+  }
+
+  <div
+    #chatScrollArea
+    class="chat-scroll-area"
+    (scroll)="vm.chatViewService.onChatScroll()"
+    (wheel)="vm.chatViewService.onChatWheel($event)"
+    (touchmove)="vm.chatViewService.onChatTouch()"
+  >
+    @if (vm.chatService.currentWaitingTasks().length) {
+      <div class="chat-queue-banner" role="status">
+        <span>{{ vm.chatService.currentWaitingTasks()[0].message }}</span
+        ><button
+          class="btn btn-outline btn-sm"
+          (click)="vm.usageService.cancelTask(vm.chatService.currentWaitingTasks()[0])"
+        >
+          Cancel
+        </button>
+      </div>
+    }
+    @if (!vm.sessionService.current()?.messages?.length) {
+      <!-- THE HERO SCREEN: WHAT'S ON THE AGENDA TODAY? -->
+      <div class="hero-view">
+        <span class="hero-eyebrow">YOUR WORKSPACE</span>
+        <h1 class="hero-title">What will we do today?</h1>
+        <p class="hero-subtitle">
+          Describe the task. The assistant will help with code, files and ideas.
+        </p>
+
+        @if (vm.error()) {
+          <div class="banner banner-error hero-feedback" role="alert">
+            <svg lucideInfo [size]="16"></svg><span>{{ vm.error() }}</span
+            ><button class="btn-banner-close" (click)="vm.error.set('')" aria-label="Close">
+              <svg lucideX [size]="16"></svg>
+            </button>
+          </div>
+        }
+        @if (vm.filesService.uploading()) {
+          <div class="hero-feedback upload-feedback" role="status">
+            <span class="attach-spinner"></span>Uploading files...
+          </div>
+        }
+        <div class="hero-project-context">
+          <svg lucideFolder [size]="16"></svg
+          ><select
+            [ngModel]="vm.projectService.selectedProjectId()"
+            (ngModelChange)="vm.modelService.selectTaskProject($event)"
+            aria-label="Project for a task"
+          >
+            <option value="">Without a project</option>
+            @for (p of vm.projectService.projects(); track p.id) {
+              <option [value]="p.id">{{ p.name }}</option>
+            }
+          </select>
+        </div>
+        <app-chat-composer [hero]="true"></app-chat-composer>
+      </div>
+    } @else {
+      <div #messageFeed class="message-feed" (click)="vm.clipboardService.handleChatClick($event)">
+        @for (m of vm.sessionService.current()?.messages || []; track m.id) {
+          <div class="message-row" [class.user-row]="m.role === 'user'">
+            @if (m.role === 'user') {
+              <div class="user-bubble">
+                <div class="message-text">{{ m.text }}</div>
+              </div>
+            } @else {
+              <div class="assistant-row">
+                <div class="assistant-avatar">
+                  <svg lucideSparkles [size]="18"></svg>
+                </div>
+                <div class="assistant-content">
+                  <div class="assistant-meta">
+                    <span class="sender-name">{{
+                      vm.providerLabel(m.provider) || 'Assistant'
+                    }}</span>
+                    <span class="message-time">{{ m.at | date: 'HH:mm' }}</span>
+                    <span class="message-tokens" [title]="vm.tokenTitle(m.tokenUsage)">{{
+                      vm.tokenLabel(m.tokenUsage)
+                    }}</span>
+                  </div>
+                  <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
+                  <div class="assistant-actions">
+                    <button
+                      class="btn-action-icon"
+                      (click)="vm.clipboardService.copy(m.text, m.id)"
+                      title="Copy message"
+                    >
+                      <svg lucideCopy [size]="14"></svg>
+                    </button>
+                    <button
+                      class="btn-action-icon"
+                      (click)="vm.chatService.newSession()"
+                      title="Repeat request"
+                    >
+                      <svg lucideRotateCcw [size]="14"></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        @if (vm.chatService.running()) {
+          <div class="message-row">
+            <div class="assistant-row">
+              <div class="assistant-avatar stream-avatar">
+                <svg lucideSparkles [size]="18"></svg>
+              </div>
+              <div class="assistant-content">
+                <div class="assistant-meta">
+                  <span class="sender-name">{{
+                    vm.chatService.currentRunnerLabel() || 'Assistant'
+                  }}</span>
+                  <span class="streaming-time">{{ vm.chatService.elapsed() }}</span>
+                </div>
+
+                @if (vm.notice()) {
+                  <div class="chat-status-pill">
+                    <span class="run-pulse" aria-hidden="true"></span>
+                    <span class="chat-status-text">{{ vm.notice() }}</span>
+                  </div>
+                } @else if (!vm.chatService.stream()) {
+                  <div class="chat-status-pill">
+                    <span class="run-pulse" aria-hidden="true"></span>
+                    <span class="chat-status-text">Thinking…</span>
+                  </div>
+                }
+
+                <p class="task-last-activity">
+                  Last activity {{ vm.durationSince(vm.chatService.lastActivityAt()) }} ago
+                </p>
+                @if (vm.chatService.activity().length > 1) {
+                  <div class="chat-activity-feed">
+                    @for (row of vm.chatService.activity(); track $index) {
+                      <div class="chat-activity-item">
+                        <span class="chat-activity-chevron">›</span>
+                        <span class="chat-activity-text">{{ row.message }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+
+                @if (vm.chatService.stream()) {
+                  <div class="message-text markdown-body streaming-wrapper">
+                    <div
+                      class="streaming-content"
+                      [innerHTML]="vm.chatService.stream() | markdown"
+                    ></div>
+                    <span class="typing-cursor"></span>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
+        @for (task of vm.chatService.currentInterruptedTasks(); track task.id) {
+          <div class="message-row">
+            <article class="recovery-card">
+              <h3>Task interrupted · saved progress</h3>
+              <p class="recovery-request">{{ task.input.prompt }}</p>
+              <p>{{ task.message }}</p>
+              <p class="task-last-activity">
+                Last saved {{ task.recovery?.updatedAt | date: 'medium' }}
+              </p>
+              @if (task.recovery?.activity?.length) {
+                <details>
+                  <summary>Recent actions</summary>
+                  @for (row of task.recovery?.activity; track $index) {
+                    <p>{{ row.at | date: 'HH:mm:ss' }} · {{ row.message }}</p>
+                  }
+                </details>
+              }
+              @if (task.recovery?.partialText) {
+                <details open>
+                  <summary>Last saved response</summary>
+                  <div
+                    class="recovery-output markdown-body"
+                    [innerHTML]="task.recovery!.partialText | markdown"
+                  ></div>
+                </details>
+              }
+              <p>
+                Continue from the checkpoint on the original runner. The assistant will check the
+                current files and completed steps before proceeding.
+              </p>
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="!!vm.usageService.resumingTask()"
+                (click)="vm.usageService.resumeTask(task)"
+              >
+                {{
+                  vm.usageService.resumingTask() === task.id
+                    ? 'Starting…'
+                    : 'Continue from checkpoint'
+                }}
+              </button>
+            </article>
+          </div>
+        }
+
+        @if (vm.error()) {
+          <div class="message-row">
+            <div class="chat-error-card">
+              <svg lucideInfo [size]="16"></svg>
+              <span class="chat-error-msg">{{ vm.error() }}</span>
+              <button
+                type="button"
+                class="btn-chat-error-dismiss"
+                (click)="vm.error.set('')"
+                title="Close"
+              >
+                <svg lucideX [size]="14"></svg>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- COMPOSER SECTION (WHEN IN CHAT) -->
+  @if (vm.sessionService.current()?.messages?.length) {
+    <div class="composer-floating-wrap">
+      @if (vm.chatViewService.showScrollBottom()) {
+        <button
+          type="button"
+          class="scroll-bottom-btn"
+          (click)="vm.chatViewService.scrollToBottom(true, 'smooth')"
+          aria-label="Go to last message"
+          title="Go to last message"
+        >
+          <svg lucideChevronDown [size]="18"></svg><span>Go to last message</span>
+        </button>
+      }
+
+      <app-chat-composer></app-chat-composer>
+
+      <div class="composer-footnote">Enter — send · Shift + Enter — new line</div>
+    </div>
+  }
+</div>

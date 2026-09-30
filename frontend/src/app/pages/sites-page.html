@@ -1,0 +1,83 @@
+<div class="page-content">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">PREVIEW ON YOUR RUNNER</span>
+      <h2>Published sites</h2>
+      <p>
+        The files remain on the runner. Here you can hide the site or re-open its public address.
+      </p>
+    </div>
+  </div>
+  @if (vm.error()) {
+    <div class="banner banner-error">
+      <svg lucideInfo [size]="16"></svg><span>{{ vm.error() }}</span
+      ><button type="button" class="btn-banner-close" (click)="vm.error.set('')" aria-label="Close">
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+  @if (vm.notice()) {
+    <div class="banner banner-notice">
+      <svg lucideInfo [size]="16"></svg><span>{{ vm.notice() }}</span
+      ><button
+        type="button"
+        class="btn-banner-close"
+        (click)="vm.notice.set('')"
+        aria-label="Close"
+      >
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+  @if (!vm.runnerService.previews().length) {
+    <div class="empty-card">
+      <div class="empty-icon"><svg lucideGlobe2 [size]="32"></svg></div>
+      <h3>No websites yet</h3>
+      <p>
+        On the runner, run <code>deploy-preview &lt;site-folder&gt;</code>. The completed address
+        will appear here.
+      </p>
+    </div>
+  }
+  <div class="cards-grid">
+    @for (site of vm.runnerService.previews(); track site.subdomain) {
+      <article class="card site-card">
+        <div class="project-header">
+          <div class="project-avatar"><svg lucideGlobe2 [size]="22"></svg></div>
+          <span class="badge" [class.badge-ready]="site.visible && site.online && !site.expired">{{
+            site.expired
+              ? 'Expired'
+              : !site.visible
+                ? 'Hidden'
+                : site.online
+                  ? 'Published'
+                  : 'Runner is offline'
+          }}</span>
+        </div>
+        <h3>{{ site.subdomain }}.preview.s1m4.com</h3>
+        <div class="project-meta">
+          <svg lucideServer [size]="14"></svg
+          ><span
+            >{{ vm.runnerService.previewRunner(site) }} · Until
+            {{ site.expiresAt | date: 'd MMM, HH:mm' }}</span
+          >
+        </div>
+        <div class="card-actions">
+          <a
+            class="btn btn-outline btn-sm"
+            [href]="site.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Open</a
+          ><button
+            class="btn btn-primary btn-sm"
+            (click)="vm.runnerService.setPreviewVisible(site, !site.visible)"
+            [disabled]="site.expired"
+          >
+            {{ site.visible ? 'Hide' : 'Show' }}
+          </button>
+        </div>
+      </article>
+    }
+  </div>
+</div>

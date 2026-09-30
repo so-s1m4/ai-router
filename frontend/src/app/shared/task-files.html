@@ -1,0 +1,267 @@
+<section class="task-files-panel" aria-label="Task files">
+  <div class="task-files-heading">
+    <div class="task-files-title-group">
+      <div class="task-files-title-row">
+        <strong>Task files</strong>
+        @if (vm.taskFilesService.taskFiles().length) {
+          <span class="task-files-counter-badge"
+            >{{ vm.taskFilesService.taskFiles().length }}
+            {{ vm.taskFilesService.pluralizeFiles(vm.taskFilesService.taskFiles().length) }} &bull;
+            {{ vm.taskFilesService.totalFilesSize() }}</span
+          >
+        }
+      </div>
+      <span class="task-files-subtitle">The download link is valid for 7 days</span>
+    </div>
+    <div class="task-files-actions">
+      @if (vm.taskFilesService.hasDirectories()) {
+        <button
+          class="btn btn-outline btn-sm tree-ctrl-btn"
+          (click)="vm.taskFilesService.expandAllFolders()"
+          title="Expand all folders"
+        >
+          <span>Expand all</span>
+        </button>
+        <button
+          class="btn btn-outline btn-sm tree-ctrl-btn"
+          (click)="vm.taskFilesService.collapseAllFolders()"
+          title="Collapse all folders"
+        >
+          <span>Collapse all</span>
+        </button>
+      }
+      <button
+        class="btn btn-outline btn-sm refresh-btn"
+        (click)="vm.taskFilesService.refreshTaskFiles()"
+        [disabled]="vm.taskFilesService.filesLoading()"
+        title="Refresh list"
+      >
+        <svg lucideRefreshCw [size]="14" [class.spin]="vm.taskFilesService.filesLoading()"></svg>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  @if (vm.taskFilesService.taskFiles().length) {
+    <div class="file-selection-toolbar">
+      <label class="file-select-all"
+        ><input
+          type="checkbox"
+          [checked]="vm.taskFilesService.allTaskFilesSelected()"
+          [indeterminate]="
+            !vm.taskFilesService.allTaskFilesSelected() &&
+            vm.taskFilesService.someTaskFilesSelected()
+          "
+          (change)="vm.filesService.selectAllFiles('task', $any($event.target).checked)"
+          [disabled]="!!vm.taskFilesService.deletingFile() || vm.taskFilesService.filesLoading()"
+        />Select all</label
+      >
+      <span role="status">Selected: {{ vm.taskFilesService.selectedTaskFiles().size }}</span>
+      <button
+        class="btn btn-danger-outline btn-sm"
+        (click)="vm.filesService.deleteSelectedTaskFiles()"
+        [disabled]="
+          !vm.taskFilesService.selectedTaskFiles().size ||
+          !!vm.taskFilesService.deletingFile() ||
+          vm.taskFilesService.filesLoading()
+        "
+      >
+        {{
+          vm.taskFilesService.deletingFile()
+            ? 'Removing…'
+            : 'Delete selected (' + vm.taskFilesService.selectedTaskFiles().size + ')'
+        }}
+      </button>
+      @if (vm.taskFilesService.selectedTaskFiles().size) {
+        <button
+          class="btn btn-outline btn-sm"
+          (click)="vm.taskFilesService.selectedTaskFiles.set(vm.filesService.emptyFileSelection())"
+          [disabled]="!!vm.taskFilesService.deletingFile()"
+        >
+          Deselect
+        </button>
+      }
+    </div>
+  }
+
+  @if (vm.taskFilesService.taskFiles().length > 3) {
+    <div class="task-files-filter-bar">
+      <div class="task-files-filter-input-wrap">
+        <svg lucideSearch [size]="14" class="task-files-filter-icon"></svg>
+        <input
+          type="text"
+          class="task-files-filter-input"
+          placeholder="Search files…"
+          [value]="vm.taskFilesService.filesFilter()"
+          (input)="vm.taskFilesService.filesFilter.set($any($event.target).value)"
+        />
+        @if (vm.taskFilesService.filesFilter()) {
+          <button
+            class="task-files-filter-clear"
+            (click)="vm.taskFilesService.filesFilter.set('')"
+            title="Clear search"
+            aria-label="Clear search"
+          >
+            <svg lucideX [size]="13"></svg>
+          </button>
+        }
+      </div>
+    </div>
+  }
+
+  @if (vm.taskFilesService.filesLoading()) {
+    <p class="task-files-empty">Loading files…</p>
+  } @else if (!vm.taskFilesService.taskFiles().length) {
+    <p class="task-files-empty">
+      No files yet. Ask the AI to save the result to the task’s working folder.
+    </p>
+  } @else if (!vm.taskFilesService.visibleFileTree().length && vm.taskFilesService.filesFilter()) {
+    <p class="task-files-empty">No results for “{{ vm.taskFilesService.filesFilter() }}”</p>
+  } @else {
+    <div class="task-files-tree" role="tree" aria-label="File tree">
+      @for (node of vm.taskFilesService.visibleFileTree(); track node.path) {
+        @if (node.isDir) {
+          <div
+            class="task-tree-row task-tree-dir"
+            role="treeitem"
+            [attr.aria-expanded]="node.isExpanded"
+            [style.padding-left.px]="10 + node.depth * 20"
+            (click)="vm.taskFilesService.toggleFolder(node.path)"
+          >
+            <div class="task-tree-main">
+              <span class="task-tree-chevron" aria-hidden="true">
+                @if (node.isExpanded) {
+                  <svg lucideChevronDown [size]="14"></svg>
+                } @else {
+                  <svg lucideChevronRight [size]="14"></svg>
+                }
+              </span>
+              <span class="task-tree-icon task-folder-icon" aria-hidden="true">
+                @if (node.isExpanded) {
+                  <svg lucideFolderOpen [size]="16"></svg>
+                } @else {
+                  <svg lucideFolder [size]="16"></svg>
+                }
+              </span>
+              <span class="task-tree-label task-dir-name" [title]="node.path"
+                >{{ node.name }}/</span
+              >
+              <span class="task-tree-badge"
+                >{{ node.fileCount }}
+                {{ vm.taskFilesService.pluralizeFiles(node.fileCount || 0) }}</span
+              >
+            </div>
+            <div class="task-tree-meta">
+              <span class="task-tree-size">{{
+                vm.taskFilesService.formatFileSize(node.size)
+              }}</span>
+            </div>
+          </div>
+        } @else {
+          <div
+            class="task-tree-row task-tree-file"
+            role="treeitem"
+            [style.padding-left.px]="10 + node.depth * 20"
+          >
+            <div class="task-tree-main">
+              <input
+                class="file-select-checkbox"
+                type="checkbox"
+                [checked]="vm.taskFilesService.selectedTaskFiles().has(node.path)"
+                (change)="
+                  vm.filesService.toggleFileSelection(
+                    'task',
+                    node.path,
+                    $any($event.target).checked
+                  )
+                "
+                [disabled]="!!vm.taskFilesService.deletingFile()"
+                [attr.aria-label]="'Select file ' + node.path"
+              />
+              <span class="task-tree-icon task-file-icon" aria-hidden="true">
+                <svg lucideFile [size]="15"></svg>
+              </span>
+              <span class="task-tree-label task-file-name" [title]="node.path">{{
+                node.name
+              }}</span>
+            </div>
+            <div class="task-tree-meta">
+              <span class="task-tree-size">{{
+                vm.taskFilesService.formatFileSize(node.size)
+              }}</span>
+              <div class="task-tree-actions">
+                <button
+                  class="btn btn-outline btn-sm"
+                  (click)="vm.filePreviewService.previewFile(node.path)"
+                  title="View file"
+                >
+                  Open
+                </button>
+                @if (vm.taskFilesService.sharedFileLinks()[node.path]) {
+                  <a
+                    class="btn btn-outline btn-sm download-btn"
+                    [href]="vm.taskFilesService.sharedFileLinks()[node.path]"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Download"
+                  >
+                    <svg lucideDownload [size]="14"></svg>
+                    <span>Download</span>
+                  </a>
+                  <button
+                    class="btn btn-outline btn-sm icon-only-btn"
+                    (click)="
+                      vm.clipboardService.copy(
+                        vm.taskFilesService.sharedFileLinks()[node.path],
+                        'share-' + node.path
+                      )
+                    "
+                    title="Copy link"
+                  >
+                    <svg lucideCopy [size]="14"></svg>
+                  </button>
+                } @else {
+                  <button
+                    class="btn btn-outline btn-sm download-btn"
+                    (click)="vm.filesService.shareTaskFile(node.path, true)"
+                    title="Download"
+                  >
+                    <svg lucideDownload [size]="14"></svg>
+                    <span>Download</span>
+                  </button>
+                  <button
+                    class="btn btn-outline btn-sm link-btn"
+                    (click)="vm.filesService.shareTaskFile(node.path)"
+                    title="Create and copy link"
+                  >
+                    <svg lucideCopy [size]="14"></svg>
+                    <span>Link</span>
+                  </button>
+                }
+                <button
+                  class="btn btn-outline btn-sm icon-only-btn"
+                  (click)="vm.filesService.deleteTaskFile(node.path)"
+                  [disabled]="vm.taskFilesService.deletingFile() !== ''"
+                  title="Delete file"
+                  aria-label="Delete file"
+                >
+                  <svg lucideTrash2 [size]="14"></svg>
+                </button>
+              </div>
+            </div>
+            @if (vm.taskFilesService.sharedFileLinks()[node.path]) {
+              <input
+                class="task-file-share-url"
+                type="text"
+                readonly
+                [value]="vm.taskFilesService.sharedFileLinks()[node.path]"
+                aria-label="File link"
+                (focus)="$any($event.target).select()"
+              />
+            }
+          </div>
+        }
+      }
+    </div>
+  }
+</section>

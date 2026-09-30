@@ -1,0 +1,60 @@
+<div class="card form-card add-account-card" id="add-connection-card">
+  <div class="form-card-head">
+    <span class="section-tag">NEW CONNECTION</span>
+    <h3>Connect an Account or API Key</h3>
+    <p>Tokens and sessions will be isolated inside the selected runner container.</p>
+  </div>
+  <div class="add-account-grid">
+    <div class="add-account-field">
+      <label class="account-field-label">Account Label</label>
+      <input
+        class="custom-input"
+        [(ngModel)]="vm.accountService.accountName"
+        placeholder="e.g. OpenAI Work, Personal Codex"
+        aria-label="Account name"
+      />
+    </div>
+    <div class="add-account-field">
+      <label class="account-field-label">Provider Type</label>
+      <select
+        class="custom-select"
+        [(ngModel)]="vm.accountService.accountProvider"
+        aria-label="Provider"
+      >
+        <option value="codex">OpenAI Codex - Account (OAuth)</option>
+        <option value="openai-api">OpenAI API - Key</option>
+        <option value="antigravity">Google Antigravity / Gemini</option>
+        <option value="chatgpt">ChatGPT Web (Browser Session)</option>
+      </select>
+    </div>
+    <div class="add-account-field">
+      <label class="account-field-label">Target Runner</label>
+      <select
+        class="custom-select"
+        [(ngModel)]="vm.accountService.selectedRunner"
+        aria-label="Runner"
+      >
+        <option value="">Select container runner</option>
+        @for (r of vm.runnerService.runners(); track r.id) {
+          @if (!r.revokedAt) {
+            <option [value]="r.id">{{ r.name }}</option>
+          }
+        }
+      </select>
+    </div>
+    <div class="add-account-action">
+      <button
+        class="btn btn-primary"
+        (click)="vm.accountService.addAccount()"
+        [disabled]="
+          vm.accountService.addingAccount() ||
+          !vm.accountService.accountName.trim() ||
+          !vm.accountService.selectedRunner
+        "
+      >
+        <svg lucidePlus [size]="16"></svg>
+        <span>{{ vm.accountService.addingAccount() ? 'Adding…' : 'Add Connection' }}</span>
+      </button>
+    </div>
+  </div>
+</div>

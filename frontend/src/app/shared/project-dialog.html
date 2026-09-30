@@ -1,0 +1,120 @@
+@if (vm.projectService.projectCreateOpen()) {
+  <div
+    class="project-dialog-backdrop"
+    (click)="vm.projectService.closeProjectDialog()"
+    (keydown.escape)="vm.projectService.closeProjectDialog()"
+  >
+    <section
+      class="project-dialog"
+      (keydown.tab)="vm.trapDialogFocus($event)"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="project-dialog-title"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="project-dialog-heading">
+        <div class="project-avatar"><svg lucideFolder [size]="22"></svg></div>
+        <button
+          class="btn-icon"
+          (click)="vm.projectService.closeProjectDialog()"
+          aria-label="Close"
+        >
+          <svg lucideX [size]="20"></svg>
+        </button>
+      </div>
+      <h2 id="project-dialog-title">New project</h2>
+      <p>A separate place for tasks, files and chats.</p>
+      <form (ngSubmit)="vm.saveProject()">
+        <div class="input-group">
+          <label for="project-name">Name</label
+          ><input
+            id="project-name"
+            name="projectName"
+            [(ngModel)]="vm.projectService.newProjectName"
+            placeholder="For example, My site"
+            maxlength="80"
+            autocomplete="off"
+            required
+            [disabled]="vm.projectService.projectSaving()"
+          />
+        </div>
+        <div class="input-group">
+          <label for="project-runner">{{
+            vm.projectService.newProjectShared ? 'Initial runner' : 'Runner'
+          }}</label
+          ><select
+            id="project-runner"
+            name="projectRunner"
+            [(ngModel)]="vm.projectService.newProjectRunner"
+            required
+            [disabled]="vm.projectService.projectSaving()"
+          >
+            <option value="" disabled>Select a runner</option>
+            @for (r of vm.runnerService.runners(); track r.id) {
+              @if (!r.revokedAt) {
+                <option [value]="r.id">{{ r.name }}</option>
+              }
+            }
+          </select>
+        </div>
+        <label class="shared-project-toggle"
+          ><input
+            type="checkbox"
+            name="projectShared"
+            [(ngModel)]="vm.projectService.newProjectShared"
+            [disabled]="vm.projectService.projectSaving()"
+          />
+          Shared project</label
+        >
+        @if (vm.projectService.newProjectShared) {
+          <p>
+            Work across your runners and share the project folder with other users. One task runs at
+            a time. Chats stay personal.
+          </p>
+          <p>
+            Files sync automatically, up to 64 MB. Environment files and dependencies stay local to
+            each runner.
+          </p>
+          <div class="input-group">
+            <label for="project-members">Members (optional)</label
+            ><input
+              id="project-members"
+              name="projectMembers"
+              [(ngModel)]="vm.projectService.newProjectMembers"
+              placeholder="Usernames, separated by commas"
+              [disabled]="vm.projectService.projectSaving()"
+            />
+          </div>
+        }
+        @if (!vm.projectService.newProjectRunner) {
+          <p>
+            This project needs a runner.
+            <button
+              type="button"
+              class="btn-link"
+              (click)="vm.projectService.closeProjectDialog(); vm.showPage('runners')"
+            >
+              Connect a runner
+            </button>
+          </p>
+        }
+        @if (vm.projectService.projectCreateError()) {
+          <div class="banner banner-error" role="alert">
+            <span>{{ vm.projectService.projectCreateError() }}</span>
+          </div>
+        }
+        <button
+          class="btn btn-primary btn-block"
+          type="submit"
+          [disabled]="
+            !vm.projectService.newProjectName.trim() ||
+            !vm.projectService.newProjectRunner ||
+            vm.projectService.projectSaving()
+          "
+        >
+          {{ vm.projectService.projectSaving() ? 'Creating…' : 'Create a project' }}
+        </button>
+      </form>
+    </section>
+  </div>
+}

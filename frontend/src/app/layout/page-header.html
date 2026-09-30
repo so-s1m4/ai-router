@@ -1,0 +1,133 @@
+<header class="topbar">
+  <div class="topbar-left">
+    <button
+      class="topbar-nav-arrow desktop-nav-toggle"
+      (click)="vm.layoutService.toggleSidebar()"
+      [title]="vm.layoutService.sidebarOpen() ? 'Collapse panel' : 'Expand panel'"
+    >
+      <svg lucidePanelLeft [size]="16"></svg>
+    </button>
+    <button
+      class="topbar-nav-arrow mobile-menu-toggle"
+      (click)="vm.layoutService.mobileMenu.set(!vm.layoutService.mobileMenu())"
+      [attr.aria-expanded]="vm.layoutService.mobileMenu()"
+      aria-label="Open menu"
+    >
+      <svg lucideMenu [size]="20"></svg>
+    </button>
+    @if (!vm.layoutService.sidebarOpen()) {
+      <button
+        class="topbar-nav-arrow desktop-new-chat"
+        (click)="vm.chatService.newSession()"
+        title="New chat"
+      >
+        <svg lucideSquarePen [size]="16"></svg>
+      </button>
+    }
+  </div>
+
+  <div class="topbar-center">
+    <span class="mobile-page-title">{{
+      vm.page() === 'operations'
+        ? 'Usage'
+        : vm.page() === 'chat'
+          ? vm.sessionService.current()?.title || 'New task'
+          : vm.page() === 'files'
+            ? 'Files'
+            : vm.page() === 'notifications'
+              ? 'Notifications'
+              : vm.page() === 'projects'
+                ? 'Projects'
+                : vm.page() === 'sites'
+                  ? 'Websites'
+                  : vm.page() === 'providers'
+                    ? 'Models'
+                    : vm.page() === 'connections'
+                      ? 'Connections'
+                      : vm.page() === 'users'
+                        ? 'Users'
+                        : 'Runners'
+    }}</span>
+  </div>
+
+  <div class="topbar-right">
+    @if (vm.page() === 'chat') {
+      <button
+        class="topbar-nav-arrow mobile-new-chat"
+        (click)="vm.chatService.newSession()"
+        aria-label="New chat"
+        title="New chat"
+      >
+        <svg lucideSquarePen [size]="19"></svg>
+      </button>
+    }
+    @if (vm.page() === 'chat') {
+      @if (vm.sessionService.current()) {
+        <button
+          class="btn-topbar-files"
+          (click)="vm.taskFilesService.toggleTaskFiles()"
+          title="Task files"
+          aria-label="Task files"
+          [attr.aria-expanded]="vm.taskFilesService.filesOpen()"
+        >
+          <svg lucideDownload [size]="13"></svg>
+          <span>Files ({{ vm.taskFilesService.taskFiles().length }})</span>
+        </button>
+      }
+      <button
+        class="topbar-btn desktop-chat-refresh"
+        (click)="vm.chatService.reloadCurrent()"
+        title="Refresh chat"
+      >
+        <svg lucideRotateCcw [size]="15"></svg>
+      </button>
+    } @else if (vm.page() === 'projects') {
+      <button
+        class="btn btn-primary btn-sm"
+        (click)="vm.createProject()"
+        aria-label="New project"
+        title="New project"
+      >
+        <svg lucidePlus [size]="14"></svg>
+        <span>New project</span>
+      </button>
+    } @else if (vm.page() === 'sites') {
+      <button
+        class="btn btn-outline btn-sm"
+        (click)="vm.runnerService.refreshPreviews()"
+        aria-label="Refresh"
+      >
+        <svg lucideRefreshCw [size]="14"></svg>
+        <span>Refresh</span>
+      </button>
+    } @else if (vm.page() === 'providers') {
+      <button
+        class="btn btn-outline btn-sm"
+        (click)="vm.modelService.refreshProviders()"
+        aria-label="Refresh"
+        title="Refresh model list"
+      >
+        <svg lucideRefreshCw [size]="14"></svg>
+        <span>Refresh</span>
+      </button>
+    } @else if (vm.page() === 'connections') {
+      <button
+        class="btn btn-outline btn-sm"
+        (click)="vm.accountService.refreshAccounts()"
+        aria-label="Refresh"
+      >
+        <svg lucideRefreshCw [size]="14"></svg>
+        <span>Refresh</span>
+      </button>
+    } @else if (vm.page() === 'runners') {
+      <button
+        class="btn btn-outline btn-sm"
+        (click)="vm.runnerService.refreshRunners()"
+        aria-label="Refresh"
+      >
+        <svg lucideRefreshCw [size]="14"></svg>
+        <span>Refresh</span>
+      </button>
+    }
+  </div>
+</header>

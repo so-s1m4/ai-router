@@ -1,0 +1,73 @@
+<!-- SERVICE / PROVIDER PILL -->
+
+<div class="pill-select-wrapper" title="AI Provider">
+  <select
+    [ngModel]="vm.modelService.selectedService()"
+    (ngModelChange)="vm.modelService.selectService($event)"
+    class="pill-select-overlay"
+    aria-label="Provider"
+  >
+    <option value="auto">Auto</option>
+    <option value="gemini">
+      Gemini{{ vm.modelService.hasAccountsFor('gemini') ? '' : ' (!)' }}
+    </option>
+    <option value="codex">Codex{{ vm.modelService.hasAccountsFor('codex') ? '' : ' (!)' }}</option>
+    <option value="chatgpt">
+      ChatGPT{{ vm.modelService.hasAccountsFor('chatgpt') ? '' : ' (!)' }}
+    </option>
+  </select>
+  <button class="pill-model-badge" type="button" tabindex="-1">
+    <span>{{ vm.modelService.currentServiceLabel() }}</span>
+    <svg lucideChevronDown [size]="12"></svg>
+  </button>
+</div>
+
+<!-- MODEL PILL -->
+<div class="pill-select-wrapper" title="Model">
+  <button
+    class="pill-model-badge pill-model-highlight model-picker-trigger"
+    [title]="vm.modelService.currentModelBadgeLabel()"
+    [attr.aria-label]="'Select model: ' + vm.modelService.currentModelBadgeLabel()"
+    [class.pill-model-active]="vm.modelService.selectedModel() !== 'default'"
+    type="button"
+    aria-haspopup="dialog"
+    [attr.aria-expanded]="vm.modelMenuOpen()"
+    (click)="vm.openModelPicker($event)"
+  >
+    <span class="truncate-badge">{{ vm.modelService.currentModelBadgeLabel() }}</span>
+    <svg lucideChevronDown [size]="12"></svg>
+  </button>
+</div>
+
+<!-- REASONING PILL -->
+@if (vm.modelService.reasoningOptions().length > 1) {
+  <div class="pill-select-wrapper" title="Reasoning">
+    <select
+      [ngModel]="vm.modelService.selectedReasoning()"
+      (ngModelChange)="vm.modelService.onReasoningChange($event)"
+      class="pill-select-overlay"
+      aria-label="Reasoning effort"
+    >
+      @for (r of vm.modelService.reasoningOptions(); track r.id) {
+        <option [value]="r.id">{{ r.label }}</option>
+      }
+    </select>
+    <button class="pill-model-badge" type="button" tabindex="-1">
+      <span>{{ vm.modelService.currentReasoningBadgeLabel() }}</span>
+      <svg lucideChevronDown [size]="12"></svg>
+    </button>
+  </div>
+}
+
+@if (vm.modelService.selectedService() === 'codex') {
+  <button
+    type="button"
+    class="pill-model-badge codex-fast-toggle"
+    [class.codex-fast-active]="vm.modelService.codexFast()"
+    [attr.aria-pressed]="vm.modelService.codexFast()"
+    title="Fast mode Codex: increased speed and limit consumption"
+    (click)="vm.modelService.codexFast.set(!vm.modelService.codexFast())"
+  >
+    Fast {{ vm.modelService.codexFast() ? 'on' : 'off' }}
+  </button>
+}

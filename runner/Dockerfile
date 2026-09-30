@@ -7,7 +7,7 @@ COPY src ./src
 RUN npm run build
 FROM node:22-bookworm-slim
 ARG INSTALL_CODEX_CLI=false
-ARG CODEX_CLI_VERSION=0.159.0
+ARG CODEX_CLI_VERSION=latest
 ARG INSTALL_AGY_CLI=false
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -39,7 +39,10 @@ COPY --from=build /app/dist ./dist
 COPY scripts ./scripts
 RUN chmod +x scripts/*.sh scripts/deploy-preview && ln -s /app/scripts/deploy-preview /usr/local/bin/deploy-preview && mkdir -p /runner-data && chown -R node:node /runner-data
 USER node
-ENV NODE_ENV=production \
+ENV PATH="/runner-data/cli/current/codex:/runner-data/cli/current/antigravity:${PATH}" \
+    CLI_AUTO_UPDATE=true \
+    CLI_UPDATE_INTERVAL_SECONDS=21600 \
+    NODE_ENV=production \
     RUNNER_DATA_DIR=/runner-data \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     AGY_CLI_DISABLE_AUTO_UPDATE=true \

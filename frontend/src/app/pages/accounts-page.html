@@ -1,0 +1,169 @@
+<div class="page-content">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">PROVIDERS & AUTHENTICATION</span>
+      <h2>Accounts & Connections</h2>
+      <p>
+        Connect and orchestrate your OpenAI Codex, Google Gemini, and ChatGPT accounts. Smart
+        routing automatically balances requests and fails over seamlessly when provider quotas or
+        limits are reached.
+      </p>
+    </div>
+    <div class="section-hero-actions">
+      <button class="btn btn-primary btn-sm" (click)="vm.accountService.scrollToAddAccount()">
+        <svg lucidePlus [size]="15"></svg>
+        <span>Add connection</span>
+      </button>
+      <button
+        class="btn btn-outline btn-sm"
+        (click)="vm.accountService.refreshAccounts()"
+        aria-label="Refresh connections"
+      >
+        <svg lucideRefreshCw [size]="14"></svg>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  @if (vm.error()) {
+    <div class="banner banner-error">
+      <svg lucideInfo [size]="16"></svg><span>{{ vm.error() }}</span
+      ><button type="button" class="btn-banner-close" (click)="vm.error.set('')" aria-label="Close">
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+  @if (vm.notice()) {
+    <div class="banner banner-notice">
+      <svg lucideInfo [size]="16"></svg><span>{{ vm.notice() }}</span
+      ><button
+        type="button"
+        class="btn-banner-close"
+        (click)="vm.notice.set('')"
+        aria-label="Close"
+      >
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+
+  <div class="connections-stats-grid">
+    <div class="connection-stat-pill">
+      <span class="stat-pill-label">Total Connections</span>
+      <strong class="stat-pill-value">{{ vm.accountService.accounts().length }}</strong>
+    </div>
+    <div class="connection-stat-pill">
+      <span class="stat-pill-label">Active & Ready</span>
+      <strong class="stat-pill-value stat-val-success">{{ vm.availableAccountsCount() }}</strong>
+    </div>
+    <div class="connection-stat-pill">
+      <span class="stat-pill-label">Codex Resets</span>
+      <strong class="stat-pill-value" [class.stat-val-highlight]="vm.totalResetCredits() > 0">{{
+        vm.totalResetCredits()
+      }}</strong>
+    </div>
+    <div class="connection-stat-pill">
+      <span class="stat-pill-label">Shared Grants</span>
+      <strong class="stat-pill-value">{{ vm.sharingService.grants().length }}</strong>
+    </div>
+  </div>
+
+  <div class="accounts-section-header">
+    <div class="accounts-section-title">
+      <h3>Active Accounts</h3>
+      <span class="badge badge-neutral">{{ vm.accountService.accounts().length }}</span>
+    </div>
+  </div>
+
+  <div class="cards-grid accounts-grid">
+    @for (a of vm.accountService.accounts(); track a.id) {
+      <app-account-card [a]="a"></app-account-card>
+    } @empty {
+      <div class="card account-empty-card">
+        <div class="account-empty-icon">
+          <svg lucidePlugZap [size]="32"></svg>
+        </div>
+        <h3>No Connections Yet</h3>
+        <p>
+          Connect your OpenAI Codex, Gemini, or ChatGPT account to begin routing tasks across models
+          and accounts.
+        </p>
+        <button class="btn btn-primary" (click)="vm.accountService.scrollToAddAccount()">
+          <svg lucidePlus [size]="16"></svg>
+          <span>Add First Connection</span>
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- ADD ACCOUNT FORM -->
+  <app-add-account-form></app-add-account-form>
+
+  <!-- SHARING SECTION -->
+  <app-shared-access></app-shared-access>
+
+  <div class="connections-bottom-grid">
+    <!-- IMPORT CODEX PROFILES -->
+    <div class="card form-card">
+      <div class="form-card-head">
+        <span class="section-tag">MASS IMPORT</span>
+        <h3>Importing Profiles (.codexprofile.json)</h3>
+        <p>You can import saved Codex profiles directly into the container server.</p>
+      </div>
+      <div class="command-box">
+        <div class="command-title">
+          <span class="command-title-text"
+            ><svg lucideTerminal [size]="13"></svg> Import command</span
+          >
+          <button
+            class="btn-copy"
+            (click)="
+              vm.clipboardService.copy(
+                './runner/import-profiles.sh ~/Desktop/*.codexprofile.json',
+                'import-cmd'
+              )
+            "
+          >
+            @if (vm.clipboardService.copiedId() === 'import-cmd') {
+              <svg lucideCheck [size]="13"></svg>
+              <span>Copied</span>
+            } @else {
+              <svg lucideCopy [size]="13"></svg>
+              <span>Copy</span>
+            }
+          </button>
+        </div>
+        <code class="code-snippet">./runner/import-profiles.sh ~/Desktop/*.codexprofile.json</code>
+      </div>
+    </div>
+
+    <!-- SMART ROUTING OVERVIEW -->
+    <div class="card form-card routing-card">
+      <div class="form-card-head">
+        <span class="section-tag">AUTOMATION</span>
+        <h3>Smart Routing & Automatic Failover</h3>
+        <p>Continuous monitoring of rate limits and quotas.</p>
+      </div>
+      <p class="routing-card-desc">
+        When provider quotas are reached or a service returns rate limit errors, requests
+        immediately fail over to the next priority account without losing conversation context.
+      </p>
+    </div>
+  </div>
+
+  @if (vm.chatgptSessionModal() && vm.selectedChatGPTAccount()) {
+    <app-chatgpt-session-dialog></app-chatgpt-session-dialog>
+  }
+
+  <div class="helper-box">
+    <svg lucideInfo [size]="20" class="helper-icon"></svg>
+    <div>
+      <strong>Smart Routing (Auto)</strong>
+      <p>
+        AI Router checks your connections consistently. When limits are reached or the provider
+        fails, the request is seamlessly transferred to the next available account while maintaining
+        the task context.
+      </p>
+    </div>
+  </div>
+</div>

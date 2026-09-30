@@ -1,0 +1,84 @@
+<div class="page-content notifications-page">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">STAY CONNECTED</span>
+      <h2>Notifications</h2>
+      <p>Find out the ready answer even when another tab is open.</p>
+    </div>
+  </div>
+  @if (vm.error()) {
+    <div class="banner banner-error">{{ vm.error() }}</div>
+  }
+  <section class="notification-card">
+    <h3>Telegram</h3>
+    <p>
+      Send tasks from your phone, reply to the agent, and receive results in Telegram. Select a
+      project with /projects, check /status, or stop work with /stop.
+    </p>
+    @if (vm.notificationsService.telegram(); as tg) {
+      @if (!tg.configured) {
+        <p>Telegram has not yet been configured by the server owner.</p>
+        @if (vm.isOwner()) {
+          <p>Set TELEGRAM_BOT_TOKEN in the backend and PUBLIC_URL settings for chat links.</p>
+        }
+      } @else if (tg.connected) {
+        <p>Connected {{ tg.name }}</p>
+        <div class="notification-actions">
+          <button
+            class="btn btn-primary"
+            (click)="vm.notificationsService.toggleTelegram()"
+            [disabled]="vm.notificationsService.telegramBusy()"
+          >
+            {{ tg.enabled ? 'Turn off notifications' : 'Enable notifications' }}</button
+          ><button
+            class="btn btn-outline"
+            (click)="vm.notificationsService.disconnectTelegram()"
+            [disabled]="vm.notificationsService.telegramBusy()"
+          >
+            Disable Telegram
+          </button>
+        </div>
+        @if (tg.lastError) {
+          <p class="library-source-error">{{ tg.lastError }}</p>
+        }
+      } @else {
+        <button
+          class="btn btn-primary"
+          (click)="vm.notificationsService.connectTelegram()"
+          [disabled]="vm.notificationsService.telegramBusy()"
+        >
+          Connect Telegram
+        </button>
+        @if (vm.notificationsService.telegramLink()) {
+          <div class="telegram-connect">
+            <a
+              class="btn btn-outline"
+              [href]="vm.notificationsService.telegramLink()"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open a bot in Telegram</a
+            >
+            <p>
+              Click Start on the bot, then check your connection. The link is valid for 10 minutes.
+            </p>
+            <button class="btn btn-outline" (click)="vm.notificationsService.refreshTelegram()">
+              Check connection
+            </button>
+          </div>
+        }
+      }
+    } @else {
+      <p>Loading settings...</p>
+    }
+  </section>
+  <section class="notification-card">
+    <h3>In this browser</h3>
+    <p>
+      Show a notification when a reply is ready and you are reading another chat or tab. The setting
+      is valid until you exit the application.
+    </p>
+    <button class="btn btn-outline" (click)="vm.notificationsService.enableBrowserNotifications()">
+      {{ vm.notificationsService.browserNotifications() ? 'Turn off' : 'Turn on' }} notifications
+    </button>
+  </section>
+</div>

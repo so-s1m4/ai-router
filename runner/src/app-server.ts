@@ -275,3 +275,6 @@ export async function prewarmCodexAppServer(home: string) {
 }
 
 export function closeCodexAppServers() { for (const connection of processes.values()) connection.close(); processes.clear(); configVersions.clear(); }
+
+// Let active turns finish on their original process; new connections use the updated CLI.
+export function retireCodexAppServers() { for (const connection of processes.values()) connection.retire(); processes.clear(); configVersions.clear(); }

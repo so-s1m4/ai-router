@@ -1,0 +1,150 @@
+<nav class="app-rail" aria-label="Main navigation">
+  <div class="rail-group">
+    <span class="nav-group-label">Workspace</span>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'chat'"
+      [attr.aria-current]="vm.page() === 'chat' ? 'page' : null"
+      (click)="vm.showPage('chat')"
+      title="Chats"
+    >
+      <svg lucideMessageSquare [size]="18" aria-hidden="true"></svg><span>Chats</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'projects'"
+      [attr.aria-current]="vm.page() === 'projects' ? 'page' : null"
+      (click)="vm.showPage('projects')"
+      title="Projects"
+    >
+      <svg lucideFolder [size]="18" aria-hidden="true"></svg><span>Projects</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'operations'"
+      [attr.aria-current]="vm.page() === 'operations' ? 'page' : null"
+      (click)="vm.showPage('operations')"
+      title="Usage"
+    >
+      <svg lucideTerminal [size]="18" aria-hidden="true"></svg><span>Usage</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'files'"
+      [attr.aria-current]="vm.page() === 'files' ? 'page' : null"
+      (click)="vm.showPage('files')"
+      title="Files"
+    >
+      <svg lucideFile [size]="18" aria-hidden="true"></svg><span>Files</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'sites'"
+      [attr.aria-current]="vm.page() === 'sites' ? 'page' : null"
+      (click)="vm.showPage('sites')"
+      title="Websites & previews"
+    >
+      <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites & previews</span>
+    </button>
+  </div>
+  <div class="rail-group">
+    <span class="nav-group-label">Settings</span>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'providers'"
+      [attr.aria-current]="vm.page() === 'providers' ? 'page' : null"
+      (click)="vm.showPage('providers')"
+      title="Models"
+    >
+      <svg lucideBot [size]="18" aria-hidden="true"></svg><span>Models</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'connections'"
+      [attr.aria-current]="vm.page() === 'connections' ? 'page' : null"
+      (click)="vm.showPage('connections')"
+      title="Accounts & connections"
+    >
+      <svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Accounts & connections</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'runners'"
+      [attr.aria-current]="vm.page() === 'runners' ? 'page' : null"
+      (click)="vm.showPage('runners')"
+      title="Runners"
+    >
+      <svg lucideServer [size]="18" aria-hidden="true"></svg><span>Runners</span>
+    </button>
+    <button
+      class="rail-btn"
+      [class.active]="vm.page() === 'notifications'"
+      [attr.aria-current]="vm.page() === 'notifications' ? 'page' : null"
+      (click)="vm.showPage('notifications')"
+      title="Notifications & Telegram"
+    >
+      <svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications & Telegram</span>
+    </button>
+  </div>
+  @if (vm.isOwner()) {
+    <div class="rail-group">
+      <button
+        class="rail-btn"
+        [class.active]="vm.page() === 'users'"
+        (click)="vm.showPage('users')"
+      >
+        <svg lucideSettings2 [size]="18" aria-hidden="true"></svg><span>Users</span>
+      </button>
+    </div>
+  }
+  <div class="rail-spacer"></div>
+  <div class="rail-group">
+    <button
+      class="rail-btn"
+      (click)="vm.layoutService.helpModalOpen.set(!vm.layoutService.helpModalOpen())"
+      title="Help"
+    >
+      <svg lucideCircleQuestionMark [size]="18" aria-hidden="true"></svg><span>Help</span>
+    </button>
+
+    <div class="rail-avatar-wrapper">
+      <button
+        class="rail-avatar-btn"
+        (click)="vm.layoutService.userMenuOpen.set(!vm.layoutService.userMenuOpen())"
+        [title]="vm.auth.username || 'User'"
+      >
+        {{ vm.auth.username ? vm.auth.username.slice(0, 2).toUpperCase() : 'MO' }}
+      </button>
+      @if (vm.layoutService.userMenuOpen()) {
+        <div
+          class="rail-popover-menu rail-user-menu"
+          (click)="vm.layoutService.userMenuOpen.set(false)"
+        >
+          <div class="popover-header">
+            <strong>{{ vm.auth.username || 'Maksym Rvachov' }}</strong>
+            <span>AI Router Workspace</span>
+          </div>
+          <div class="popover-divider"></div>
+          <button class="popover-item" (click)="vm.showPage('projects')">
+            <svg lucideFolder [size]="16"></svg>
+            <span>Projects</span>
+          </button>
+          <button class="popover-item" (click)="vm.showPage('runners')">
+            <svg lucideServer [size]="16"></svg>
+            <span>Runners</span>
+          </button>
+          @if (vm.isOwner()) {
+            <button class="popover-item" (click)="vm.showPage('users')">
+              <svg lucideSettings2 [size]="16"></svg>
+              <span>Users</span>
+            </button>
+          }
+          <button class="popover-item" (click)="vm.logout()">
+            <svg lucideLogOut [size]="16"></svg>
+            <span>Log out of your account</span>
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</nav>

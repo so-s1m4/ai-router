@@ -1,0 +1,79 @@
+<div class="page-content operations-page">
+  <div class="section-hero">
+    <div>
+      <span class="section-tag">WORKSPACE</span>
+      <h2>Usage</h2>
+      <p>Review token consumption and shared access budgets.</p>
+    </div>
+    <button class="btn btn-outline" (click)="vm.usageService.refreshUsageSummary()">Refresh</button>
+  </div>
+  @if (vm.error()) {
+    <div class="banner banner-error">{{ vm.error() }}</div>
+  }
+  @if (vm.notice()) {
+    <div class="banner banner-notice" role="status">
+      <span>{{ vm.notice() }}</span
+      ><button
+        type="button"
+        class="btn-banner-close"
+        (click)="vm.notice.set('')"
+        aria-label="Close"
+      >
+        <svg lucideX [size]="14"></svg>
+      </button>
+    </div>
+  }
+  @if (vm.usageService.usageSummary(); as summary) {
+    <section class="notification-card">
+      <h3>Reported consumption</h3>
+      <div class="usage-total">{{ summary.totalTokens | number }} <span>tokens</span></div>
+      <p>{{ summary.source }}. Older requests may have no model information.</p>
+      <div class="operations-grid">
+        <div>
+          <h4>By project</h4>
+          @for (row of summary.byProject; track row.id) {
+            <div class="usage-summary-row">
+              <span>{{ vm.usageService.projectUsageName(row.id) }}</span
+              ><strong>{{ row.tokens | number }}</strong>
+            </div>
+          } @empty {
+            <p>No reported usage</p>
+          }
+        </div>
+        <div>
+          <h4>By model</h4>
+          @for (row of summary.byModel; track row.id) {
+            <div class="usage-summary-row">
+              <span>{{ row.id }}</span
+              ><strong>{{ row.tokens | number }}</strong>
+            </div>
+          } @empty {
+            <p>No reported usage</p>
+          }
+        </div>
+      </div>
+    </section>
+    <section class="notification-card">
+      <h3>Shared access budgets</h3>
+      @for (grant of summary.grants; track grant.id) {
+        <article class="operations-task">
+          <strong>{{
+            grant.direction === 'outgoing' ? grant.recipientName : grant.ownerName
+          }}</strong>
+          <p>
+            {{ grant.direction }} · {{ grant.state }} · {{ grant.remainingTokens | number }} /
+            {{ grant.budget | number }} tokens remaining · {{ grant.period }}
+          </p>
+          @for (row of vm.sharingService.grantUsage(grant); track row.model) {
+            <div class="usage-summary-row">
+              <span>{{ row.model }}</span
+              ><span>{{ row.tokens | number }}</span>
+            </div>
+          }
+        </article>
+      } @empty {
+        <p>No shared access</p>
+      }
+    </section>
+  }
+</div>

@@ -1,0 +1,38 @@
+<div class="app-layout" (keydown.escape)="vm.layoutService.mobileMenu.set(false)">
+  @if (vm.layoutService.mobileMenu()) {
+    <div class="drawer-overlay" (click)="vm.layoutService.mobileMenu.set(false)"></div>
+  }
+
+  <!-- 1. LEFT MINI RAIL (DOCK) -->
+  <app-navigation-rail></app-navigation-rail>
+
+  <!-- 2. SECONDARY SIDEBAR (260px COLLAPSIBLE) -->
+  <app-chat-sidebar></app-chat-sidebar>
+
+  <!-- 3. MAIN AREA -->
+  <main class="main-content">
+    @if (vm.page() !== 'chat') {
+      <nav class="mobile-bottom-nav" aria-label="Quick navigation">
+        <button [class.active]="vm.page() === 'projects'" (click)="vm.showPage('projects')">
+          <svg lucideFolder [size]="20"></svg><span>Projects</span>
+        </button>
+        <button [class.active]="vm.page() === 'sites'" (click)="vm.showPage('sites')">
+          <svg lucideGlobe2 [size]="20"></svg><span>Websites</span>
+        </button>
+        <button (click)="vm.chatService.newSession()">
+          <svg lucideSquarePen [size]="20"></svg><span>New task</span>
+        </button>
+        <button
+          (click)="vm.layoutService.mobileMenu.set(true)"
+          [attr.aria-expanded]="vm.layoutService.mobileMenu()"
+        >
+          <svg lucideMenu [size]="20"></svg><span>All sections</span>
+        </button>
+      </nav>
+    }
+    <!-- TOPBAR -->
+    <app-page-header></app-page-header>
+
+    <router-outlet></router-outlet>
+  </main>
+</div>

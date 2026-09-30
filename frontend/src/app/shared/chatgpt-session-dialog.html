@@ -1,0 +1,75 @@
+<div class="chatgpt-modal-backdrop" (click)="vm.closeChatGPTSessionModal()">
+  <div class="chatgpt-modal-card" (click)="$event.stopPropagation()">
+    <div class="chatgpt-modal-header">
+      <div class="chatgpt-modal-title">
+        <div class="provider-badge-icon provider-chatgpt">
+          <svg lucideGlobe2 [size]="20"></svg>
+        </div>
+        <div>
+          <h3>Importing a ChatGPT session</h3>
+          <span class="chatgpt-modal-subtitle"
+            >Account: <strong>{{ vm.selectedChatGPTAccount()?.name }}</strong></span
+          >
+        </div>
+      </div>
+      <button class="btn-icon" (click)="vm.closeChatGPTSessionModal()" aria-label="Close">
+        <svg lucideX [size]="18"></svg>
+      </button>
+    </div>
+
+    <div class="chatgpt-modal-body">
+      <p class="chatgpt-modal-desc">
+        Paste the cookie value <code>__Secure-next-auth.session-token</code> or a full JSON array of
+        cookies (for example, exported from the Cookie-Editor extension).
+      </p>
+
+      <div class="chatgpt-modal-field">
+        <label for="chatgptSessionInput">Session token or Cookies JSON:</label>
+        <textarea
+          id="chatgptSessionInput"
+          class="custom-textarea chatgpt-textarea"
+          rows="6"
+          [(ngModel)]="vm.chatgptSessionInput"
+          placeholder='eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0... or [{"name": "__Secure-next-auth.session-token", ...}]'
+        ></textarea>
+      </div>
+
+      <div class="chatgpt-modal-guide">
+        <strong>How to get a token:</strong>
+        <ol>
+          <li>
+            Open <a href="https://chatgpt.com" target="_blank" rel="noopener">chatgpt.com</a> and
+            log in to your account.
+          </li>
+          <li>
+            Open Developer Tools (F12) → tab <em>Application</em> (Storage) → <em>Cookies</em> →
+            <code>https://chatgpt.com</code>.
+          </li>
+          <li>Copy the cookie value <code>__Secure-next-auth.session-token</code>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="chatgpt-modal-footer">
+      <button
+        class="btn btn-outline"
+        (click)="vm.closeChatGPTSessionModal()"
+        [disabled]="vm.chatgptImporting()"
+      >
+        Cancel
+      </button>
+      <button
+        class="btn btn-primary"
+        (click)="vm.saveChatGPTSession()"
+        [disabled]="!vm.chatgptSessionInput.trim() || vm.chatgptImporting()"
+      >
+        @if (vm.chatgptImporting()) {
+          <span>Saving...</span>
+        } @else {
+          <svg lucideCheck [size]="16"></svg>
+          <span>Save session</span>
+        }
+      </button>
+    </div>
+  </div>
+</div>

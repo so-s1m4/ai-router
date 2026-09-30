@@ -153,6 +153,18 @@ ssh ovhserver 'sudo cat /etc/ai-router/ssl/privkey.pem' > /tmp/s1m4-privkey.pem
 
 CLI-адаптеры используют официальные потоки [Codex CLI](https://developers.openai.com/codex/cli/reference), [Codex authentication](https://developers.openai.com/codex/auth) и [Antigravity headless mode](https://antigravity.google/docs/cli/headless/).
 
+### Automatic provider CLI updates
+
+Runner checks the latest stable Codex and Antigravity CLI releases at startup and every six hours. It stages and validates each new version in `/runner-data/cli/releases`, then atomically switches the executable path when no task is active. Failed downloads leave the installed CLI available. The shared `runner_data` volume preserves updates across container restarts; login scripts and Runner Manager use the same binaries. Cached Codex App Server connections retire after their current turn.
+
+Defaults: `CLI_AUTO_UPDATE=true` and `CLI_UPDATE_INTERVAL_SECONDS=21600`. Override them in the runner stack environment to disable updates or change the interval. Mock mode and explicit `CODEX_BIN`/`AGY_BIN` overrides skip automatic updates. Antigravity’s native updater remains disabled because runner manages verified releases between tasks. Codex uses the official [npm release channel](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex); Antigravity uses the release manifest referenced by its official [installer](https://antigravity.google/cli/install.sh) and verifies SHA-512 before activation.
+
+### Frontend structure
+
+The Angular frontend uses standalone components in `frontend/src/app/pages/` for all ten routed sections, `layout/` for the workspace shell and navigation, and `shared/` for account cards, forms, the composer, model controls and dialogs. `app.routes.ts` lazy-loads each page; URLs include `/chats`, `/projects`, `/usage`, `/files`, `/sites`, `/models`, `/accounts`, `/runners`, `/notifications` and the owner-only `/users`. Existing session links with `?session=…` remain supported.
+
+Services in `core/` own API requests, authentication, realtime connections and feature state. `WorkspaceStore` coordinates initial loading and cross-feature UI actions; `App` only mounts the login or workspace shell and global dialogs. Account quotas and reset redemption belong to Accounts; Usage contains consumption and shared budgets. Run `npm test --prefix frontend -- --watch=false --browsers=ChromeHeadless` for routing, file selection, shared-project model availability and reset retry checks.
+
 ## Публикация на OVH
 
 Публичный репозиторий: [so-s1m4/ai-router](https://github.com/so-s1m4/ai-router). Производственный стек описан в `compose.prod.yaml` и управляется Portainer как Git-стек. Он слушает `127.0.0.1:18088` на сервере и доступен Nginx Proxy Manager через общую Docker-сеть `proxy` по имени `ai-router-web:80`. HTTPS для `ai.s1m4.com` завершается в reverse proxy.

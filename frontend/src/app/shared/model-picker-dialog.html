@@ -1,0 +1,76 @@
+@if (vm.loggedIn() && vm.modelMenuOpen()) {
+  <div
+    class="model-picker-backdrop"
+    (click)="vm.closeModelPicker()"
+    (keydown.escape)="$event.stopPropagation(); vm.closeModelPicker()"
+  >
+    <section
+      id="model-picker"
+      class="model-picker"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="model-picker-title"
+      (click)="$event.stopPropagation()"
+      (keydown)="vm.onModelPickerKey($event)"
+    >
+      <header class="model-picker-header">
+        <div>
+          <h2 id="model-picker-title">Select model</h2>
+          <p>
+            {{ vm.modelService.currentServiceLabel() }} · {{ vm.modelService.models().length }}
+            {{ vm.modelService.models().length === 1 ? 'model' : 'models' }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn-icon"
+          aria-label="Close model selection"
+          (click)="vm.closeModelPicker()"
+        >
+          <svg lucideX [size]="20"></svg>
+        </button>
+      </header>
+      <label class="model-picker-search">
+        <svg lucideSearch [size]="18"></svg>
+        <input
+          type="search"
+          aria-label="Search for models"
+          placeholder="Find model..."
+          [ngModel]="vm.modelSearch()"
+          (ngModelChange)="vm.modelSearch.set($event)"
+          autocomplete="off"
+        />
+      </label>
+      <div class="model-picker-list" role="group" aria-label="Available models">
+        @for (m of vm.filteredPickerModels(); track m.id) {
+          <button
+            type="button"
+            class="model-picker-option"
+            [class.model-picker-selected]="vm.modelService.selectedModel() === m.id"
+            [attr.aria-pressed]="vm.modelService.selectedModel() === m.id"
+            (click)="vm.choosePickerModel(m.id)"
+          >
+            <svg lucideBot [size]="20"></svg>
+            <span
+              >{{ m.label }}
+              @if (m.id === 'auto') {
+                <small
+                  >Simple tasks use economical models; complex tasks use stronger models. Switches
+                  on failure.</small
+                >
+              }
+              @if (m.id === 'default') {
+                <small>Provider default</small>
+              }
+            </span>
+            @if (vm.modelService.selectedModel() === m.id) {
+              <svg lucideCheck [size]="18" class="model-picker-check"></svg>
+            }
+          </button>
+        } @empty {
+          <p class="model-picker-empty" role="status">No models found</p>
+        }
+      </div>
+    </section>
+  </div>
+}

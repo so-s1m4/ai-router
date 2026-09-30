@@ -1,0 +1,152 @@
+<section class="sharing-section">
+  <div class="sharing-heading">
+    <div>
+      <span class="section-tag">COLLABORATION</span>
+      <h3>Shared Access & Team Budgets</h3>
+      <p>
+        Grant other users access to all your connections with a shared token budget and approved
+        models.
+      </p>
+    </div>
+    <div class="sharing-heading-actions">
+      <button
+        class="btn btn-primary btn-sm"
+        (click)="vm.sharingService.openGrantEditor()"
+        [disabled]="!vm.sharingService.ownAccounts().length"
+      >
+        <svg lucidePlus [size]="15"></svg>
+        <span>Grant access</span>
+      </button>
+      <button class="btn btn-outline btn-sm" (click)="vm.sharingService.refreshGrants()">
+        <svg lucideRefreshCw [size]="13"></svg>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+  @if (vm.sharingService.grantEditor()) {
+    <div class="card sharing-editor">
+      <h3>{{ vm.sharingService.grantId ? 'Access Settings' : 'Invite a friend' }}</h3>
+      <label
+        >Friend’s username<input
+          class="custom-input"
+          [(ngModel)]="vm.sharingService.grantUsername"
+          [disabled]="!!vm.sharingService.grantId"
+          placeholder="Username on this site"
+          autocomplete="off"
+      /></label>
+      <div class="sharing-fields">
+        <label
+          >Token budget<input
+            class="custom-input"
+            type="number"
+            min="1"
+            max="1000000000000"
+            step="1000"
+            [(ngModel)]="vm.sharingService.grantBudget" /></label
+        ><label
+          >Period<select
+            class="custom-select"
+            [(ngModel)]="vm.sharingService.grantPeriod"
+            [disabled]="!!vm.sharingService.grantId"
+          >
+            <option value="once">One-time</option>
+            <option value="monthly">Every month</option>
+          </select></label
+        >
+      </div>
+      <p>
+        The monthly budget resets on the 1st. Changing the limit keeps the tokens already spent.
+      </p>
+      <fieldset class="sharing-models">
+        <legend>Allowed models</legend>
+        @for (m of vm.sharingService.grantAvailableModels(); track m.id) {
+          <label
+            ><input
+              type="checkbox"
+              [checked]="vm.sharingService.grantModels.includes(m.id)"
+              (change)="vm.sharingService.toggleGrantModel(m.id)"
+            />{{
+              m.id === 'default' ? 'Default connection model (subject to change)' : m.label
+            }}</label
+          >
+        }
+      </fieldset>
+      <div class="sharing-actions">
+        <button
+          class="btn btn-primary"
+          (click)="vm.sharingService.saveGrant()"
+          [disabled]="
+            vm.sharingService.grantBusy() ||
+            !vm.sharingService.grantModels.length ||
+            vm.sharingService.grantBudget < 1 ||
+            !vm.sharingService.grantUsername.trim()
+          "
+        >
+          {{
+            vm.sharingService.grantBusy()
+              ? 'Saving…'
+              : vm.sharingService.grantId
+                ? 'Save'
+                : 'Send an invitation'
+          }}</button
+        ><button class="btn btn-outline" (click)="vm.sharingService.grantEditor.set(false)">
+          Cancel
+        </button>
+      </div>
+    </div>
+  }
+  <div class="cards-grid sharing-grants">
+    @for (g of vm.sharingService.grants(); track g.id) {
+      <div class="card">
+        <h3>{{ g.direction === 'outgoing' ? 'For ' + g.recipientName : 'From ' + g.ownerName }}</h3>
+        <p>All connections · {{ g.period === 'monthly' ? 'Every month' : 'One-time budget' }}</p>
+        <span class="badge">{{
+          g.state === 'pending'
+            ? 'Pending acceptance'
+            : g.state === 'revoked'
+              ? 'Access revoked'
+              : g.usedTokens >= g.budget
+                ? 'The budget is exhausted'
+                : 'Access active'
+        }}</span>
+        <div class="sharing-balance">
+          <strong>{{ g.usedTokens | number }} / {{ g.budget | number }}</strong
+          ><span>tokens spent</span>
+        </div>
+        <progress [value]="g.usedTokens" [max]="g.budget"></progress>
+        <p>Models: {{ g.models.join(', ') }}</p>
+        @for (row of vm.sharingService.grantUsage(g); track row.model) {
+          <div class="sharing-stat">
+            <span>{{ row.model }}</span
+            ><strong>{{ row.tokens | number }}</strong>
+          </div>
+        }
+        <p>All time: {{ g.lifetimeTokens | number }} tokens</p>
+        <div class="sharing-actions">
+          @if (g.direction === 'incoming' && g.state === 'pending') {
+            <button
+              class="btn btn-primary"
+              (click)="vm.sharingService.setGrantState(g, 'active')"
+              [disabled]="vm.sharingService.grantBusy()"
+            >
+              Accept access
+            </button>
+          }
+          @if (g.direction === 'outgoing' && g.state !== 'revoked') {
+            <button class="btn btn-outline" (click)="vm.sharingService.openGrantEditor(g)">
+              Change limit and models</button
+            ><button
+              class="btn btn-danger-outline"
+              (click)="vm.sharingService.setGrantState(g, 'revoked')"
+              [disabled]="vm.sharingService.grantBusy()"
+            >
+              Revoke access
+            </button>
+          }
+        </div>
+      </div>
+    } @empty {
+      <p class="sharing-empty-note">No invitations issued or received yet.</p>
+    }
+  </div>
+</section>

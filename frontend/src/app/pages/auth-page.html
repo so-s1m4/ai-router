@@ -1,0 +1,76 @@
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand-glow"></div>
+      <div class="brand-icon">
+        <svg lucideSparkles [size]="24" aria-hidden="true"></svg>
+      </div>
+      <div class="brand-title">
+        <span>AI Router</span>
+        <span class="brand-tag">WORKSPACE</span>
+      </div>
+    </div>
+
+    <div class="auth-header">
+      <h1>{{ vm.registerMode() ? 'Create an account' : 'Welcome back' }}</h1>
+      <p>
+        {{
+          vm.registerMode()
+            ? 'Connect your CLIs and containers to a single hub.'
+            : 'A single interface for your OpenAI Codex and Google Antigravity accounts.'
+        }}
+      </p>
+    </div>
+
+    <form class="auth-form" (ngSubmit)="vm.login()">
+      <div class="input-group">
+        <label for="username">Username</label>
+        <input
+          id="username"
+          name="username"
+          [(ngModel)]="vm.auth.loginName"
+          autocomplete="username"
+          placeholder="ivan_developer"
+          required
+        />
+      </div>
+
+      <div class="input-group">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          [(ngModel)]="vm.auth.password"
+          autocomplete="current-password"
+          placeholder="••••••••••••"
+          required
+        />
+      </div>
+
+      @if (vm.auth.loginError) {
+        <div class="banner banner-error">
+          <svg lucideInfo [size]="16" aria-hidden="true"></svg>
+          <span>{{ vm.auth.loginError }}</span>
+        </div>
+      }
+
+      <button class="btn btn-primary btn-block" type="submit">
+        <span>{{ vm.registerMode() ? 'Register' : 'Sign in' }}</span>
+        <svg lucideArrowUpRight [size]="18" aria-hidden="true"></svg>
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <button
+        class="btn-link"
+        (click)="vm.registerMode.set(!vm.registerMode()); vm.auth.loginError = ''"
+      >
+        {{
+          vm.registerMode() ? 'Already have an account? Login' : 'Don’t have an account? Register'
+        }}
+      </button>
+      <span class="auth-hint">Keys and tokens remain only on your runner container</span>
+    </div>
+  </div>
+</div>
