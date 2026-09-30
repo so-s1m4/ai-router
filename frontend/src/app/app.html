@@ -767,36 +767,12 @@
       </div>
     } @else if(page()==='operations') {
       <div class="page-content operations-page">
-        <div class="section-hero"><div><span class="section-tag">WORKSPACE</span><h2>Usage</h2><p>Review token consumption, account limits and available resets.</p></div><button class="btn btn-outline" (click)="refreshUsageSummary()">Refresh</button></div>
+        <div class="section-hero"><div><span class="section-tag">WORKSPACE</span><h2>Usage</h2><p>Review token consumption and shared access budgets.</p></div><button class="btn btn-outline" (click)="refreshUsageSummary()">Refresh</button></div>
         @if(error()){<div class="banner banner-error">{{error()}}</div>}
         @if(notice()){<div class="banner banner-notice" role="status"><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Close"><svg lucideX [size]="14"></svg></button></div>}
         @if(usageSummary();as summary){
           <section class="notification-card"><h3>Reported consumption</h3><div class="usage-total">{{summary.totalTokens | number}} <span>tokens</span></div><p>{{summary.source}}. Older requests may have no model information.</p>
             <div class="operations-grid"><div><h4>By project</h4>@for(row of summary.byProject;track row.id){<div class="usage-summary-row"><span>{{projectUsageName(row.id)}}</span><strong>{{row.tokens | number}}</strong></div>}@empty{<p>No reported usage</p>}</div><div><h4>By model</h4>@for(row of summary.byModel;track row.id){<div class="usage-summary-row"><span>{{row.id}}</span><strong>{{row.tokens | number}}</strong></div>}@empty{<p>No reported usage</p>}</div></div>
-          </section>
-          <section class="notification-card"><h3>Connections and quotas</h3><p>{{summary.accounts.length}} connections · provider windows are shown separately for each account.</p>
-            @for(account of summary.accounts;track account.id){<article class="operations-task"><div class="operations-task-heading"><strong>{{account.name}}</strong><span class="badge">{{accountAvailable(account)?'Available':account.mode==='runner'?'Quota exhausted':'Offline'}}</span></div><p>{{account.provider}} · {{account.detail}}</p>
-              @if(account.limit.primary;as window){<p>Primary: {{window.remainingPercent}}% remaining · {{resetLabel(window)}}</p>}
-              @if(account.limit.secondary;as window){<p>Secondary: {{window.remainingPercent}}% remaining · {{resetLabel(window)}}</p>}
-              @if(account.limit.cooldownUntil){<p>Retry after {{account.limit.cooldownUntil | date:'medium'}}</p>}
-              @if(account.limit.source==='unknown'){<p>Provider quota is unknown</p>}
-
-                  @if(account.provider==='codex' && account.authType!=='api_key' && !account.shared){
-                    <div class="reset-credits">
-                      @if(account.limit.resetCredits;as resets){
-                        <div class="quota-head"><span>Available resets</span><strong>{{resets.availableCount | number}}</strong></div>
-                        @for(credit of resets.credits || [];track credit.id){
-                          <p class="usage-reset">{{credit.title || 'Codex reset'}} · {{resetExpiry(credit.expiresAt)}}</p>
-                        }
-                        @if(resets.availableCount && (!resets.credits || resets.credits.length < resets.availableCount)){
-                          <p class="usage-reset">Expiry details unavailable for {{resets.availableCount - (resets.credits?.length || 0)}} reset(s).</p>
-                        }
-                        @if(resets.availableCount){<button class="btn btn-outline btn-sm" [disabled]="!!resettingAccount() || account.mode!=='runner'" (click)="useAccountReset(account)">{{resettingAccount()===account.id?'Applying reset…':'Use reset'}}</button>}
-                      }@else{<p class="usage-reset">Reset information unavailable</p>}
-                    </div>
-                  }
-              @if(account.limit.updatedAt){<p>Updated {{account.limit.updatedAt | date:'medium'}}</p>}
-            </article>}@empty{<p>No connections configured</p>}
           </section>
           <section class="notification-card"><h3>Shared access budgets</h3>@for(grant of summary.grants;track grant.id){<article class="operations-task"><strong>{{grant.direction==='outgoing'?grant.recipientName:grant.ownerName}}</strong><p>{{grant.direction}} · {{grant.state}} · {{grant.remainingTokens | number}} / {{grant.budget | number}} tokens remaining · {{grant.period}}</p>@for(row of grantUsage(grant);track row.model){<div class="usage-summary-row"><span>{{row.model}}</span><span>{{row.tokens | number}}</span></div>}</article>}@empty{<p>No shared access</p>}</section>
         }
@@ -1219,17 +1195,310 @@
         <div class="page-content">
           <div class="section-hero">
             <div>
-              <span class="section-tag">PROVIDERS AND QUOTAS</span>
-              <h2>Accounts and API keys</h2>
-              <p>Connect accounts or individual OpenAI API keys on the selected runner. With automatic selection, high-priority accounts are tried first; when there is a limit, the request moves on to the next one. Accounts of the same level alternate.</p>
+              <span class="section-tag">PROVIDERS & AUTHENTICATION</span>
+              <h2>Accounts & Connections</h2>
+              <p>Connect and orchestrate your OpenAI Codex, Google Gemini, and ChatGPT accounts. Smart routing automatically balances requests and fails over seamlessly when provider quotas or limits are reached.</p>
+            </div>
+            <div class="section-hero-actions">
+              <button class="btn btn-primary btn-sm" (click)="scrollToAddAccount()">
+                <svg lucidePlus [size]="15"></svg>
+                <span>Add connection</span>
+              </button>
+              <button class="btn btn-outline btn-sm" (click)="refreshAccounts()" aria-label="Refresh connections">
+                <svg lucideRefreshCw [size]="14"></svg>
+                <span>Refresh</span>
+              </button>
             </div>
           </div>
 
           @if(error()){<div class="banner banner-error"><svg lucideInfo [size]="16"></svg><span>{{error()}}</span><button type="button" class="btn-banner-close" (click)="error.set('')" aria-label="Close"><svg lucideX [size]="14"></svg></button></div>}
           @if(notice()){<div class="banner banner-notice"><svg lucideInfo [size]="16"></svg><span>{{notice()}}</span><button type="button" class="btn-banner-close" (click)="notice.set('')" aria-label="Close"><svg lucideX [size]="14"></svg></button></div>}
 
+          <div class="connections-stats-grid">
+            <div class="connection-stat-pill">
+              <span class="stat-pill-label">Total Connections</span>
+              <strong class="stat-pill-value">{{accounts().length}}</strong>
+            </div>
+            <div class="connection-stat-pill">
+              <span class="stat-pill-label">Active & Ready</span>
+              <strong class="stat-pill-value stat-val-success">{{availableAccountsCount()}}</strong>
+            </div>
+            <div class="connection-stat-pill">
+              <span class="stat-pill-label">Codex Resets</span>
+              <strong class="stat-pill-value" [class.stat-val-highlight]="totalResetCredits() > 0">{{totalResetCredits()}}</strong>
+            </div>
+            <div class="connection-stat-pill">
+              <span class="stat-pill-label">Shared Grants</span>
+              <strong class="stat-pill-value">{{grants().length}}</strong>
+            </div>
+          </div>
+
+          <div class="accounts-section-header">
+            <div class="accounts-section-title">
+              <h3>Active Accounts</h3>
+              <span class="badge badge-neutral">{{accounts().length}}</span>
+            </div>
+          </div>
+
+          <div class="cards-grid accounts-grid">
+            @for(a of accounts(); track a.id){
+              <div class="card account-card" [class]="accountCardTheme(a)">
+                <div class="account-card-head">
+                  <div class="account-identity">
+                    <div class="provider-badge-icon" [class.provider-gemini]="a.provider==='antigravity'" [class.provider-chatgpt]="a.provider==='chatgpt'" [class.provider-apikey]="a.authType==='api_key'">
+                      @if(a.authType==='api_key'){
+                        <svg lucideKey [size]="20"></svg>
+                      } @else if(a.provider==='codex'){
+                        <svg lucideBot [size]="20"></svg>
+                      } @else if(a.provider==='antigravity'){
+                        <svg lucideSparkles [size]="20"></svg>
+                      } @else {
+                        <svg lucideGlobe2 [size]="20"></svg>
+                      }
+                    </div>
+                    <div class="account-title-group">
+                      <h3 class="account-name" [title]="a.name">{{a.name}}</h3>
+                      <div class="account-detail-chips">
+                        <span class="account-provider-chip">{{a.authType==='api_key' ? 'OpenAI API' : providerLabel(a.provider)}}</span>
+                        <span class="account-runner-chip" [title]="a.detail">{{a.detail}}</span>
+                        @if(a.shared){<span class="account-shared-chip">Shared</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="account-head-actions">
+                    <span class="badge" [class]="accountStatusBadge(a).class">
+                      {{accountStatusBadge(a).label}}
+                    </span>
+                    @if(!a.shared){
+                      <button type="button" class="btn-icon btn-icon-danger" (click)="removeAccount(a)" [disabled]="!!deletingAccount()" title="Delete connection" aria-label="Delete connection">
+                        <svg lucideTrash2 [size]="15"></svg>
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                @if(!a.shared){
+                  <div class="account-priority-row">
+                    <label [for]="'priority-'+a.id" class="account-field-label">Routing Priority</label>
+                    <select class="custom-select custom-select-sm" [id]="'priority-'+a.id" [value]="a.priority ?? 1" (change)="setAccountPriority(a, $any($event.target).value)">
+                      <option value="2">⚡ High priority</option>
+                      <option value="1">● Normal priority</option>
+                      <option value="0">▾ Low (fallback)</option>
+                    </select>
+                  </div>
+                }
+
+                @if(a.provider==='codex' && a.authType!=='api_key' && !a.shared){
+                  <div class="reset-credits-card">
+                    <div class="reset-credits-top">
+                      <div class="reset-credits-info">
+                        <span class="reset-credits-icon">✦</span>
+                        @if(a.limit.resetCredits; as resets){
+                          <div>
+                            <strong>{{resets.availableCount}} Reset{{resets.availableCount === 1 ? '' : 's'}} Available</strong>
+                            @for(credit of resets.credits || []; track credit.id){
+                              <div class="reset-credit-exp">{{credit.title || 'Account reset'}} · {{resetExpiry(credit.expiresAt)}}</div>
+                            }
+                            @if(resets.availableCount && (!resets.credits || resets.credits.length < resets.availableCount)){
+                              <div class="reset-credit-exp">Expiry details unavailable for {{resets.availableCount - (resets.credits?.length || 0)}} reset(s).</div>
+                            }
+                          </div>
+                        } @else {
+                          <div>
+                            <strong>Codex Resets</strong>
+                            <div class="reset-credit-exp">Reset details unavailable</div>
+                          </div>
+                        }
+                      </div>
+                      @if(a.limit.resetCredits?.availableCount){
+                        <button class="btn btn-primary btn-xs reset-btn-action" [disabled]="!!resettingAccount() || a.mode!=='runner'" (click)="useAccountReset(a)">
+                          {{resettingAccount()===a.id ? 'Applying…' : 'Use reset'}}
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
+
+                <div class="account-quota-box">
+                  <div class="quota-head">
+                    <span class="quota-head-title">Rate limits & quota</span>
+                    <strong class="quota-head-status">{{limitLabel(a)}}</strong>
+                  </div>
+
+                  @if(a.limit.primary || a.limit.secondary){
+                    <div class="usage-bars">
+                      @if(a.limit.primary; as p){
+                        <div class="usage-bar-row">
+                          <div class="usage-bar-label">
+                            <span>{{windowLabel(p)}}</span>
+                            <strong class="quota-val">{{remaining(p)}} remaining</strong>
+                          </div>
+                          <div class="progress-track">
+                            <div class="progress-fill" [style.width]="remaining(p)" [class.progress-fill-warn]="p.usedPercent >= 75" [class.progress-fill-danger]="p.usedPercent >= 90"></div>
+                          </div>
+                          @if(resetLabel(p)){
+                            <span class="usage-reset"><svg lucideRotateCcw [size]="11"></svg> {{resetLabel(p)}}</span>
+                          }
+                        </div>
+                      }
+                      @if(a.limit.secondary; as s){
+                        <div class="usage-bar-row">
+                          <div class="usage-bar-label">
+                            <span>{{windowLabel(s)}}</span>
+                            <strong class="quota-val">{{remaining(s)}} remaining</strong>
+                          </div>
+                          <div class="progress-track">
+                            <div class="progress-fill" [style.width]="remaining(s)" [class.progress-fill-warn]="s.usedPercent >= 75" [class.progress-fill-danger]="s.usedPercent >= 90"></div>
+                          </div>
+                          @if(resetLabel(s)){
+                            <span class="usage-reset"><svg lucideRotateCcw [size]="11"></svg> {{resetLabel(s)}}</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="quota-unknown">
+                      {{a.authType==='api_key' ? 'Billed directly via OpenAI API key. Limits managed on OpenAI Platform.' : a.provider==='antigravity' ? 'Gemini limits are checked dynamically during task execution.' : a.provider==='chatgpt' ? 'Active browser session. Quotas managed by ChatGPT.' : 'Quota metrics will populate after the first task request.'}}
+                    </div>
+                  }
+
+                  @if(a.limit.cooldownUntil){
+                    <div class="quota-cooldown-note">
+                      <svg lucideClock [size]="12"></svg>
+                      <span>Cooldown active: retry after {{a.limit.cooldownUntil | date:'medium'}}</span>
+                    </div>
+                  }
+                  @if(a.limit.updatedAt){
+                    <div class="quota-updated-note">
+                      <span>Updated {{a.limit.updatedAt | date:'medium'}}</span>
+                    </div>
+                  }
+                </div>
+
+                @if(!a.shared){
+                  @if(a.provider==='chatgpt'){
+                    <button class="btn btn-outline btn-sm account-chatgpt-btn" (click)="openChatGPTSessionModal(a)">
+                      <svg lucideGlobe2 [size]="14"></svg>
+                      <span>Import Session / Cookies</span>
+                    </button>
+                  }
+
+                  @if(a.mode==='unassigned'){
+                    <div class="assign-box">
+                      <label class="account-field-label">Assign runner container</label>
+                      <select class="custom-select" (change)="assignAccount(a, $any($event.target).value)">
+                        <option value="">Select container</option>
+                        @for(r of runners(); track r.id){
+                          @if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}
+                        }
+                      </select>
+                    </div>
+                  }
+
+                  @if(a.authType==='api_key'){
+                    <div class="command-box account-api-box">
+                      <label [for]="'api-key-'+a.id" class="account-field-label">OpenAI API Key</label>
+                      <div class="account-api-input-group">
+                        <input class="custom-input" [id]="'api-key-'+a.id" type="password" autocomplete="new-password" spellcheck="false" [(ngModel)]="apiKeyDrafts[a.id]" placeholder="sk-proj-…">
+                        <button class="btn btn-primary btn-sm" (click)="saveOpenAIKey(a)" [disabled]="!!savingApiKey() || !(apiKeyDrafts[a.id] || '').trim() || a.mode!=='runner'">
+                          {{savingApiKey()===a.id ? 'Checking…' : 'Save key'}}
+                        </button>
+                      </div>
+                      <p class="account-auth-hint">Key is securely saved on the assigned container runner.</p>
+                    </div>
+                  } @else {
+                    <div class="command-box">
+                      <div class="command-title">
+                        <span class="command-title-text"><svg lucideTerminal [size]="13"></svg> Container login command</span>
+                        <button class="btn-copy" (click)="copy(loginCommand(a), a.id)">
+                          @if(copiedId() === a.id){
+                            <svg lucideCheck [size]="13"></svg>
+                            <span>Copied</span>
+                          } @else {
+                            <svg lucideCopy [size]="13"></svg>
+                            <span>Copy</span>
+                          }
+                        </button>
+                      </div>
+                      <code class="code-snippet">{{loginCommand(a)}}</code>
+                    </div>
+                  }
+                }
+              </div>
+            } @empty {
+              <div class="card account-empty-card">
+                <div class="account-empty-icon">
+                  <svg lucidePlugZap [size]="32"></svg>
+                </div>
+                <h3>No Connections Yet</h3>
+                <p>Connect your OpenAI Codex, Gemini, or ChatGPT account to begin routing tasks across models and accounts.</p>
+                <button class="btn btn-primary" (click)="scrollToAddAccount()">
+                  <svg lucidePlus [size]="16"></svg>
+                  <span>Add First Connection</span>
+                </button>
+              </div>
+            }
+          </div>
+
+          <!-- ADD ACCOUNT FORM -->
+          <div class="card form-card add-account-card" id="add-connection-card">
+            <div class="form-card-head">
+              <span class="section-tag">NEW CONNECTION</span>
+              <h3>Connect an Account or API Key</h3>
+              <p>Tokens and sessions will be isolated inside the selected runner container.</p>
+            </div>
+            <div class="add-account-grid">
+              <div class="add-account-field">
+                <label class="account-field-label">Account Label</label>
+                <input class="custom-input" [(ngModel)]="accountName" placeholder="e.g. OpenAI Work, Personal Codex" aria-label="Account name">
+              </div>
+              <div class="add-account-field">
+                <label class="account-field-label">Provider Type</label>
+                <select class="custom-select" [(ngModel)]="accountProvider" aria-label="Provider">
+                  <option value="codex">OpenAI Codex - Account (OAuth)</option>
+                  <option value="openai-api">OpenAI API - Key</option>
+                  <option value="antigravity">Google Antigravity / Gemini</option>
+                  <option value="chatgpt">ChatGPT Web (Browser Session)</option>
+                </select>
+              </div>
+              <div class="add-account-field">
+                <label class="account-field-label">Target Runner</label>
+                <select class="custom-select" [(ngModel)]="selectedRunner" aria-label="Runner">
+                  <option value="">Select container runner</option>
+                  @for(r of runners(); track r.id){
+                    @if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}
+                  }
+                </select>
+              </div>
+              <div class="add-account-action">
+                <button class="btn btn-primary" (click)="addAccount()" [disabled]="addingAccount() || !accountName.trim() || !selectedRunner">
+                  <svg lucidePlus [size]="16"></svg>
+                  <span>{{addingAccount() ? 'Adding…' : 'Add Connection'}}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SHARING SECTION -->
           <section class="sharing-section">
-            <div class="sharing-heading"><div><h3>Share access</h3><p>Access to all your connections with a shared budget. Select approved models. A friend accepts the invitation on their profile.</p></div><button class="btn btn-primary" (click)="openGrantEditor()" [disabled]="!ownAccounts().length">Grant access</button><button class="btn btn-outline" (click)="refreshGrants()">Refresh</button></div>
+            <div class="sharing-heading">
+              <div>
+                <span class="section-tag">COLLABORATION</span>
+                <h3>Shared Access & Team Budgets</h3>
+                <p>Grant other users access to all your connections with a shared token budget and approved models.</p>
+              </div>
+              <div class="sharing-heading-actions">
+                <button class="btn btn-primary btn-sm" (click)="openGrantEditor()" [disabled]="!ownAccounts().length">
+                  <svg lucidePlus [size]="15"></svg>
+                  <span>Grant access</span>
+                </button>
+                <button class="btn btn-outline btn-sm" (click)="refreshGrants()">
+                  <svg lucideRefreshCw [size]="13"></svg>
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
             @if(grantEditor()){
               <div class="card sharing-editor">
                 <h3>{{grantId ? 'Access Settings' : 'Invite a friend'}}</h3>
@@ -1255,203 +1524,43 @@
                     @if(g.direction==='outgoing' && g.state!=='revoked'){<button class="btn btn-outline" (click)="openGrantEditor(g)">Change limit and models</button><button class="btn btn-danger-outline" (click)="setGrantState(g,'revoked')" [disabled]="grantBusy()">Revoke access</button>}
                   </div>
                 </div>
-              } @empty {<p>Invitations issued and received will appear here.</p>}
+              } @empty {<p class="sharing-empty-note">No invitations issued or received yet.</p>}
             </div>
           </section>
-          <div class="cards-grid">
-            @for(a of accounts(); track a.id){
-              <div class="card account-card">
-                <div class="account-card-head">
-                  <div class="provider-badge-icon" [class.provider-gemini]="a.provider==='antigravity'" [class.provider-chatgpt]="a.provider==='chatgpt'">
-                    @if(a.provider==='codex'){
-                      <svg lucideBot [size]="22"></svg>
-                    } @else if(a.provider==='antigravity'){
-                      <svg lucideSparkles [size]="22"></svg>
+
+          <div class="connections-bottom-grid">
+            <!-- IMPORT CODEX PROFILES -->
+            <div class="card form-card">
+              <div class="form-card-head">
+                <span class="section-tag">MASS IMPORT</span>
+                <h3>Importing Profiles (.codexprofile.json)</h3>
+                <p>You can import saved Codex profiles directly into the container server.</p>
+              </div>
+              <div class="command-box">
+                <div class="command-title">
+                  <span class="command-title-text"><svg lucideTerminal [size]="13"></svg> Import command</span>
+                  <button class="btn-copy" (click)="copy('./runner/import-profiles.sh ~/Desktop/*.codexprofile.json', 'import-cmd')">
+                    @if(copiedId() === 'import-cmd'){
+                      <svg lucideCheck [size]="13"></svg>
+                      <span>Copied</span>
                     } @else {
-                      <svg lucideGlobe2 [size]="22"></svg>
+                      <svg lucideCopy [size]="13"></svg>
+                      <span>Copy</span>
                     }
-                  </div>
-                  <span class="badge" [class.badge-ready]="a.mode==='runner'" [class.badge-offline]="a.mode==='offline'">
-                    {{accountMode(a)}}
-                  </span>
+                  </button>
                 </div>
-
-                <h3 class="account-name">{{a.name}}</h3>
-                <div class="account-detail">{{a.authType==='api_key' ? 'OpenAI API' : providerLabel(a.provider)}} · {{a.detail}}</div>
-
-                @if(!a.shared){
-                <div class="account-priority-row">
-                  <label [for]="'priority-'+a.id">Usage priority</label>
-                  <select class="custom-select" [id]="'priority-'+a.id" [value]="a.priority ?? 1" (change)="setAccountPriority(a, $any($event.target).value)">
-                    <option value="2">High</option>
-                    <option value="1">Normal</option>
-                    <option value="0">Low</option>
-                  </select>
-                </div>
-
-                }
-                <div class="account-quota-box">
-                  @if(a.provider==='codex' && a.authType!=='api_key' && !a.shared){
-                    <div class="reset-credits">
-                      @if(a.limit.resetCredits;as resets){
-                        <div class="quota-head"><span>Available resets</span><strong>{{resets.availableCount | number}}</strong></div>
-                        @for(credit of resets.credits || [];track credit.id){
-                          <p class="usage-reset">{{credit.title || 'Codex reset'}} · {{resetExpiry(credit.expiresAt)}}</p>
-                        }
-                        @if(resets.availableCount && (!resets.credits || resets.credits.length < resets.availableCount)){
-                          <p class="usage-reset">Expiry details unavailable for {{resets.availableCount - (resets.credits?.length || 0)}} reset(s).</p>
-                        }
-                        @if(resets.availableCount){<button class="btn btn-outline btn-sm" [disabled]="!!resettingAccount() || a.mode!=='runner'" (click)="useAccountReset(a)">{{resettingAccount()===a.id?'Applying reset…':'Use reset'}}</button>}
-                      }@else{<p class="usage-reset">Reset information unavailable</p>}
-                    </div>
-                  }
-
-                  <div class="quota-head">
-                    <span>Quota status</span>
-                    <strong>{{limitLabel(a)}}</strong>
-                  </div>
-
-                  @if(a.limit.primary || a.limit.secondary){
-                    <div class="usage-bars">
-                      @if(a.limit.primary){
-                        <div class="usage-bar-row">
-                          <div class="usage-bar-label">
-                            <span>{{windowLabel(a.limit.primary)}}</span>
-                            <strong>{{remaining(a.limit.primary)}} remaining</strong>
-                          </div>
-                          <div class="progress-track">
-                            <div class="progress-fill" [style.width]="remaining(a.limit.primary)"></div>
-                          </div>
-                          @if(resetLabel(a.limit.primary)){
-                            <span class="usage-reset">{{resetLabel(a.limit.primary)}}</span>
-                          }
-                        </div>
-                      }
-                      @if(a.limit.secondary){
-                        <div class="usage-bar-row">
-                          <div class="usage-bar-label">
-                            <span>{{windowLabel(a.limit.secondary)}}</span>
-                            <strong>{{remaining(a.limit.secondary)}} remaining</strong>
-                          </div>
-                          <div class="progress-track">
-                            <div class="progress-fill" [style.width]="remaining(a.limit.secondary)"></div>
-                          </div>
-                          @if(resetLabel(a.limit.secondary)){
-                            <span class="usage-reset">{{resetLabel(a.limit.secondary)}}</span>
-                          }
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <div class="quota-unknown">
-                      {{a.authType==='api_key' ? 'Payment via API. See OpenAI Platform for balance and limits.' : a.provider==='antigravity' ? 'Gemini quota will be requested upon application' : a.provider==='chatgpt' ? 'ChatGPT browser session' : 'Information will appear after the first CLI request'}}
-                    </div>
-                  }
-                </div>
-
-                @if(!a.shared){
-                @if(a.provider==='chatgpt'){
-                  <div style="margin: 10px 0 0 0;">
-                    <button class="btn btn-outline btn-xs" style="width: 100%; justify-content: center; gap: 6px; padding: 6px 10px;" (click)="openChatGPTSessionModal(a)">
-                      <svg lucideGlobe2 [size]="14"></svg>
-                      <span>Import Session / Cookies</span>
-                    </button>
-                  </div>
-                }
-
-                @if(a.mode==='unassigned'){
-                  <div class="assign-box">
-                    <label>Assign container</label>
-                    <select class="custom-select" (change)="assignAccount(a, $any($event.target).value)">
-                      <option value="">Select runner</option>
-                      @for(r of runners(); track r.id){
-                        @if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}
-                      }
-                    </select>
-                  </div>
-                }
-
-                @if(a.authType==='api_key'){
-                  <div class="command-box">
-                    <label [for]="'api-key-'+a.id">OpenAI API key connect/replace</label>
-                    <input class="custom-input" [id]="'api-key-'+a.id" type="password" autocomplete="new-password" spellcheck="false" [(ngModel)]="apiKeyDrafts[a.id]" placeholder="sk-…">
-                    <button class="btn btn-primary" (click)="saveOpenAIKey(a)" [disabled]="!!savingApiKey() || !(apiKeyDrafts[a.id] || '').trim() || a.mode!=='runner'">{{savingApiKey()===a.id ? 'Checking…' : 'Check and save'}}</button>
-                    <p>The key is stored on the selected runner. Text API models are available in the Codex selection. Access to a specific model is checked at startup.</p>
-                  </div>
-                } @else {
-                <div class="command-box">
-                  <div class="command-title">
-                    <span>Authorization command in runner:</span>
-                    <button class="btn-copy" (click)="copy(loginCommand(a), a.id)">
-                      @if(copiedId() === a.id){
-                        <svg lucideCheck [size]="14"></svg>
-                        <span>Copied</span>
-                      } @else {
-                        <svg lucideCopy [size]="14"></svg>
-                        <span>Copy</span>
-                      }
-                    </button>
-                  </div>
-                  <code class="code-snippet">{{loginCommand(a)}}</code>
-                </div>
-                }
-                <button type="button" class="btn btn-danger-outline btn-sm account-delete" (click)="removeAccount(a)" [disabled]="!!deletingAccount()">
-                  {{deletingAccount()===a.id ? 'Removing…' : 'Delete connection'}}
-                </button>
-                }
+                <code class="code-snippet">./runner/import-profiles.sh ~/Desktop/*.codexprofile.json</code>
               </div>
-            }
-          </div>
+            </div>
 
-          <!-- ADD ACCOUNT FORM -->
-          <div class="card form-card">
-            <div class="form-card-head">
-              <span class="section-tag">NEW CONNECTION</span>
-              <h3>Add an account or API key</h3>
-              <p>Select a container to run the CLI. Account login and tokens will be tied to this container.</p>
-            </div>
-            <div class="form-row">
-              <input class="custom-input" [(ngModel)]="accountName" placeholder="Name, for example: OpenAI Pro 2" aria-label="Account name">
-              <select class="custom-select" [(ngModel)]="accountProvider" aria-label="Provider">
-                <option value="codex">OpenAI Codex - account</option>
-                <option value="openai-api">OpenAI API - key</option>
-                <option value="antigravity">Google Antigravity</option>
-                <option value="chatgpt">ChatGPT Web (Browser)</option>
-              </select>
-              <select class="custom-select" [(ngModel)]="selectedRunner" aria-label="Runner">
-                <option value="">Select container</option>
-                @for(r of runners(); track r.id){
-                  @if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}
-                }
-              </select>
-              <button class="btn btn-primary" (click)="addAccount()" [disabled]="addingAccount() || !accountName.trim() || !selectedRunner">
-                <svg lucidePlus [size]="16"></svg>
-                <span>Add</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- IMPORT CODEX PROFILES -->
-          <div class="card form-card">
-            <div class="form-card-head">
-              <span class="section-tag">MASS IMPORT</span>
-              <h3>Importing profiles .codexprofile.json</h3>
-              <p>You can import saved Codex profiles directly into the container server.</p>
-            </div>
-            <div class="command-box">
-              <div class="command-title">
-                <span>Command to import files:</span>
-                <button class="btn-copy" (click)="copy('./runner/import-profiles.sh ~/Desktop/*.codexprofile.json', 'import-cmd')">
-                  @if(copiedId() === 'import-cmd'){
-                    <svg lucideCheck [size]="14"></svg>
-                    <span>Copied</span>
-                  } @else {
-                    <svg lucideCopy [size]="14"></svg>
-                    <span>Copy</span>
-                  }
-                </button>
+            <!-- SMART ROUTING OVERVIEW -->
+            <div class="card form-card routing-card">
+              <div class="form-card-head">
+                <span class="section-tag">AUTOMATION</span>
+                <h3>Smart Routing & Automatic Failover</h3>
+                <p>Continuous monitoring of rate limits and quotas.</p>
               </div>
-              <code class="code-snippet">./runner/import-profiles.sh ~/Desktop/*.codexprofile.json</code>
+              <p class="routing-card-desc">When provider quotas are reached or a service returns rate limit errors, requests immediately fail over to the next priority account without losing conversation context.</p>
             </div>
           </div>
 

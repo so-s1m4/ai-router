@@ -6,8 +6,8 @@ import { io, Socket } from 'socket.io-client';
 import {
   LucideArrowUp, LucideArrowUpRight, LucideBell, LucideBookOpen, LucideBot, LucideCheck,
   LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark,
-  LucideCopy, LucideDownload,  LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
-  LucideGraduationCap, LucideInfo, LucideLogOut, LucideMenu, LucideMessageSquare,
+  LucideClock, LucideCopy, LucideDownload,  LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
+  LucideGraduationCap, LucideInfo, LucideKey, LucideLogOut, LucideMenu, LucideMessageSquare,
   LucideOrigami, LucidePanelLeft,
   LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
   LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideTrash2, LucideUploadCloud, LucideX, LucideZap
@@ -95,8 +95,8 @@ interface FileNodeInternal {
   standalone:true,
   imports:[
     CommonModule, FormsModule, LucideBell, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck,
-    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideCopy, LucideDownload,
-    LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideInfo, LucideLogOut, LucideMenu,
+    LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideClock, LucideCopy, LucideDownload,
+    LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideInfo, LucideKey, LucideLogOut, LucideMenu,
     LucideMessageSquare, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
     LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideTrash2, LucideUploadCloud, LucideX,
     LucideZap, ManagerPanel, MarkdownPipe
@@ -314,6 +314,8 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   grants=signal<AccessGrant[]>([]); grantBusy=signal(false); grantEditor=signal(false);
   grantId=''; grantUsername=''; grantBudget=1000000; grantPeriod:'once'|'monthly'='monthly'; grantModels:string[]=[];
   ownAccounts=computed(()=>this.accounts().filter(a=>!a.shared));
+  availableAccountsCount=computed(()=>this.accounts().filter(a=>this.accountAvailable(a)).length);
+  totalResetCredits=computed(()=>this.accounts().reduce((sum,a)=>sum+(a.limit?.resetCredits?.availableCount||0),0));
   grantAvailableModels(){return [...new Map(this.ownAccounts().flatMap(a=>a.models).map(m=>[m.id,m])).values()];}
   toggleGrantModel(id:string){this.grantModels=this.grantModels.includes(id)?this.grantModels.filter(m=>m!==id):[...this.grantModels,id];}
   openGrantEditor(g?:AccessGrant){this.grantId=g?.id||'';this.grantUsername=g?.recipientName||'';this.grantBudget=g?.budget||1000000;this.grantPeriod=g?.period||'monthly';this.grantModels=g?[...g.models]:this.grantAvailableModels().filter(m=>m.id!=='default').map(m=>m.id);this.grantEditor.set(true);}
@@ -1582,6 +1584,22 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Resets ${new Intl.DateTimeFormat('en-US',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Container online':a.mode==='offline'?'Offline':'No container';}
+  accountCardTheme(a:Account):string{
+    if(a.authType==='api_key')return 'theme-apikey';
+    if(a.provider==='codex')return 'theme-codex';
+    if(a.provider==='antigravity')return 'theme-gemini';
+    if(a.provider==='chatgpt')return 'theme-chatgpt';
+    return '';
+  }
+  accountStatusBadge(a:Account):{label:string;class:string}{
+    if(a.mode==='unassigned')return {label:'Unassigned',class:'badge-unassigned'};
+    if(a.mode==='offline')return {label:'Offline',class:'badge-offline'};
+    if(this.accountAvailable(a))return {label:'Active',class:'badge-ready'};
+    return {label:'Quota limit',class:'badge-limited'};
+  }
+  scrollToAddAccount(){
+    document.getElementById('add-connection-card')?.scrollIntoView({behavior:'smooth',block:'center'});
+  }
   hasAccountsFor(service:ServiceId):boolean{const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];if(service==='auto')return accounts.length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId || this.selectedProjectId();const project=pId?this.projects().find(p=>p.id===pId):null;const list=project&&!project.shared?accounts.filter(a=>a.runnerId===project.runnerId):accounts;return list.some(a=>a.provider===provider);}
   selectTaskProject(id:string){this.selectedProjectId.set(id);this.selectService(this.selectedService());}
   selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();}
