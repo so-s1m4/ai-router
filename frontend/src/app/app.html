@@ -1910,7 +1910,7 @@ INSTALL_AGY_CLI=true</code></pre>
   <div class="model-picker-backdrop" (click)="closeModelPicker()" (keydown.escape)="$event.stopPropagation(); closeModelPicker()">
     <section id="model-picker" class="model-picker" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" (click)="$event.stopPropagation()" (keydown)="onModelPickerKey($event)">
       <header class="model-picker-header">
-        <div><h2 id="model-picker-title">Select model</h2><p>{{currentServiceLabel()}} · {{models().length}} models</p></div>
+        <div><h2 id="model-picker-title">Select model</h2><p>{{currentServiceLabel()}} · {{models().length}} {{models().length === 1 ? 'model' : 'models'}}</p></div>
         <button type="button" class="btn-icon" aria-label="Close model selection" (click)="closeModelPicker()"><svg lucideX [size]="20"></svg></button>
       </header>
       <label class="model-picker-search">
