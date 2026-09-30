@@ -33,9 +33,11 @@ export const DEFAULT_CHATGPT_MODELS: Model[] = [
 ];
 type UsageWindow = {usedPercent:number;remainingPercent:number;windowMinutes:number|null;resetAt:string|null};
 type Account = {shared?:boolean;id:string;provider:ProviderId;name:string;runnerId?:string;priority?:0|1|2;authType?:'api_key';models:Model[];mode:'runner'|'offline'|'unassigned';auth:string;detail:string;limit:{source:'provider'|'unknown';primary:UsageWindow|null;secondary:UsageWindow|null;cooldownUntil:string|null;updatedAt:string|null}};
+type QueueTask = {id:string;input:{sessionId:string;prompt:string;model:string;service?:string};createdAt:string;updatedAt:string;priority:number;state:string;message:string;startedAt?:string;lastActivityAt?:string;activity?:RunActivity[]};
+type UsageSummary={totalTokens:number;source:string;byProject:{id:string;tokens:number}[];byModel:{id:string;tokens:number}[];byProvider:{id:string;tokens:number}[];accounts:Account[];grants:(AccessGrant & {remainingTokens:number})[];projects:{id:string;name:string}[]};
 type AccessGrant = {id:string;direction:'outgoing'|'incoming';ownerName:string;recipientName:string;models:string[];budget:number;period:'once'|'monthly';state:'pending'|'active'|'revoked';usedTokens:number;lifetimeTokens:number;usageByModel:Record<string,number>};
 type Runner = {id:string;name:string;online:boolean;managementOnline:boolean;createdAt:string;revokedAt?:string};
-type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string};
+type Project = {id:string;name:string;runnerId:string;createdAt:string;updatedAt:string;shared?:boolean;ownerId?:string;memberIds?:string[]};
 type Preview = {subdomain:string;runnerId:string;visible:boolean;online:boolean;expired:boolean;url:string;createdAt:string;updatedAt:string;expiresAt:string};
 type Pairing = {code:string;expiresAt:string};
 type TokenUsage = {totalTokens:number;inputTokens?:number;outputTokens?:number;cachedInputTokens?:number;reasoningOutputTokens?:number};
@@ -62,9 +64,9 @@ export function sortSessions(list: ChatSession[]): ChatSession[] {
     .sort((a, b) => getSessionLastMessageTime(b) - getSessionLastMessageTime(a));
 }
 type FileGroup = {kind:'projects'|'sessions';id:string;title:string;runnerId:string;files:{name:string;size:number;modified:string}[];error?:string};
-type AIEvent = {id:string;sessionId:string;runId:string;type:string;provider?:ProviderId;message?:string;text?:string;data?:{accountId?:string;state?:string;steeringAvailable?:boolean;steeringMessage?:Message}};
+type AIEvent = {at?:string;id:string;sessionId:string;runId:string;type:string;provider?:ProviderId;message?:string;text?:string;data?:{accountId?:string;state?:string;steeringAvailable?:boolean;steeringMessage?:Message}};
 type RunActivity = {type:string;message:string;at:string;provider?:ProviderId;accountId?:string};
-type RunState = {runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[];steeringAvailable?:boolean} | {runId:string;sessionId:string;type:'completed'|'error';message:string;finishedAt:number};
+type RunState = {lastActivityAt?:string;runId:string;sessionId:string;startedAt:string;accountId?:string;provider?:ProviderId;message:string;stream:string;activity:RunActivity[];steeringAvailable?:boolean} | {runId:string;sessionId:string;type:'completed'|'error';message:string;finishedAt:number};
 
 export interface FlatFileNode {
   name: string;
@@ -207,12 +209,13 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
 
   username=''; password=''; loginName=''; loginError=''; registerMode=signal(false);
-  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'>('projects');
+  loggedIn=signal(false); page=signal<'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'|'operations'>('projects');
   isOwner=signal(false);
   users=signal<{id:string;username:string;createdAt:string}[]>([]);
   newUsername=''; newUserPassword=''; userAdminError=''; userAdminNotice='';
   mobileMenu=signal(false);
-  projectCreateOpen=signal(false); projectSaving=signal(false); projectCreateError=signal(''); newProjectName=''; newProjectRunner='';
+  projectCreateOpen=signal(false); projectSaving=signal(false); projectCreateError=signal(''); newProjectName=''; newProjectRunner=''; newProjectShared=false; newProjectMembers='';
+  membersProject=signal<Project|null>(null); membersCanManage=signal(false); membersLoading=signal(false); membersSaving=signal(false); membersError=signal(''); projectMembers=signal<{id:string;username:string;owner:boolean}[]>([]); editProjectMembers='';
   managedRunner=signal<Runner|null>(null);
   modelBlacklist=signal<string[]>([]);
   accounts=signal<Account[]>([]); runners=signal<Runner[]>([]); projects=signal<Project[]>([]); previews=signal<Preview[]>([]); selectedProjectId=signal(''); pairing=signal<Pairing|null>(null); sessions=signal<ChatSession[]>([]); current=signal<ChatSession|null>(null);
@@ -318,6 +321,16 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   grantUsage(g:AccessGrant){return Object.entries(g.usageByModel).map(([model,tokens])=>({model,tokens}));}
   accountName=''; accountProvider:ProviderId|'openai-api'='codex'; apiKeyDrafts:Record<string,string>={}; savingApiKey=signal(''); deletingAccount=signal(''); addingAccount=signal(false); selectedRunner=''; runnerName='My computer'; notice=signal(''); error=signal('');
   running=signal(false); uploading=signal(false); runId=signal(''); stream=signal(''); activeAccount=signal(''); activeProvider=signal<ProviderId|undefined>(undefined); activity=signal<RunActivity[]>([]); runStartedAt=signal(''); now=signal(Date.now());
+  tasks=signal<QueueTask[]>([]); usageSummary=signal<UsageSummary|null>(null); taskSubmitting=signal(false); lastActivityAt=signal('');
+  waitingTasks=computed(()=>this.tasks().filter(t=>t.state==='queued'));
+  currentWaitingTasks=computed(()=>this.waitingTasks().filter(t=>t.input.sessionId===this.current()?.id));
+  async refreshTasks(){try{this.tasks.set(await this.api<QueueTask[]>('/tasks'));}catch(e){this.error.set((e as Error).message);}}
+  async refreshUsageSummary(){try{this.usageSummary.set(await this.api<UsageSummary>('/usage-summary'));}catch(e){this.error.set((e as Error).message);}}
+  async changeTaskPriority(task:QueueTask,priority:string){try{await this.api('/tasks/'+task.id,{method:'PATCH',body:JSON.stringify({priority:Number(priority)})});await this.refreshTasks();}catch(e){this.error.set((e as Error).message);}}
+  async cancelTask(task:QueueTask){try{await this.api('/tasks/'+task.id,{method:'DELETE'});await this.refreshTasks();}catch(e){this.error.set((e as Error).message);}}
+  durationSince(at?:string){if(!at)return '—';const seconds=Math.max(0,Math.floor((this.now()-Date.parse(at))/1000));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');}
+  projectUsageName(id:string){return id==='no-project'?'Without project':this.usageSummary()?.projects.find(p=>p.id===id)?.name||id;}
+  accountAvailable(a:Account){return a.mode==='runner'&&!a.limit.cooldownUntil&&![a.limit.primary,a.limit.secondary].some(w=>w&&w.usedPercent>=100&&(!w.resetAt||Date.parse(w.resetAt)>this.now()));}
   socket?:Socket;
   private clock?:ReturnType<typeof setInterval>;
   copiedId=signal<string>('');
@@ -518,7 +531,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     const allAccounts=Array.isArray(this.accounts()) ? this.accounts() : [];
     const pId=this.current()?.projectId || this.selectedProjectId();
     const project=pId?this.projects().find(p=>p.id===pId):null;
-    const scoped=project?allAccounts.filter(a=>a.runnerId===project.runnerId):allAccounts;
+    const scoped=project&&!project.shared?allAccounts.filter(a=>a.runnerId===project.runnerId):allAccounts;
 
     const service=this.selectedService();
 
@@ -773,7 +786,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     }
   };
   ngOnInit(){
-    this.clock=setInterval(()=>this.now.set(Date.now()),1000);
+    this.clock=setInterval(()=>{this.now.set(Date.now());if(this.loggedIn()&&this.page()==='operations'&&Math.floor(Date.now()/1000)%5===0){void this.refreshTasks();void this.refreshUsageSummary();}},1000);
     if(typeof window !== 'undefined'){
       window.addEventListener('dragover', this.preventWindowDrop);
       window.addEventListener('drop', this.preventWindowDrop);
@@ -1104,11 +1117,11 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if (!query) return all;
     return all.filter(p => p.name.toLowerCase().includes(query));
   });
-  projectRunner(project:Project){return this.runners().find(r=>r.id===project.runnerId)?.name||'Runner';}
+  projectRunner(project:Project){if(project.shared)return 'Shared across runners';return this.runners().find(r=>r.id===project.runnerId)?.name||'Runner';}
   selectProject(id:string){this.selectedProjectId.set(id);const latest=this.chatsFor(id)[0];if(latest)void this.openSession(latest.id);else this.newSession();}
   newSessionFor(projectId:string){this.selectedProjectId.set(projectId);this.newSession();}
   createProject(){
-    this.newProjectName='';
+    this.newProjectName='';this.newProjectShared=false;this.newProjectMembers='';
     this.newProjectRunner=this.selectedRunner || this.runners().find(r=>!r.revokedAt)?.id || '';
     this.projectCreateError.set('');
     this.projectCreateOpen.set(true);
@@ -1130,10 +1143,22 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     if(!runnerId){this.projectCreateError.set('First, connect a runner in the “Runners” section.');return;}
     this.projectSaving.set(true);this.projectCreateError.set('');
     try{
-      const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name,runnerId})});
+      const project=await this.api<Project>('/projects',{method:'POST',body:JSON.stringify({name,runnerId,shared:this.newProjectShared,members:this.newProjectShared?this.memberNames(this.newProjectMembers):[]})});
       this.projects.update(v=>[project,...v]);this.selectTaskProject(project.id);this.projectCreateOpen.set(false);this.newSession();
     }catch(e){this.projectCreateError.set((e as Error).message);}
     finally{this.projectSaving.set(false);}
+  }
+
+  memberNames(value:string){return [...new Set(value.split(/[\s,;]+/).map(v=>v.trim()).filter(Boolean))];}
+  async showProjectMembers(project:Project){
+    this.membersProject.set(project);this.membersLoading.set(true);this.membersError.set('');this.projectMembers.set([]);this.membersCanManage.set(false);this.editProjectMembers='';
+    try{const result=await this.api<{members:{id:string;username:string;owner:boolean}[];canManage:boolean}>('/projects/'+project.id+'/members');this.projectMembers.set(result.members);this.membersCanManage.set(result.canManage);this.editProjectMembers=result.members.filter(m=>!m.owner).map(m=>m.username).join(', ');}catch(e){this.membersError.set((e as Error).message);}finally{this.membersLoading.set(false);}
+  }
+  closeMembersDialog(){if(!this.membersSaving())this.membersProject.set(null);}
+  async saveProjectMembers(){
+    const project=this.membersProject();if(!project||!this.membersCanManage()||this.membersSaving())return;
+    this.membersSaving.set(true);this.membersError.set('');
+    try{const updated=await this.api<Project>('/projects/'+project.id+'/members',{method:'PUT',body:JSON.stringify({members:this.memberNames(this.editProjectMembers)})});this.projects.update(list=>list.map(p=>p.id===updated.id?updated:p));this.membersProject.set(null);}catch(e){this.membersError.set((e as Error).message);}finally{this.membersSaving.set(false);}
   }
 
   onDragEnter(event: DragEvent) {
@@ -1380,13 +1405,14 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     void this.uploadFiles(files);
     input.value = '';
   }
-  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'){
+  showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'|'operations'){
     if(page==='users'&&!this.isOwner())return;
     this.page.set(page);
     this.mobileMenu.set(false);
     if(page==='runners')this.refreshRunners();
     else this.managedRunner.set(null);
     if(page==='connections'){void this.refreshAccounts();void this.refreshGrants();}
+    if(page==='operations'){void this.refreshTasks();void this.refreshUsageSummary();}
     if(page==='files')void this.refreshLibrary();
     if(page==='notifications')void this.refreshTelegram();
     if(page==='sites')void this.refreshPreviews();
@@ -1398,16 +1424,17 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async refreshPreviews(){try{const rows=await Promise.all(this.runners().filter(r=>!r.revokedAt).map(r=>this.api<Preview[]>('/runners/'+r.id+'/previews')));this.previews.set(rows.flat().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(e){if(this.page()==='sites')this.error.set((e as Error).message);}}
   async setPreviewVisible(preview:Preview,visible:boolean){try{await this.api('/runners/'+preview.runnerId+'/previews/'+preview.subdomain,{method:'PATCH',body:JSON.stringify({visible})});await this.refreshPreviews();this.notice.set(visible?'The site is open':'Site hidden');}catch(e){this.error.set((e as Error).message);}}
   previewRunner(preview:Preview){return this.runners().find(r=>r.id===preview.runnerId)?.name||'Runner';}
-  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='The connection to the server is lost')this.error.set('');const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Connection lost. Restoring the task status...');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('The connection to the server is lost'));}
+  connect(){this.socket?.disconnect();this.socket=io({path:'/socket.io',transports:['websocket']});this.socket.on('connect',()=>{if(this.error()==='The connection to the server is lost')this.error.set('');void this.refreshTasks();const id=this.current()?.id;if(id)this.syncRun(id);});this.socket.on('queue:changed',()=>void this.refreshTasks());this.socket.on('disconnect',()=>{if(this.running())this.notice.set('Connection lost. Restoring the task status...');});this.socket.on('ai:event',(e:AIEvent)=>this.onEvent(e));this.socket.on('accounts:changed',(a:Account[])=>{this.accounts.set(a);const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();});this.socket.on('connect_error',()=>this.error.set('The connection to the server is lost'));}
   resetRun(){this.steeringAvailable.set(false);this.running.set(false);this.runId.set('');this.stream.set('');this.activeAccount.set('');this.activeProvider.set(undefined);this.activity.set([]);this.runStartedAt.set('');}
-  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('The connection has been restored, but the task status is unavailable. Refresh the chat or try again.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Done');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Task in progress');this.error.set('');this.requestScrollToBottom();});}
+  syncRun(sessionId:string){if(!this.socket?.connected)return;this.socket.emit('run:state',sessionId,(state:RunState|null)=>{if(this.current()?.id!==sessionId)return;if(!state){const wasRunning=this.running();this.resetRun();this.notice.set('');if(wasRunning)this.error.set('The connection has been restored, but the task status is unavailable. Refresh the chat or try again.');void this.reloadCurrent();return;}if('type' in state){const wasRunning=this.running()||this.runId()===state.runId;this.resetRun();this.notice.set('');if(wasRunning){if(state.type==='error')this.error.set(state.message);else{this.error.set('');this.notice.set(state.message||'Done');}}void this.reloadCurrent();return;}this.steeringAvailable.set(state.steeringAvailable===true);this.runId.set(state.runId);this.running.set(true);this.runStartedAt.set(state.startedAt);this.lastActivityAt.set(state.lastActivityAt||state.activity?.at(-1)?.at||state.startedAt);this.activeAccount.set(state.accountId||'');if(state.provider)this.activeProvider.set(state.provider);this.stream.set(state.stream||'');this.activity.set(state.activity||[]);this.notice.set(state.message||'Task in progress');this.error.set('');this.requestScrollToBottom();});}
   onEvent(e:AIEvent){
     if(e.type==='completed'&&this.browserNotifications()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||e.sessionId!==this.current()?.id||this.page()!=='chat')){const n=new Notification('The answer is ready',{body:this.sessions().find(s=>s.id===e.sessionId)?.title||'AI Router'});n.onclick=()=>{window.focus();void this.openSession(e.sessionId);n.close();};}
     if(e.sessionId!==this.current()?.id)return;
+    this.lastActivityAt.set(e.at||new Date().toISOString());
     if(e.type==='fallback'||e.type==='handoff_started')this.steeringAvailable.set(false);
     if(typeof e.data?.steeringAvailable==='boolean')this.steeringAvailable.set(e.data.steeringAvailable);
     if(e.data?.steeringMessage){const message=e.data.steeringMessage;this.current.update(s=>s&&!s.messages.some(m=>m.id===message.id)?{...s,messages:[...s.messages,message],updatedAt:message.at||s.updatedAt}:s);}
-if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Request accepted');this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Error');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Done');this.reloadCurrent();void this.refreshTaskFiles();}}
+if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='started'){this.running.set(true);this.runId.set(e.runId);this.runStartedAt.set(new Date().toISOString());this.activity.set([]);this.notice.set(e.message||'Request accepted');void this.reloadCurrent();this.requestScrollToBottom();}else if(e.type==='delta'){this.stream.update(s=>s+(e.text||''));this.activeAccount.set(e.data?.accountId||'');this.requestScrollToBottom();}else if(e.type==='status'||e.type==='tool'||e.type==='fallback'||e.type==='checkpoint'||e.type==='handoff_started'||e.type==='handoff_ready'){if(e.type==='handoff_started')this.stream.set('');if(e.message){this.notice.set(e.message);this.activity.update(rows=>[...rows,{type:e.type,message:e.message!,at:new Date().toISOString(),provider:e.provider as ProviderId,accountId:e.data?.accountId}].slice(-12));}this.activeAccount.set(e.data?.accountId||this.activeAccount());this.requestScrollToBottom();}else if(e.type==='error'){this.error.set(e.message||'Error');this.resetRun();this.reloadCurrent();}else if(e.type==='completed'){this.resetRun();this.notice.set(e.message||'Done');this.reloadCurrent();void this.refreshTaskFiles();}}
   async reloadCurrent(){
     const id=this.current()?.id;
     if(!id)return;
@@ -1420,48 +1447,20 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     });
     this.requestScrollToBottom();
   }
-  async send(){
+  async send(enqueue=false){
     const prompt=this.draft.trim();
-    if(this.running()){await this.steer();return;}
-    if(!prompt)return;
-
-    let s=this.current();
-    if(!s||!s.id){
-        try {
-          const projectId=this.selectedProjectId()||undefined;
-          s=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});
-          this.current.set(s);
-        } catch(e) {
-          this.error.set((e as Error).message);
-          return;
-        }
-    }
-
-    if(!s){
-      this.error.set('Failed to create chat');
-      return;
-    }
-    if(!this.socket?.connected){
-      this.error.set('The connection to the server is lost');
-      return;
-    }
-    this.error.set('');this.notice.set('');this.stream.set('');this.activity.set([]);
-    const now=new Date().toISOString();
-    this.runStartedAt.set(now);this.running.set(true);this.draft='';setTimeout(()=>this.adjustTextareaHeight(),0);this.userScrolledUp.set(false);this.showScrollBottom.set(false);this.isSmoothScrollingToBottom=false;
-    const userMsg:Message={id:'pending',role:'user',text:prompt,at:now};
-    const updatedSession:ChatSession={
-      ...s,
-      title:s.title==='New chat'?(prompt.length>28?prompt.slice(0,28)+'...':prompt):s.title,
-      messages:[...(s.messages||[]),userMsg],
-      updatedAt:now
-    };
-    this.current.set(updatedSession);
-    this.sessions.update(list=>sortSessions([updatedSession,...list.filter(x=>x.id!==updatedSession.id)]));
-    this.scrollToBottom(true,'auto');
-    requestAnimationFrame(()=>this.scrollToBottom(true,'auto'));
-    const targetService = this.selectedService();
-    const targetMode = 'task';
-    this.socket?.emit('run',{sessionId:s.id,prompt,service:targetService,accountId:targetService,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:targetService==='codex'&&this.codexFast(),mode:targetMode},(ack:{ok:boolean;runId?:string;error?:string})=>{if(ack.ok){this.runId.set(ack.runId||'');this.requestScrollToBottom();}else{this.resetRun();this.error.set(ack.error||'Error');this.draft=prompt;this.reloadCurrent();if(ack.error==='This chat is already busy')this.syncRun(s!.id);}});
+    if(this.running()&&!enqueue){await this.steer();return;}
+    if(!prompt||this.taskSubmitting())return;
+    if(!this.socket?.connected){this.error.set('The connection to the server is lost');return;}
+    this.taskSubmitting.set(true);
+    try{
+      let chat=this.current();
+      if(!chat?.id){const projectId=this.selectedProjectId()||undefined;chat=await this.api<ChatSession>('/sessions',{method:'POST',body:JSON.stringify(projectId?{projectId}:{})});this.current.set(chat);}
+      const service=this.selectedService();
+      const ack=await this.socket.timeout(15000).emitWithAck('run',{sessionId:chat.id,prompt,service,accountId:service,model:this.selectedModel(),reasoning:this.selectedReasoning(),fast:service==='codex'&&this.codexFast(),mode:'task'});
+      if(!ack.ok)throw new Error(ack.error||'Unable to queue task');
+      this.draft='';this.error.set('');if(!this.running())this.notice.set('Task added to queue');setTimeout(()=>this.adjustTextareaHeight(),0);await this.refreshTasks();
+    }catch(e){this.error.set((e as Error).message);}finally{this.taskSubmitting.set(false);}
   }
 
   cancel(){if(this.runId())this.socket?.emit('cancel',this.runId());}
@@ -1549,7 +1548,7 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
   remaining(window:UsageWindow|null){return window?`${Math.round(window.remainingPercent)}%`:'';}
   resetLabel(window:UsageWindow){if(!window.resetAt)return '';const date=new Date(window.resetAt);return Number.isFinite(date.getTime())?`Resets ${new Intl.DateTimeFormat('en-US',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date)}`:'';}
   accountMode(a:Account){return a.mode==='runner'?'Container online':a.mode==='offline'?'Offline':'No container';}
-  hasAccountsFor(service:ServiceId):boolean{const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];if(service==='auto')return accounts.length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId || this.selectedProjectId();const project=pId?this.projects().find(p=>p.id===pId):null;const list=project?accounts.filter(a=>a.runnerId===project.runnerId):accounts;return list.some(a=>a.provider===provider);}
+  hasAccountsFor(service:ServiceId):boolean{const accounts=Array.isArray(this.accounts()) ? this.accounts() : [];if(service==='auto')return accounts.length>0;const provider:ProviderId=service==='gemini'?'antigravity':service==='codex'?'codex':'chatgpt';const pId=this.current()?.projectId || this.selectedProjectId();const project=pId?this.projects().find(p=>p.id===pId):null;const list=project&&!project.shared?accounts.filter(a=>a.runnerId===project.runnerId):accounts;return list.some(a=>a.provider===provider);}
   selectTaskProject(id:string){this.selectedProjectId.set(id);this.selectService(this.selectedService());}
   selectService(service:ServiceId){this.selectedService.set(service);this.selectedAccount=service;const available=this.models();if(!available.some(m=>m.id===this.selectedModel()))this.selectedModel.set('default');this.validateReasoning();}
   selectAccount(id:string){this.selectedAccount=id;this.selectedModel.set('default');this.selectedReasoning.set('default');}

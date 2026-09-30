@@ -72,7 +72,7 @@
         <button class="rail-btn" [class.active]="page()==='runners'" (click)="showPage('runners')" title="Runners" aria-label="Runners"><svg lucideServer [size]="18"></svg></button>
       </div>
 
-      <div class="rail-group"><button class="rail-btn" [class.active]="page()==='files'" (click)="showPage('files')" title="All files" aria-label="All files"><svg lucideFile [size]="18"></svg></button><button class="rail-btn" [class.active]="page()==='notifications'" (click)="showPage('notifications')" title="Notifications" aria-label="Notifications"><svg lucideSettings2 [size]="18"></svg></button></div><div class="rail-spacer"></div>
+      <div class="rail-group"><button class="rail-btn" [class.active]="page()==='operations'" (click)="showPage('operations')" title="Tasks and usage" aria-label="Tasks and usage"><svg lucideTerminal [size]="18"></svg></button><button class="rail-btn" [class.active]="page()==='files'" (click)="showPage('files')" title="All files" aria-label="All files"><svg lucideFile [size]="18"></svg></button><button class="rail-btn" [class.active]="page()==='notifications'" (click)="showPage('notifications')" title="Notifications" aria-label="Notifications"><svg lucideSettings2 [size]="18"></svg></button></div><div class="rail-spacer"></div>
 
       <div class="rail-group">
         <button class="rail-btn" (click)="helpModalOpen.set(!helpModalOpen())" title="Help">
@@ -151,7 +151,7 @@
       </div>
 
       <div class="mobile-drawer-content">
-      <nav class="mobile-drawer-links" aria-label="Application Sections"><button [class.active]="page()==='files'" (click)="showPage('files')"><svg lucideFile [size]="21"></svg><span>All files</span></button><button [class.active]="page()==='notifications'" (click)="showPage('notifications')"><svg lucideSettings2 [size]="21"></svg><span>Notifications</span></button>
+      <nav class="mobile-drawer-links" aria-label="Application Sections"><button [class.active]="page()==='operations'" (click)="showPage('operations')"><svg lucideTerminal [size]="21"></svg><span>Tasks and usage</span></button><button [class.active]="page()==='files'" (click)="showPage('files')"><svg lucideFile [size]="21"></svg><span>All files</span></button><button [class.active]="page()==='notifications'" (click)="showPage('notifications')"><svg lucideSettings2 [size]="21"></svg><span>Notifications</span></button>
         <button [class.active]="page()==='projects'" (click)="showPage('projects')"><svg lucideFolder [size]="21"></svg><span>Projects</span></button>
         <button [class.active]="page()==='sites'" (click)="showPage('sites')"><svg lucideGlobe2 [size]="21"></svg><span>Websites and previews</span></button>
         <button [class.active]="page()==='providers'" (click)="showPage('providers')"><svg lucideCompass [size]="21"></svg><span>Providers and models</span></button>
@@ -257,7 +257,7 @@
 
         <div class="topbar-center">
 
-          <span class="mobile-page-title">{{page()==='chat' ? (current()?.title || 'New task') : page()==='files' ? 'Files' : page()==='notifications' ? 'Notifications' : page()==='projects' ? 'Projects' : page()==='sites' ? 'Websites' : page()==='providers' ? 'Models' : page()==='connections' ? 'Connections' : page()==='users' ? 'Users' : 'Runners'}}</span>
+          <span class="mobile-page-title">{{page()==='operations' ? 'Tasks and usage' : page()==='chat' ? (current()?.title || 'New task') : page()==='files' ? 'Files' : page()==='notifications' ? 'Notifications' : page()==='projects' ? 'Projects' : page()==='sites' ? 'Websites' : page()==='providers' ? 'Models' : page()==='connections' ? 'Connections' : page()==='users' ? 'Users' : 'Runners'}}</span>
         </div>
 
         <div class="topbar-right">
@@ -463,6 +463,7 @@
         }
 
         <div #chatScrollArea class="chat-scroll-area" (scroll)="onChatScroll()" (wheel)="onChatWheel($event)" (touchmove)="onChatTouch()">
+          @if(currentWaitingTasks().length){<div class="chat-queue-banner" role="status"><span>{{currentWaitingTasks().length}} queued · {{currentWaitingTasks()[0].message}}</span><button class="btn btn-outline btn-sm" (click)="showPage('operations')">View queue</button></div>}
           @if(!current()?.messages?.length){
             <!-- THE HERO SCREEN: WHAT'S ON THE AGENDA TODAY? -->
             <div class="hero-view">
@@ -602,9 +603,10 @@
                         </div>
                       }
 
-                      @if(activity().length > 1 && !stream()){
+                      <p class="task-last-activity">Last activity {{durationSince(lastActivityAt())}} ago</p>
+                      @if(activity().length > 1){
                         <div class="chat-activity-feed">
-                          @for(row of activity().slice(-3); track $index){
+                          @for(row of activity(); track $index){
                             <div class="chat-activity-item">
                               <span class="chat-activity-chevron">›</span>
                               <span class="chat-activity-text">{{row.message}}</span>
@@ -652,6 +654,7 @@
 
 
 
+            @if(running()){<div class="composer-queue-actions"><button class="btn btn-outline btn-sm" type="button" [disabled]="!draft.trim() || taskSubmitting() || uploading()" (click)="send(true)" title="Run after the current task">Add to queue</button></div>}
             <div class="hero-pill-bar bottom-composer-pill">
               <input #filePickerBottom type="file" multiple hidden (change)="uploadFile($event)">
               <button class="pill-btn-icon pill-btn-plus" type="button" [disabled]="uploading()" (click)="filePickerBottom.click()" title="Attach files" aria-label="Attach files">
@@ -746,6 +749,37 @@
           </section>
         }@empty{<div class="library-empty"><svg lucideFolderOpen [size]="32"></svg><h3>No files found</h3><p>Create files in a task or upload them to a project.</p></div>}}
       </div>
+    } @else if(page()==='operations') {
+      <div class="page-content operations-page">
+        <div class="section-hero"><div><span class="section-tag">WORKSPACE</span><h2>Tasks and usage</h2><p>Queue tasks, track execution and review reported consumption.</p></div><button class="btn btn-outline" (click)="refreshTasks(); refreshUsageSummary()">Refresh</button></div>
+        @if(error()){<div class="banner banner-error">{{error()}}</div>}
+        <section class="notification-card"><h3>Task queue · {{waitingTasks().length}} waiting</h3><p>Higher priority starts first. Tasks wait while their chat, project or runner is busy.</p>
+          <div class="operations-tasks">@for(task of tasks();track task.id){
+            <article class="operations-task" [attr.data-state]="task.state">
+              <div class="operations-task-heading"><button class="task-prompt" (click)="openSession(task.input.sessionId)">{{task.input.prompt}}</button><span class="badge">{{task.state}}</span></div>
+              <p>{{task.message}} · {{task.input.model}}</p>
+              @if(task.state==='running'){<p>Elapsed {{durationSince(task.startedAt)}} · Last activity {{durationSince(task.lastActivityAt)}} ago</p>@if(task.activity?.length){<details><summary>Recent activity</summary>@for(row of task.activity;track $index){<p>{{row.at | date:'HH:mm:ss'}} · {{row.message}}</p>}</details>}}
+              <div class="notification-actions">@if(task.state==='queued'){<label>Priority <select [ngModel]="task.priority" (ngModelChange)="changeTaskPriority(task,$event)"><option [ngValue]="2">High</option><option [ngValue]="1">Normal</option><option [ngValue]="0">Low</option></select></label>}
+              @if(task.state==='queued'||task.state==='running'){<button class="btn btn-outline btn-sm" (click)="cancelTask(task)">{{task.state==='running'?'Stop':'Cancel'}}</button>}</div>
+            </article>
+          }@empty{<p>No tasks yet. Send a request in a chat to add it to the queue.</p>}</div>
+        </section>
+        @if(usageSummary();as summary){
+          <section class="notification-card"><h3>Reported consumption</h3><div class="usage-total">{{summary.totalTokens | number}} <span>tokens</span></div><p>{{summary.source}}. Older requests may have no model information.</p>
+            <div class="operations-grid"><div><h4>By project</h4>@for(row of summary.byProject;track row.id){<div class="usage-summary-row"><span>{{projectUsageName(row.id)}}</span><strong>{{row.tokens | number}}</strong></div>}@empty{<p>No reported usage</p>}</div><div><h4>By model</h4>@for(row of summary.byModel;track row.id){<div class="usage-summary-row"><span>{{row.id}}</span><strong>{{row.tokens | number}}</strong></div>}@empty{<p>No reported usage</p>}</div></div>
+          </section>
+          <section class="notification-card"><h3>Connections and quotas</h3><p>{{summary.accounts.length}} connections · provider windows are shown separately for each account.</p>
+            @for(account of summary.accounts;track account.id){<article class="operations-task"><div class="operations-task-heading"><strong>{{account.name}}</strong><span class="badge">{{accountAvailable(account)?'Available':account.mode==='runner'?'Quota exhausted':'Offline'}}</span></div><p>{{account.provider}} · {{account.detail}}</p>
+              @if(account.limit.primary;as window){<p>Primary: {{window.remainingPercent}}% remaining · {{resetLabel(window)}}</p>}
+              @if(account.limit.secondary;as window){<p>Secondary: {{window.remainingPercent}}% remaining · {{resetLabel(window)}}</p>}
+              @if(account.limit.cooldownUntil){<p>Retry after {{account.limit.cooldownUntil | date:'medium'}}</p>}
+              @if(account.limit.source==='unknown'){<p>Provider quota is unknown</p>}
+              @if(account.limit.updatedAt){<p>Updated {{account.limit.updatedAt | date:'medium'}}</p>}
+            </article>}@empty{<p>No connections configured</p>}
+          </section>
+          <section class="notification-card"><h3>Shared access budgets</h3>@for(grant of summary.grants;track grant.id){<article class="operations-task"><strong>{{grant.direction==='outgoing'?grant.recipientName:grant.ownerName}}</strong><p>{{grant.direction}} · {{grant.state}} · {{grant.remainingTokens | number}} / {{grant.budget | number}} tokens remaining · {{grant.period}}</p>@for(row of grantUsage(grant);track row.model){<div class="usage-summary-row"><span>{{row.model}}</span><span>{{row.tokens | number}}</span></div>}</article>}@empty{<p>No shared access</p>}</section>
+        }
+      </div>
     } @else if(page()==='notifications') {
       <div class="page-content notifications-page"><div class="section-hero"><div><span class="section-tag">STAY CONNECTED</span><h2>Notifications</h2><p>Find out the ready answer even when another tab is open.</p></div></div>
       @if(error()){<div class="banner banner-error">{{error()}}</div>}
@@ -808,12 +842,14 @@
                   <span class="badge" [class.badge-ready]="chatsFor(project.id).length > 0" [class.badge-neutral]="chatsFor(project.id).length === 0">{{formatChatsCount(chatsFor(project.id).length)}}</span>
                 </div>
                 <h3>{{project.name}}</h3>
+                @if(project.shared){<span class="badge badge-ready">Shared project</span>}
                 <div class="project-meta">
                   <svg lucideServer [size]="14"></svg>
                   <span>{{projectRunner(project)}}</span>
                 </div>
                 <div class="card-actions">
                   <button class="btn btn-outline btn-sm" (click)="selectProject(project.id)">Open</button>
+                  @if(project.shared){<button class="btn btn-outline btn-sm" (click)="showProjectMembers(project)">Members</button>}
                   <button class="btn btn-primary btn-sm" (click)="newSessionFor(project.id)">
                     <svg lucidePlus [size]="14"></svg>
                     <span>New chat</span>
@@ -1884,8 +1920,14 @@ INSTALL_AGY_CLI=true</code></pre>
       <div class="project-dialog-heading"><div class="project-avatar"><svg lucideFolder [size]="22"></svg></div><button class="btn-icon" (click)="closeProjectDialog()" aria-label="Close"><svg lucideX [size]="20"></svg></button></div>
       <h2 id="project-dialog-title">New project</h2><p>A separate place for tasks, files and chats.</p>
       <form (ngSubmit)="saveProject()">
-        <div class="input-group"><label for="project-name">Name</label><input id="project-name" name="projectName" [(ngModel)]="newProjectName" placeholder="For example, My site" maxlength="120" autocomplete="off" required [disabled]="projectSaving()"></div>
-        <div class="input-group"><label for="project-runner">Runner</label><select id="project-runner" name="projectRunner" [(ngModel)]="newProjectRunner" required [disabled]="projectSaving()"><option value="" disabled>Select a runner</option>@for(r of runners(); track r.id){@if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}}</select></div>
+        <div class="input-group"><label for="project-name">Name</label><input id="project-name" name="projectName" [(ngModel)]="newProjectName" placeholder="For example, My site" maxlength="80" autocomplete="off" required [disabled]="projectSaving()"></div>
+        <div class="input-group"><label for="project-runner">{{newProjectShared?'Initial runner':'Runner'}}</label><select id="project-runner" name="projectRunner" [(ngModel)]="newProjectRunner" required [disabled]="projectSaving()"><option value="" disabled>Select a runner</option>@for(r of runners(); track r.id){@if(!r.revokedAt){<option [value]="r.id">{{r.name}}</option>}}</select></div>
+        <label class="shared-project-toggle"><input type="checkbox" name="projectShared" [(ngModel)]="newProjectShared" [disabled]="projectSaving()"> Shared project</label>
+        @if(newProjectShared){
+          <p>Work across your runners and share the project folder with other users. One task runs at a time. Chats stay personal.</p>
+          <p>Files sync automatically, up to 64 MB. Environment files and dependencies stay local to each runner.</p>
+          <div class="input-group"><label for="project-members">Members (optional)</label><input id="project-members" name="projectMembers" [(ngModel)]="newProjectMembers" placeholder="Usernames, separated by commas" [disabled]="projectSaving()"></div>
+        }
         @if(!newProjectRunner){<p>This project needs a runner. <button type="button" class="btn-link" (click)="closeProjectDialog(); showPage('runners')">Connect a runner</button></p>}
         @if(projectCreateError()){<div class="banner banner-error" role="alert"><span>{{projectCreateError()}}</span></div>}
         <button class="btn btn-primary btn-block" type="submit" [disabled]="!newProjectName.trim() || !newProjectRunner || projectSaving()">{{projectSaving() ? 'Creating…' : 'Create a project'}}</button>
@@ -1928,6 +1970,25 @@ INSTALL_AGY_CLI=true</code></pre>
           <p class="model-picker-empty" role="status">No models found</p>
         }
       </div>
+    </section>
+  </div>
+}
+
+@if(membersProject(); as project){
+  <div class="project-dialog-backdrop" (click)="closeMembersDialog()" (keydown.escape)="closeMembersDialog()">
+    <section class="project-dialog" (keydown.tab)="trapDialogFocus($event)" role="dialog" aria-modal="true" aria-labelledby="members-dialog-title" (click)="$event.stopPropagation()">
+      <div class="project-dialog-heading"><div class="project-avatar"><svg lucideFolder [size]="22"></svg></div><button class="btn-icon" (click)="closeMembersDialog()" aria-label="Close"><svg lucideX [size]="20"></svg></button></div>
+      <h2 id="members-dialog-title">{{project.name}} · Members</h2>
+      <p>Members share the project files and use their own AI connections on any runner. Chats stay personal.</p>
+      @if(membersLoading()){<p>Loading members…</p>}
+      @for(member of projectMembers(); track member.id){<p>{{member.username}} @if(member.owner){<span class="badge badge-neutral">Owner</span>}</p>}
+      @if(membersError()){<div class="banner banner-error" role="alert">{{membersError()}}</div>}
+      @if(membersCanManage()){
+        <form (ngSubmit)="saveProjectMembers()"><div class="input-group"><label for="edit-project-members">Member usernames</label><input id="edit-project-members" name="editProjectMembers" [(ngModel)]="editProjectMembers" placeholder="Usernames, separated by commas" [disabled]="membersSaving()"></div>
+          <p>Remove a username to revoke access to the project.</p>
+          <button class="btn btn-primary btn-block" type="submit" [disabled]="membersSaving()">{{membersSaving()?'Saving…':'Save members'}}</button>
+        </form>
+      }
     </section>
   </div>
 }

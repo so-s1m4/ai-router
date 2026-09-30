@@ -92,7 +92,7 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   await api('/access-grants/'+grantId,'PATCH',{budget:500});hold=true;
   terminal=finished(session.id);assert.equal((await send('allowed',grantId)).ok,true);await waitFor(()=>jobCount===4);
   const second=(await request(friendCookie,'/sessions','POST',{})).body;
-  const concurrent=finished(second.id);assert.equal((await send('allowed',grantId,second.id)).ok,true);assert.equal((await concurrent).type,'error');assert.equal(jobCount,4);
+  const concurrent=await send('allowed',grantId,second.id);assert.equal(concurrent.ok,true);assert.equal(concurrent.queued,true);assert.equal((await request(friendCookie,'/tasks/'+concurrent.runId,'DELETE')).status,200);assert.equal(jobCount,4);
   // File access is restricted to recipient-owned sessions, not owner runner workspaces.
   runner.on('file:list',(payload,ack)=>{assert.equal(payload.sessionId,session.id);assert.equal(payload.projectId,undefined);ack({ok:true,files:[{name:'outputs/result.txt',size:5,modified:new Date().toISOString()}]});});
   assert.equal((await request(friendCookie,'/sessions/'+session.id+'/files')).body.files[0].name,'outputs/result.txt');

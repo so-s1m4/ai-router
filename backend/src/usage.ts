@@ -37,7 +37,7 @@ export class AccountUsageManager {
     return value;
   }
 
-  available(user: string, account: string) { return !this.snapshot(user, account).cooldownUntil; }
+  available(user: string, account: string) { const value=this.snapshot(user,account);return !value.cooldownUntil && ![value.primary,value.secondary].some(w=>w&&w.usedPercent>=100&&(!w.resetAt||Date.parse(w.resetAt)>Date.now())); }
 
   remove(user: string, account: string) { this.records.delete(this.key(user, account)); }
 

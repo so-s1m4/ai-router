@@ -9,6 +9,7 @@ import { CheckpointWriter } from './checkpoint.js';
 import { prewarmCodexAppServer, steerCodexJob } from './app-server.js';
 import { startPreviews } from './previews.js';
 import { attachSharedFiles } from './shared-files.js';
+import { attachProjectSync } from './project-sync.js';
 const url=process.env.ROUTER_SERVER_URL?.replace(/\/$/,'');if(!url)throw new Error('ROUTER_SERVER_URL is required');const parsed=new URL(url);if(parsed.protocol!=='https:'&&process.env.ROUTER_ALLOW_INSECURE!=='true')throw new Error('HTTPS required; set ROUTER_ALLOW_INSECURE=true only for local development');
 const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data'),file=path.join(root,'device.json');
 interface Device {id:string;secret:string;name:string}
@@ -18,6 +19,8 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
  const steeringCheckpoints=new Map<string,{writer:CheckpointWriter;prompt:string}>();
  await startPreviews(socket);
  attachSharedFiles(socket);
+ const jobProjects=new Map<string,string>();
+ attachProjectSync(socket,root,id=>[...jobProjects.values()].includes(id));
  socket.on('connect',()=>console.log(`Runner ${d.name} connected`));
  socket.on('connect_error',(err)=>console.error('Connection failed:',err.message));
  socket.on('disconnect',()=>{for(const controller of active.values())controller.abort();active.clear();console.log('Control plane disconnected; active jobs stopped');});
@@ -42,6 +45,7 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
   const checkpoint=new CheckpointWriter(workspaceFor(job),job.taskId,{taskId:job.taskId,jobId:job.jobId,accountId:job.accountId,provider:job.provider,sessionId:job.sessionId,projectId:job.projectId,model:job.model,reasoning:job.reasoning,prompt:job.originalPrompt||job.prompt,priorContext:job.handoffContext});
   let partial='';
   active.set(job.jobId,controller);
+  if(job.projectId)jobProjects.set(job.jobId,job.projectId);
   steeringCheckpoints.set(job.jobId,{writer:checkpoint,prompt:job.originalPrompt||job.prompt});
   ack?.({ok:true});
   try{
@@ -64,7 +68,7 @@ async function start(){const d=await device();const socket=io(url+'/runner',{pat
    try{await checkpoint.flush();}catch(error){console.error('Checkpoint write failed:',error);}
    if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint saved for continuation',data:{taskId:job.taskId,status:code==='rate_limit'?'handoff_pending':'failed'}});
    if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:false,error:e instanceof Error?e.message:'Error',code});
-  }finally{active.delete(job.jobId);steeringCheckpoints.delete(job.jobId);}
+  }finally{jobProjects.delete(job.jobId);active.delete(job.jobId);steeringCheckpoints.delete(job.jobId);}
  });
  socket.on('job:steer',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   const parsed=z.object({jobId:z.string().uuid(),text:z.string().trim().min(1).max(16000)}).strict().safeParse(raw);
