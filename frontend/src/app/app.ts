@@ -8,7 +8,7 @@ import {
   LucideChevronDown, LucideChevronLeft, LucideChevronRight, LucideCircleQuestionMark, LucideCompass,
   LucideCopy, LucideDownload,  LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2,
   LucideGraduationCap, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu, LucideMessageSquare,
-  LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft,
+  LucideOrigami, LucidePanelLeft,
   LucidePlugZap, LucidePlus, LucideRefreshCw, LucideRotateCcw,
   LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideTrash2, LucideUploadCloud, LucideX, LucideZap
 } from '@lucide/angular';
@@ -94,7 +94,7 @@ interface FileNodeInternal {
     CommonModule, FormsModule, LucideArrowUp, LucideArrowUpRight, LucideBookOpen, LucideBot, LucideCheck,
     LucideChevronDown, LucideChevronRight, LucideCircleQuestionMark, LucideCompass, LucideCopy, LucideDownload,
     LucideFile, LucideFolder, LucideFolderOpen, LucideGlobe2, LucideGraduationCap, LucideInfo, LucideLibrary, LucideLogOut, LucideMenu,
-    LucideMessageSquare, LucideMic, LucideMicOff, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
+    LucideMessageSquare, LucideOrigami, LucidePanelLeft, LucidePlugZap, LucidePlus,
     LucideRefreshCw, LucideRotateCcw, LucideSearch, LucideServer, LucideSettings2, LucideSparkles, LucideSquare, LucideSquarePen, LucideTerminal, LucideTrash2, LucideUploadCloud, LucideX,
     LucideZap, ManagerPanel, MarkdownPipe
   ],
@@ -334,11 +334,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   isDraggingOver = signal(false);
   private dragCounter = 0;
 
-  isRecording = signal(false);
-  speechSupported = signal(false);
-  voiceLang = signal<'ru-RU' | 'en-US'>('ru-RU');
-  private recognition: any = null;
-  private recordingBaseText = '';
   @ViewChild('composerTextarea') composerTextareaRef?: ElementRef<HTMLTextAreaElement>;
 
   userScrolledUp = signal(false);
@@ -780,11 +775,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   ngOnInit(){
     this.clock=setInterval(()=>this.now.set(Date.now()),1000);
     if(typeof window !== 'undefined'){
-      const hasSpeech = Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-      this.speechSupported.set(hasSpeech);
-      if(typeof navigator !== 'undefined' && navigator.language){
-        this.voiceLang.set(navigator.language.toLowerCase().startsWith('en') ? 'en-US' : 'ru-RU');
-      }
       window.addEventListener('dragover', this.preventWindowDrop);
       window.addEventListener('drop', this.preventWindowDrop);
       window.addEventListener('resize', this.onViewportResize);
@@ -800,7 +790,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   ngOnDestroy(){
     this.closePreview();
-    this.stopVoiceInput();
     this.socket?.disconnect();
     if(this.clock)clearInterval(this.clock);
     if(this.scrollRaf)cancelAnimationFrame(this.scrollRaf);
@@ -879,7 +868,7 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     try{await this.load();const linked=new URLSearchParams(location.search).get('session');if(linked)await this.openSession(linked);}catch(e){this.error.set((e as Error).message);}
   }
   async login(){this.loginError='';try{const me=await this.api<{username:string;isOwner:boolean}>(this.registerMode()?'/register':'/login',{method:'POST',body:JSON.stringify({username:this.loginName,password:this.password})});this.username=me.username;this.isOwner.set(!!me.isOwner);this.password='';this.loggedIn.set(true);await this.load();this.connect();const linked=new URLSearchParams(location.search).get('session');if(linked)await this.openSession(linked);}catch(e){this.loginError=(e as Error).message;}}
-  async logout(){this.stopVoiceInput();await this.api('/logout',{method:'POST'}).catch(()=>{});this.socket?.disconnect();this.browserNotifications.set(false);this.closePreview();this.fileGroups.set([]);this.telegram.set(null);this.telegramLink.set('');this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.grants.set([]);this.grantEditor.set(false);this.loggedIn.set(false);this.current.set(null);}
+  async logout(){await this.api('/logout',{method:'POST'}).catch(()=>{});this.socket?.disconnect();this.browserNotifications.set(false);this.closePreview();this.fileGroups.set([]);this.telegram.set(null);this.telegramLink.set('');this.managedRunner.set(null);this.modelBlacklist.set([]);this.isOwner.set(false);this.users.set([]);this.grants.set([]);this.grantEditor.set(false);this.loggedIn.set(false);this.current.set(null);}
   async load(){
     const [accounts,runners,projects,sessions,blacklistRes]=await Promise.all([
       this.api<Account[]>('/accounts'),
@@ -910,7 +899,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   async refreshAccounts(){this.accounts.set(await this.api<Account[]>('/accounts'));}
   async refreshRunners(){const rows=await this.api<Runner[]>('/runners');this.runners.set(rows);const managed=this.managedRunner();if(managed)this.managedRunner.set(rows.find(row=>row.id===managed.id)||null);await this.refreshAccounts();if(!this.selectedRunner)this.selectedRunner=this.runners().find(r=>!r.revokedAt)?.id||'';}
   newSession(){
-    this.stopVoiceInput();
     this.mobileMenu.set(false);
     this.current.set(null);
     this.taskFiles.set([]);
@@ -926,7 +914,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
     this.ensureChatScrollAttached(true);
   }
   async openSession(id:string){
-    this.stopVoiceInput();
     this.mobileMenu.set(false);
     try{
       const s=await this.api<ChatSession>('/sessions/'+id);
@@ -1405,7 +1392,6 @@ export class App implements OnInit,AfterViewInit,OnDestroy {
   }
   showPage(page:'chat'|'projects'|'sites'|'providers'|'connections'|'runners'|'users'|'files'|'notifications'){
     if(page==='users'&&!this.isOwner())return;
-    this.stopVoiceInput();
     this.page.set(page);
     this.mobileMenu.set(false);
     if(page==='runners')this.refreshRunners();
@@ -1445,7 +1431,6 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     this.requestScrollToBottom();
   }
   async send(){
-    if(this.isRecording())this.stopVoiceInput();
     const prompt=this.draft.trim();
     if(this.running()){await this.steer();return;}
     if(!prompt)return;
@@ -1732,119 +1717,4 @@ if(e.provider)this.activeProvider.set(e.provider as ProviderId);if(e.type==='sta
     el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }
 
-  toggleVoiceLang() {
-    const nextLang = this.voiceLang() === 'ru-RU' ? 'en-US' : 'ru-RU';
-    this.voiceLang.set(nextLang);
-    if (this.isRecording()) {
-      this.stopVoiceInput();
-      setTimeout(() => this.startVoiceInput(), 100);
-    }
-  }
-
-  toggleVoiceInput() {
-    if (this.isRecording()) {
-      this.stopVoiceInput();
-    } else {
-      this.startVoiceInput();
-    }
-  }
-
-  startVoiceInput() {
-    if (typeof window === 'undefined') return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      this.error.set('Голосовой ввод не поддерживается вашим браузером. Рекомендуется Chrome, Edge или Safari.');
-      return;
-    }
-
-    try {
-      if (this.recognition) {
-        try { this.recognition.abort(); } catch {}
-        this.recognition = null;
-      }
-
-      const rec = new SpeechRecognition();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = this.voiceLang();
-      rec.maxAlternatives = 1;
-
-      this.recordingBaseText = this.draft;
-      this.error.set('');
-
-      rec.onstart = () => {
-        this.isRecording.set(true);
-      };
-
-      rec.onresult = (event: any) => {
-        let interim = '';
-        let accumulatedFinal = '';
-
-        for (let i = 0; i < event.results.length; i++) {
-          const result = event.results[i];
-          const text = result[0]?.transcript || '';
-          if (result.isFinal) {
-            accumulatedFinal += text;
-          } else {
-            interim += text;
-          }
-        }
-
-        const combinedSpeech = (accumulatedFinal + interim).trimStart();
-        if (this.recordingBaseText) {
-          const needsSpace = !this.recordingBaseText.endsWith(' ') && !this.recordingBaseText.endsWith('\n');
-          this.draft = this.recordingBaseText + (needsSpace ? ' ' : '') + combinedSpeech;
-        } else {
-          this.draft = combinedSpeech;
-        }
-        this.adjustTextareaHeight();
-      };
-
-      rec.onerror = (event: any) => {
-        console.warn('SpeechRecognition error:', event.error);
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          this.error.set('Доступ к микрофону запрещен. Разрешите доступ к микрофону в настройках браузера.');
-          this.stopVoiceInput();
-        } else if (event.error === 'no-speech') {
-          // No speech detected, quietly ignore
-        } else if (event.error === 'audio-capture') {
-          this.error.set('Микрофон не обнаружен. Проверьте подключение аудиоустройств.');
-          this.stopVoiceInput();
-        } else if (event.error === 'network') {
-          this.error.set('Сетевая ошибка службы распознавания речи.');
-          this.stopVoiceInput();
-        } else if (event.error !== 'aborted') {
-          this.error.set(`Ошибка голосового ввода: ${event.error}`);
-          this.stopVoiceInput();
-        }
-      };
-
-      rec.onend = () => {
-        this.isRecording.set(false);
-        this.recordingBaseText = '';
-        this.draft = this.draft.trim();
-        this.adjustTextareaHeight();
-      };
-
-      this.recognition = rec;
-      rec.start();
-    } catch (err: any) {
-      console.error('Failed to start speech recognition:', err);
-      this.isRecording.set(false);
-      this.error.set('Не удалось активировать микрофон: ' + (err?.message || err));
-    }
-  }
-
-  stopVoiceInput() {
-    if (this.recognition) {
-      try {
-        this.recognition.stop();
-      } catch {}
-      this.recognition = null;
-    }
-    this.isRecording.set(false);
-    this.recordingBaseText = '';
-    this.draft = this.draft.trim();
-    this.adjustTextareaHeight();
-  }
 }

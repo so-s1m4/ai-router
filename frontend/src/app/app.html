@@ -539,19 +539,6 @@
                     <button type="button" class="pill-model-badge codex-fast-toggle" [class.codex-fast-active]="codexFast()" [attr.aria-pressed]="codexFast()" title="Fast mode Codex: повышенная скорость и расход лимита" (click)="codexFast.set(!codexFast())">Fast {{codexFast() ? 'вкл' : 'выкл'}}</button>
                   }
 
-                  <!-- MIC BUTTON -->
-                  <button class="pill-btn-icon pill-btn-mic"
-                          type="button"
-                          [class.recording]="isRecording()"
-                          (click)="toggleVoiceInput()"
-                          [title]="isRecording() ? 'Остановить запись' : 'Голосовой ввод'">
-                    @if(isRecording()) {
-                      <svg lucideMicOff [size]="17"></svg>
-                    } @else {
-                      <svg lucideMic [size]="17"></svg>
-                    }
-                  </button>
-
 
                 </div>
               </div>
@@ -726,19 +713,6 @@
                 @if(selectedService()==='codex') {
                   <button type="button" class="pill-model-badge codex-fast-toggle" [class.codex-fast-active]="codexFast()" [attr.aria-pressed]="codexFast()" title="Fast mode Codex: повышенная скорость и расход лимита" (click)="codexFast.set(!codexFast())">Fast {{codexFast() ? 'вкл' : 'выкл'}}</button>
                 }
-
-                <!-- MIC BUTTON -->
-                <button class="pill-btn-icon pill-btn-mic"
-                        type="button"
-                        [class.recording]="isRecording()"
-                        (click)="toggleVoiceInput()"
-                        title="Voice input">
-                  @if(isRecording()) {
-                    <svg lucideMicOff [size]="17"></svg>
-                  } @else {
-                    <svg lucideMic [size]="17"></svg>
-                  }
-                </button>
 
 
               </div>
