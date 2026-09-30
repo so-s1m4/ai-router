@@ -514,7 +514,7 @@
 
                   <!-- MODEL PILL -->
                   <div class="pill-select-wrapper" title="Модель">
-                    <button class="pill-model-badge pill-model-highlight model-picker-trigger" [class.pill-model-active]="selectedModel() !== 'default'" type="button" aria-haspopup="dialog" [attr.aria-expanded]="modelMenuOpen()" (click)="openModelPicker($event)">
+                    <button class="pill-model-badge pill-model-highlight model-picker-trigger" [title]="currentModelBadgeLabel()" [attr.aria-label]="'Выбрать модель: ' + currentModelBadgeLabel()" [class.pill-model-active]="selectedModel() !== 'default'" type="button" aria-haspopup="dialog" [attr.aria-expanded]="modelMenuOpen()" (click)="openModelPicker($event)">
                       <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>
@@ -702,7 +702,7 @@
 
                 <!-- MODEL PILL -->
                 <div class="pill-select-wrapper" title="Модель">
-                    <button class="pill-model-badge pill-model-highlight model-picker-trigger" [class.pill-model-active]="selectedModel() !== 'default'" type="button" aria-haspopup="dialog" [attr.aria-expanded]="modelMenuOpen()" (click)="openModelPicker($event)">
+                    <button class="pill-model-badge pill-model-highlight model-picker-trigger" [title]="currentModelBadgeLabel()" [attr.aria-label]="'Выбрать модель: ' + currentModelBadgeLabel()" [class.pill-model-active]="selectedModel() !== 'default'" type="button" aria-haspopup="dialog" [attr.aria-expanded]="modelMenuOpen()" (click)="openModelPicker($event)">
                       <span class="truncate-badge">{{currentModelBadgeLabel()}}</span>
                       <svg lucideChevronDown [size]="12"></svg>
                     </button>

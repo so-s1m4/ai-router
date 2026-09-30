@@ -140,7 +140,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); color: var(--primary-fg); }
 .hero-feedback { width: 100%; max-width: 720px; text-align: left; margin-bottom: 14px; }
 .upload-feedback { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); font-size: 13px; }
-.pill-model-badge > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero-pill-bar > .pill-controls { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.pill-controls > .pill-select-wrapper { min-width: 0; max-width: 100%; }
+.pill-model-badge { min-width: 0; max-width: 100%; }
+.pill-model-badge > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill-model-badge > svg { flex-shrink: 0; }
 @media (max-width: 820px) {
   .composer-floating-wrap { position: relative; bottom: auto; }
   .pill-controls > .pill-select-wrapper { flex-shrink: 1; }
