@@ -233,7 +233,16 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         // Persist before dispatch. Lost responses remain uncertain even after cancellation/restart.
         state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
         emit({ type: 'tool', message: `CCC авто: submitting level ${level}, ${id}` });
-        const result = await client.call('submit_solution', submission);
+        let result: any;
+        try { result = await client.call('submit_solution', submission); }
+        catch (error) {
+          signal.throwIfAborted();
+          emit({ type: 'status', message: 'CCC авто: submission response lost; checking platform progress before continuing' });
+          const progress = await client.call('game_info', { contest });
+          if (!passed(progress, level, id)) throw error;
+          // Platform confirms delivery; do not dispatch this submission again.
+          result = { evaluation: { isCorrect: true, recoveredFromProgress: true }, cooldownSec: 60 };
+        }
         const correct = result.evaluation?.isCorrect;
         if (typeof correct !== 'boolean') throw new Error('CCC submission has no definitive evaluation; check platform progress before continuing');
         const cooldown = Number(result.cooldownSec ?? 0);

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promis
 import os from 'node:os';
 import path from 'node:path';
 import { runCccAuto, contestReference, readAnswers } from '../dist/ccc-auto.js';
-import { toolData } from '../dist/ccc-client.js';
+import { recoveringCcc, toolData } from '../dist/ccc-client.js';
 
 const job = { taskId:'task', jobId:'job', sessionId:'session', accountId:'account', provider:'codex', model:'ignored', mode:'task', workflow:'ccc-auto', prompt:'https://codingcontest.org/contests/training-example/game' };
 async function fixture(action, options = {}) {
@@ -28,6 +28,7 @@ async function fixture(action, options = {}) {
         const previous = calls.filter(call=>call.name === 'submit_solution' && call.args.level === args.level && call.args.file_id === args.file_id).length;
         const correct = !options.reject || previous > 1;
         if (correct) (passed[args.level] ||= {})[args.file_id] = 12345;
+        if (options.recovered && args.level === 2 && args.file_id === '2-large') throw new Error('Connection lost');
         return {evaluation:{isCorrect:correct},cooldownSec:options.cooldown || 0};
       }
       throw new Error('Unexpected tool: '+name);
@@ -114,4 +115,46 @@ test('MCP parses structured and text envelopes and never accepts isError as succ
   assert.deepEqual(toolData({structuredContent:{ok:true,data:{evaluation:{isCorrect:false}}}}),{evaluation:{isCorrect:false}});
   assert.deepEqual(toolData({content:[{type:'text',text:'{"ok":true,"data":{"value":1}}'}]}),{value:1});
   assert.throws(()=>toolData({isError:true,structuredContent:{ok:true,data:{}}}),/failed/);
+});
+
+test('lost submission response continues automatically when platform confirms acceptance',async()=>fixture(async f=>{
+  assert.match(await f.run(),/Accepted 4 new outputs/);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+  assert.equal(f.solverJobs.length,2);
+  assert.ok(f.events.some(e=>e.message?.includes('checking platform progress before continuing')));
+},{recovered:true}));
+
+test('failed progress read reconnects and continues the exact call',async()=>{
+  const controller=new AbortController();
+  let connects=0, closes=0; const calls=[], retries=[];
+  const client=recoveringCcc(async()=>{
+    const index=++connects;
+    return {close:async()=>{closes++;},call:async(name,args)=>{
+      calls.push({name,args});
+      if(index===1)throw new Error('Connection lost');
+      return {contest_slug:'example'};
+    }};
+  },controller.signal,attempt=>retries.push(attempt),[0]);
+  assert.deepEqual(await client.call('game_info',{contest:'example'}),{contest_slug:'example'});
+  assert.equal(connects,2); assert.deepEqual(calls,[calls[0],calls[0]]); assert.deepEqual(retries,[1]);
+  await client.close(); assert.equal(closes,2);
+});
+
+test('recovery is bounded and never repeats submissions or authentication errors',async()=>{
+  for(const [name,error,expected] of [
+    ['submit_solution',new Error('Connection lost'),1],
+    ['game_info',Object.assign(new Error('Access denied'),{code:401}),1],
+    ['game_info',new Error('Connection lost'),3],
+  ]) {
+    let calls=0;
+    const client=recoveringCcc(async()=>({close:async()=>{},call:async()=>{calls++;throw error;}}),new AbortController().signal,undefined,[0,0]);
+    await assert.rejects(client.call(name,{})); assert.equal(calls,expected); await client.close();
+  }
+});
+
+test('user cancellation stops automatic continuation during retry delay',async()=>{
+  const controller=new AbortController(); let connects=0;
+  const client=recoveringCcc(async()=>{connects++;return {close:async()=>{},call:async()=>{throw new Error('Offline');}};},controller.signal,()=>controller.abort(),[10000]);
+  await assert.rejects(client.call('game_info',{}),/abort/i);
+  assert.equal(connects,1); await client.close();
 });
