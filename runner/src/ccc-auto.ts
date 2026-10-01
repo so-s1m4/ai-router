@@ -8,13 +8,17 @@ import type { Event, Job } from './cli.js';
 
 const maxBytes = 30 * 1024 * 1024;
 async function batch<T, R>(items: T[], action: (item: T, index: number) => Promise<R>): Promise<R[]> {
-  const results: R[] = [];
-  for (let start = 0; start < items.length; start += 3) {
-    const settled = await Promise.allSettled(items.slice(start, start + 3).map((item, offset) => action(item, start + offset)));
-    for (const result of settled) {
-      if (result.status === 'rejected') throw result.reason;
-      results.push(result.value);
+  const results = new Array<R>(items.length);
+  let next = 0, failed = false;
+  const settled = await Promise.allSettled(Array.from({ length: Math.min(3, items.length) }, async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try { results[index] = await action(items[index], index); }
+      catch (error) { failed = true; throw error; }
     }
+  }));
+  for (const result of settled) {
+    if (result.status === 'rejected') throw result.reason;
   }
   return results;
 }
@@ -106,12 +110,18 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
   if (state.contest !== contest || !state.submissions) throw new Error('CCC saved progress does not match this contest');
   const save = () => atomic(stateFile, state);
   const completedUsage: Record<string, number> = {};
-  async function askSolver(solverPrompt: string, solverTaskId: string, solverSignal: AbortSignal) {
+  let solverThreadId: string | undefined;
+  async function askSolver(solverPrompt: string, solverTaskId: string, solverSignal: AbortSignal, reuseThread = false) {
     let latestUsage: Record<string, number> = {};
+    let checkpoint: string | undefined;
     try {
-      await solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: 'medium', fast: true }, solverSignal, event => {
+      await solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: 'medium', fast: true }, solverSignal, event => {
         // The workflow reports progress; internal solver narration is not a chat reply.
-        if (event.type === 'checkpoint' || event.type === 'delta') return;
+        if (event.type === 'checkpoint') {
+          if (typeof event.data?.threadId === 'string') checkpoint = event.data.threadId;
+          return;
+        }
+        if (event.type === 'delta') return;
         if (event.type === 'usage' && event.data && !event.data.limits) {
           for (const [field, snake] of [['inputTokens', 'input_tokens'], ['outputTokens', 'output_tokens'], ['cachedInputTokens', 'cached_input_tokens'], ['reasoningOutputTokens', 'reasoning_output_tokens'], ['totalTokens', 'total_tokens']]) {
             const value = event.data[field] ?? event.data[snake];
@@ -121,6 +131,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           emit({ ...event, data: Object.fromEntries(Object.keys(latestUsage).map(field => [field, (completedUsage[field] || 0) + latestUsage[field]])) });
         } else emit(event.type === 'status' && event.data?.steeringAvailable ? { ...event, data: { ...event.data, steeringAvailable: false } } : event);
       });
+      if (reuseThread) solverThreadId = checkpoint;
     } finally {
       for (const [field, value] of Object.entries(latestUsage)) completedUsage[field] = (completedUsage[field] || 0) + value;
     }
@@ -132,8 +143,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     signal.throwIfAborted();
     const level = levelInfo.level;
     if (!Number.isSafeInteger(level) || level < 1) throw new Error('CCC returned an invalid level');
-    // Refresh after each level so newly unlocked levels and externally accepted files are observed.
-    info = await client.call('game_info', { contest });
+    // Initial progress and the previous level's final verification are already fresh.
     const ids: string[] = levelInfo.inputFiles;
     if (!Array.isArray(ids) || !ids.length || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error('CCC returned invalid input file IDs');
     const unscored = new Set(levelInfo.unscoredFiles || []);
@@ -153,12 +163,11 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       const archive = await client.call('list_archive', { artifact_id: prepared.archive.artifact_id });
       const members = archive.entries || archive.files;
       if (!Array.isArray(members)) throw new Error('CCC archive listing is invalid');
-      entries = [];
-      for (const member of members) {
+      entries = await batch(members, async (member: any) => {
         const name = member.name || member.filename; filename(name);
         const extracted = await client.call('archive_member', { artifact_id: prepared.archive.artifact_id, name });
-        entries.push(extracted.artifact || extracted);
-      }
+        return extracted.artifact || extracted;
+      });
     }
     const files = await batch<any, { name: string; path: string; pdf_preview?: unknown }>(entries, async (entry, index) => {
       const name = filename(entry.filename);
@@ -187,7 +196,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       await atomic(taskFile, { contest, level, files, inputs: inputs.filter(input => pending.includes(input.file_id)) });
       const prompt = `Solve CCC level ${level}. The script manages all MCP and platform operations. Do not call MCP, browse the platform, submit answers, or read account/configuration secrets. Read ${taskFile} and batch the necessary local reads. Use the supplied PDF text previews first; extract or render the PDF only if required information is missing. Read input headers or a small sample to learn the format, not entire large inputs. Reuse the previous level solver only if relevant. Solve directly: no plan, progress narration, repeated summaries, unrelated discovery, benchmark suite, or speculative checks.\nFor tasks requiring computation, create ${path.join(originalDir, 'solver.json')} with JSON {"runtime":"node","script":"solution.js"} (or runtime "python3" with a local Python script). Put the complete solver source and helpers inside ${originalDir}. The script will be invoked with two arguments: task manifest path (${taskFile}) and answer manifest path (${answersFile}); read those arguments and write outputs relative to its working directory. Do not run local tests, example checks, output validators, simulations or benchmarks. Prepare the solver immediately; the runner executes the full input batch once and submits outputs directly to the production CCC platform. Platform evaluation is the only correctness check; use its rejection feedback to correct the solver. If computation exceeds 10 seconds the original keeps running while a separate faster candidate is prepared. For trivial answers you may directly write ${answersFile} with JSON {"answers":[{"file_id":"exact ID","path":"output path relative to ${originalDir}"}]} or use "solution" instead of "path" for small text answers. Exactly one answer for each pending ID: ${JSON.stringify(pending)}. Do not write or invoke a local correctness validator, including inside the solver. Put output files inside ${originalDir}. Finish with only "Solver ready."; the runner reports execution and submission results.\nUser request: ${(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}\nEvaluation feedback: ${JSON.stringify(feedback ?? null)}`;
       emit({ type: 'status', message: `CCC авто: solving level ${level}${attempt ? ' (correcting rejected answers)' : ''}` });
-      await askSolver(prompt, `${job.taskId}-ccc-${level}-${attempt}`, signal);
+      await askSolver(prompt, `${job.taskId}-ccc-solver`, signal, true);
       // Load submission files and check their envelope; CCC production evaluates correctness.
       const hasRecipe = async (dir: string) => {
         try { await readFile(path.join(dir, 'solver.json')); return true; }
@@ -259,6 +268,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     if (pending.length) throw new Error(`CCC level ${level}: ${pending.join(', ')} still rejected after three solution attempts. Outputs and evaluations are saved in ${folder}`);
     const verified = await client.call('game_info', { contest });
     if (ids.some(id => !unscored.has(id) && !passed(verified, level, id))) throw new Error(`CCC level ${level}: accepted responses received, but platform progress is not confirmed. Check the site before continuing.`);
+    info = verified;
   }
   const text = `CCC авто: completed ${info.game?.name || contest}. Accepted ${accepted} new outputs; all scored inputs are confirmed in platform progress. Files: ${directory}`;
   emit({ type: 'delta', text });

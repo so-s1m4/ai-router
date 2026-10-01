@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
@@ -37,7 +38,8 @@ async function fixture(action, options = {}) {
   const solve = async (solverJob, signal, emit) => {
     solverJobs.push(solverJob);
     assert.equal(solverJob.model,'gpt-6.1-sol'); assert.equal(solverJob.reasoning,'medium'); assert.equal(solverJob.fast,true);
-    assert.equal(solverJob.solverOnly,true); assert.equal(solverJob.workflow,'standard'); assert.equal(solverJob.previousThreadId,undefined);
+    assert.equal(solverJob.solverOnly,true); assert.equal(solverJob.workflow,'standard');
+    assert.equal(solverJob.previousThreadId,solverJobs.length === 1 ? undefined : 'solver-thread');
     const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
     const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
     const answers = ids.map(file_id=>({file_id,solution:'42\n'}));
@@ -72,6 +74,37 @@ test('only definitive rejected evaluations are solved again',async()=>fixture(as
   assert.match(f.solverJobs[1].prompt,/isCorrect/);
   assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,60);
 },{reject:true}));
+test('levels and corrections continue one solver thread and reuse verified platform progress',async()=>fixture(async f=>{
+  await f.run();
+  assert.deepEqual(f.solverJobs.map(j=>j.previousThreadId),[undefined,'solver-thread','solver-thread','solver-thread']);
+  assert.equal(new Set(f.solverJobs.map(j=>j.taskId)).size,1);
+  assert.equal(f.calls.filter(c=>c.name==='game_info').length,3);
+  assert.equal(f.events.filter(e=>e.type==='checkpoint').length,0);
+},{reject:true}));
+test('a slow download does not block later files when another worker becomes free',async()=>fixture(async f=>{
+  const call=f.client.call.bind(f.client);
+  f.client.call=async(name,args)=>{
+    if(name==='get_artifact_download_url')return {url:`https://example.com/${args.artifact_id}`};
+    const result=await call(name,args);
+    if(name==='prepare_level')result.files.entries.push(...[1,2,3].map(i=>({artifact_id:`extra-${i}`,filename:`extra-${i}.txt`,bytes:10})));
+    return result;
+  };
+  let release, startedLater=false, waiting=true;
+  const stalled=new Promise(resolve=>{release=resolve;});
+  const timer=setTimeout(()=>{waiting=false;release();},1000);
+  globalThis.fetch=async(url)=>{
+    if(url.endsWith('/statement'))await stalled;
+    if(url.endsWith('/extra-3')){startedLater=waiting;release();}
+    return new Response('1\nexample\n');
+  };
+  try {
+    await f.run();
+    assert.equal(startedLater,true);
+    const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+    const manifest=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'level-1/task.json'),'utf8'));
+    assert.deepEqual(manifest.files.map(file=>file.name),['level.pdf','extra-1.txt','extra-2.txt','extra-3.txt']);
+  }finally{clearTimeout(timer);release();}
+}));
 test('runner executes generated solver recipes on the full inputs before submitting',async()=>fixture(async f=>{
   await f.run();
   assert.equal(f.solverJobs.length,2);
