@@ -25,7 +25,7 @@ async function batch<T, R>(items: T[], action: (item: T, index: number) => Promi
   return results;
 }
 type Submission = { status: 'submitting' | 'accepted' | 'rejected'; evaluation?: unknown; deliveryJobId?: number };
-type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; solverThread?: { accountId: string; threadId: string } };
+type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; fastFailed?: boolean; solverThread?: { accountId: string; threadId: string } };
 export type Solver = (job: Job, signal: AbortSignal, emit: (event: Event) => void) => Promise<string>;
 
 // Give the model the statement and small input samples without a discovery turn.
@@ -260,7 +260,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       emit({ type: 'status', message: `CCC авто: solving level ${level}${attempt ? ' (correcting rejected answers)' : ''}` });
       const solvingStartedAt = Date.now();
       let fastAnswers: Map<string, Buffer> | undefined;
-      const fastEligible = attempt === 0 && level <= fastLevelLimit()
+      const fastEligible = attempt === 0 && !state.fastFailed && level <= fastLevelLimit()
         && context.files.some(file => file.pdf_preview) && !context.files.some(file => file.truncated);
       if (fastEligible) {
         emit({ type: 'status', message: `CCC авто: level ${level} — generating C++ directly (low / Fast)` });
@@ -272,11 +272,13 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         } catch (error) {
           signal.throwIfAborted();
           if (['rate_limit', 'auth', 'unavailable'].includes((error as {code?: string}).code || '')) throw error;
+          state.fastFailed = true;
+          await save();
           feedback = { fastPreparationError: String(error).slice(-8000), sourceDirectory: originalDir };
           // Do not let a partially prepared recipe or manifest survive fallback.
           await rm(path.join(originalDir, 'solver.json'), { force: true });
           await rm(answersFile, { force: true });
-          emit({ type: 'status', message: `CCC авто: level ${level} — fast preparation failed; switching to agent` });
+          emit({ type: 'status', message: `CCC авто: level ${level} — light preparation failed; using agent for the rest of this contest` });
         }
       }
       if (!fastAnswers) {
@@ -343,12 +345,20 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         if (typeof correct !== 'boolean') throw new Error('CCC submission has no definitive evaluation; check platform progress before continuing');
         const cooldown = Number(result.cooldownSec ?? 0);
         if (!Number.isFinite(cooldown) || cooldown < 0 || cooldown > 86400) throw new Error('CCC returned an invalid cooldown; check platform progress before continuing');
+        if (!correct && fastAnswers) state.fastFailed = true;
         state.nextSubmitAt = Date.now() + cooldown * 1000;
         state.submissions[`${level}:${id}`] = { status: correct ? 'accepted' : 'rejected', evaluation: result.evaluation, deliveryJobId: result.delivery_job_id };
         await save();
         emit({ type: 'status', message: `CCC авто: level ${level}, ${id} — ${correct ? 'accepted' : 'rejected'}` });
         if (correct) accepted++;
-        else { rejected.push(id); evaluations[id] = result.evaluation; }
+        else {
+          rejected.push(id); evaluations[id] = result.evaluation;
+          if (fastAnswers) {
+            emit({ type: 'status', message: 'CCC авто: light answer rejected; using agent for the rest of this contest' });
+            rejected.push(...pending.slice(pending.indexOf(id) + 1));
+            break;
+          }
+        }
       }
       pending = rejected; feedback = evaluations;
     }

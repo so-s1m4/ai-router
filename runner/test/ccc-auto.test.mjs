@@ -33,7 +33,9 @@ async function fixture(action, options = {}) {
       if (name === 'submit_solution') {
         if (options.uncertain) throw new Error('Connection lost');
         const previous = calls.filter(call=>call.name === 'submit_solution' && call.args.level === args.level && call.args.file_id === args.file_id).length;
-        const correct = !options.reject || previous > 1;
+        const submissionCount = calls.filter(call=>call.name==='submit_solution').length;
+        const correct = (!options.reject || previous > 1) && (!options.rejectFirst || submissionCount > 1)
+          && submissionCount !== options.rejectAt;
         if (correct) (passed[args.level] ||= {})[args.file_id] = 12345;
         if (options.recovered && args.level === 2 && args.file_id === '2-large') throw new Error('Connection lost');
         return {evaluation:{isCorrect:correct},cooldownSec:options.cooldown || 0};
@@ -326,22 +328,30 @@ test('early levels generate C++ directly and runner compiles, runs and submits i
 
 test('fast compiler failure falls back to an agent before any submission',async()=>fixture(async f=>{
   assert.match(await f.run(),/Accepted 4 new outputs/);
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
   assert.match(f.solverJobs[1].prompt,/compilation failed/);
-  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,60);
+  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,45);
 },{fastLevels:2,badCode:true}));
 
 test('fast rejected outputs are corrected by the agent with platform feedback',async()=>fixture(async f=>{
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
   assert.match(f.solverJobs[1].prompt,/isCorrect/);
-  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,8);
-},{fastLevels:2,reject:true}));
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,5);
+  assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').slice(0,3).map(c=>c.args.file_id),['1-small','1-small','2-large']);
+},{fastLevels:2,rejectFirst:true}));
 
-test('default fast path covers levels 1 through 3 and switches to the agent at level 4',async()=>fixture(async f=>{
+test('default light path continues through all levels until a failure',async()=>fixture(async f=>{
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,true,false]);
-},{defaultFastLevels:true,levels:[1,2,3,4]}));
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,true,true,true,true,true]);
+},{defaultFastLevels:true,levels:[1,2,3,4,5,6,7]}));
+
+test('light rejection on a later level preserves accepted inputs and switches all remaining levels',async()=>fixture(async f=>{
+  assert.match(await f.run(),/Accepted 6 new outputs/);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,false]);
+  assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),
+    [[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large'],[2,'2-large'],[3,'1-small'],[3,'2-large']]);
+},{defaultFastLevels:true,levels:[1,2,3],rejectAt:4}));
 
 test('levels beyond the fast threshold use the ordinary agent',async()=>fixture(async f=>{
   await f.run();
@@ -369,7 +379,33 @@ test('fast runner checks examples and hands a mismatch to the agent',async()=>fi
     return result;
   };
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
   assert.match(f.solverJobs[1].prompt,/example mismatch/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
 },{fastLevels:2}));
+
+
+test('first light failure stays in agent mode after restart',async()=>fixture(async f=>{
+  const solve = async (solverJob, signal, emit) => {
+    if (!solverJob.solverCodeOnly) throw new Error('Interrupted agent');
+    return f.solve(solverJob, signal, emit);
+  };
+  await assert.rejects(runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event)),/Interrupted agent/);
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const state=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'state.json'),'utf8'));
+  assert.equal(state.fastFailed,true);
+  await f.run({taskId:'continued'});
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+},{defaultFastLevels:true,badCode:true}));
+
+test('light rejection stays in agent mode after restart without resubmitting accepted inputs',async()=>fixture(async f=>{
+  const solve = async (solverJob, signal, emit) => {
+    if (!solverJob.solverCodeOnly) throw new Error('Interrupted correction');
+    return f.solve(solverJob, signal, emit);
+  };
+  await assert.rejects(runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event)),/Interrupted correction/);
+  await f.run({taskId:'continued'});
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+  assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),
+    [[1,'1-small'],[1,'2-large'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
+},{defaultFastLevels:true,rejectAt:2}));
