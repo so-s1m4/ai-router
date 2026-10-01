@@ -1,6 +1,6 @@
-import { runRecipe, withOptimization } from './ccc-execution.js';
+import { runRecipe, withOptimization, withExecutionLimit, executionLimitMs } from './ccc-execution.js';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { CccClient } from './ccc-client.js';
@@ -98,7 +98,10 @@ export async function readAnswers(file: string, directory: string, ids: string[]
 export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve: Solver, signal: AbortSignal, emit: (event: Event) => void): Promise<string> {
   const reference = contestReference(job.originalPrompt || job.prompt);
   emit({ type: 'status', message: 'CCC авто: checking contest and progress' });
+  const startedAt = Date.now();
+  const progressStartedAt = Date.now();
   let info = await client.call('game_info', { contest: reference });
+  const initialProgressMs = Date.now() - progressStartedAt;
   const contest = info.contest_slug || reference;
   const key = createHash('sha256').update(job.sessionId + ':' + contest).digest('hex').slice(0, 24);
   const directory = path.join(cwd, '.ai-router/ccc-auto', key);
@@ -109,14 +112,30 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; state = { contest, submissions: {} }; }
   if (state.contest !== contest || !state.submissions) throw new Error('CCC saved progress does not match this contest');
   const save = () => atomic(stateFile, state);
+  const timingsFile = path.join(directory, 'timings.jsonl');
+  const reportTiming = async (stage: string, elapsedMs: number, details: Record<string, unknown> = {}) => {
+    const data = { stage, elapsedMs, ...details };
+    await appendFile(timingsFile, JSON.stringify({ at: new Date().toISOString(), taskId: job.taskId, ...data }) + '\n', { mode: 0o600 });
+    emit({ type: 'status', message: `CCC авто: ${stage} ${Math.round(elapsedMs / 1000)}s`, data: { cccTiming: data } });
+  };
+  async function timed<T>(stage: string, action: () => Promise<T>, details: Record<string, unknown> = {}): Promise<T> {
+    const start = Date.now();
+    let outcome = 'failed';
+    try { const result = await action(); outcome = 'completed'; return result; }
+    finally { await reportTiming(stage, Date.now() - start, { ...details, outcome: signal.aborted ? 'canceled' : outcome }); }
+  }
+  await reportTiming('progress', initialProgressMs);
   const completedUsage: Record<string, number> = {};
   let solverThreadId = state.solverThread?.accountId === job.accountId ? state.solverThread.threadId : undefined;
   async function askSolver(solverPrompt: string, solverTaskId: string, solverSignal: AbortSignal, reuseThread = false) {
     let latestUsage: Record<string, number> = {};
     let checkpoint: string | undefined;
+    const solverStartedAt = Date.now();
+    let firstToolMs: number | undefined;
     try {
-      await solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: 'medium', fast: true }, solverSignal, event => {
+      await timed('solver', () => solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: 'medium', fast: true }, solverSignal, event => {
         // The workflow reports progress; internal solver narration is not a chat reply.
+        if (event.type === 'tool') firstToolMs ??= Date.now() - solverStartedAt;
         if (event.type === 'checkpoint') {
           if (typeof event.data?.threadId === 'string') checkpoint = event.data.threadId;
           return;
@@ -130,8 +149,9 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           latestUsage.totalTokens ??= (latestUsage.inputTokens || 0) + (latestUsage.outputTokens || 0);
           emit({ ...event, data: Object.fromEntries(Object.keys(latestUsage).map(field => [field, (completedUsage[field] || 0) + latestUsage[field]])) });
         } else emit(event.type === 'status' && event.data?.steeringAvailable ? { ...event, data: { ...event.data, steeringAvailable: false } } : event);
-      });
+      }), { solverTaskId, reusedThread: Boolean(reuseThread && solverThreadId) });
     } finally {
+      if (firstToolMs !== undefined) await reportTiming('solver_first_tool', firstToolMs, { solverTaskId });
       if (reuseThread && checkpoint) {
         solverThreadId = checkpoint;
         state.solverThread = { accountId: job.accountId, threadId: checkpoint };
@@ -158,6 +178,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     }
     if (!pending.length) continue;
     emit({ type: 'status', message: `CCC авто: fetching level ${level} (${pending.length} inputs)` });
+    const downloadStartedAt = Date.now();
     const prepared = await client.call('prepare_level', { contest, level });
     const folder = path.join(directory, `level-${level}`);
     await mkdir(folder, { recursive: true, mode: 0o700 });
@@ -190,6 +211,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     });
     const manifest = path.join(folder, 'task.json');
     await atomic(manifest, { contest, level, level_info: prepared.level_info, files, inputs });
+    await reportTiming('download', Date.now() - downloadStartedAt, { level });
     let feedback: unknown = undefined;
     for (let attempt = 0; attempt < 3 && pending.length; attempt++) {
       signal.throwIfAborted();
@@ -198,7 +220,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       const answersFile = path.join(originalDir, 'answers.json');
       const taskFile = path.join(folder, `pending-${attempt}.json`);
       await atomic(taskFile, { contest, level, files, inputs: inputs.filter(input => pending.includes(input.file_id)) });
-      const prompt = `Solve CCC level ${level}. The script manages all MCP and platform operations. Do not call MCP, browse the platform, submit answers, or read account/configuration secrets. Read ${taskFile} and batch the necessary local reads. Use the supplied PDF text previews first; extract or render the PDF only if required information is missing. Read input headers or a small sample to learn the format, not entire large inputs. Reuse the previous level solver only if relevant. Solve directly: no plan, progress narration, repeated summaries, unrelated discovery, benchmark suite, or speculative checks.\nFor tasks requiring computation, create ${path.join(originalDir, 'solver.json')} with JSON {"runtime":"node","script":"solution.js"} (or runtime "python3" with a local Python script). Put the complete solver source and helpers inside ${originalDir}. The script will be invoked with two arguments: task manifest path (${taskFile}) and answer manifest path (${answersFile}); read those arguments and write outputs relative to its working directory. Do not run local tests, example checks, output validators, simulations or benchmarks. Prepare the solver immediately; the runner executes the full input batch once and submits outputs directly to the production CCC platform. Platform evaluation is the only correctness check; use its rejection feedback to correct the solver. If computation exceeds 10 seconds the original keeps running while a separate faster candidate is prepared. For trivial answers you may directly write ${answersFile} with JSON {"answers":[{"file_id":"exact ID","path":"output path relative to ${originalDir}"}]} or use "solution" instead of "path" for small text answers. Exactly one answer for each pending ID: ${JSON.stringify(pending)}. Do not write or invoke a local correctness validator, including inside the solver. Put output files inside ${originalDir}. Finish with only "Solver ready."; the runner reports execution and submission results.\nUser request: ${(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}\nEvaluation feedback: ${JSON.stringify(feedback ?? null)}`;
+      const prompt = `Solve CCC level ${level}. The script manages all MCP and platform operations. Do not call MCP, browse the platform, submit answers, or read account/configuration secrets. Read ${taskFile} and batch the necessary local reads. Use the supplied PDF text previews first; extract or render the PDF only if required information is missing. Read input headers or a small sample to learn the format, not entire large inputs. If this thread already analyzed this level, continue that analysis and reuse its solver source in the new run directory instead of rediscovering the statement. Reuse the previous level solver only if relevant. Solve directly: no plan, progress narration, repeated summaries, unrelated discovery, benchmark suite, or speculative checks.\nFor tasks requiring computation, create ${path.join(originalDir, 'solver.json')} with JSON {"runtime":"node","script":"solution.js"} (or runtime "python3" with a local Python script). Put the complete solver source and helpers inside ${originalDir}. The script will be invoked with two arguments: task manifest path (${taskFile}) and answer manifest path (${answersFile}); read those arguments and write outputs relative to its working directory. Before returning, run the supplied examples locally and compare against expected outputs when present. Fix any mismatch. Keep checks focused on examples and a few small cases needed to resolve ambiguity; do not run the full scored input batch or build a benchmark suite. The runner executes the full input batch and submits outputs to CCC; use rejection feedback to correct the solver. Computation has a 120-second execution limit; only after that limit will the runner stop it and request one optimized candidate. For trivial answers you may directly write ${answersFile} with JSON {"answers":[{"file_id":"exact ID","path":"output path relative to ${originalDir}"}]} or use "solution" instead of "path" for small text answers. Exactly one answer for each pending ID: ${JSON.stringify(pending)}. Include inexpensive correctness checks inside the solver when useful for this task. Put output files inside ${originalDir}. Finish with only "Solver ready."; the runner reports execution and submission results.\nUser request: ${(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}\nEvaluation feedback: ${JSON.stringify(feedback ?? null)}`;
       emit({ type: 'status', message: `CCC авто: solving level ${level}${attempt ? ' (correcting rejected answers)' : ''}` });
       const solvingStartedAt = Date.now();
       await askSolver(prompt, `${job.taskId}-ccc-solver`, signal, true);
@@ -212,10 +234,10 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         const output = path.join(dir, 'answers.json');
         if (await hasRecipe(dir)) {
           emit({ type: 'tool', message: `CCC авто: running ${dir === originalDir ? 'original' : 'optimized'} solver for level ${level}` });
-          await runRecipe(dir, taskFile, output, candidateSignal);
+          await timed('execution', () => runRecipe(dir, taskFile, output, candidateSignal), { level, attempt, candidate: dir === originalDir ? 'original' : 'optimized' });
         }
         candidateSignal.throwIfAborted();
-        return readAnswers(output, dir, pending);
+        return timed('answer_validation', () => readAnswers(output, dir, pending), { level, attempt });
       };
       const answers = await hasRecipe(originalDir)
         ? await withOptimization(
@@ -223,24 +245,24 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           async candidateSignal => {
             const optimizedDir = path.join(folder, `run-${job.taskId}-${attempt}-optimized`);
             await mkdir(optimizedDir, { recursive: true, mode: 0o700 });
-            const optimizationPrompt = prompt.replaceAll(originalDir, optimizedDir) + `\nThe original solver in ${originalDir} has been computing for more than 10 seconds and is STILL RUNNING. Inspect its source and improve the algorithm, data structures or implementation for faster execution. Work only in ${optimizedDir}; leave the original source, inputs and outputs untouched and do not stop its process. Return a complete faster solver recipe (or direct answers) for the same pending IDs. The runner will execute your candidate separately and use the first completed answer batch that passes manifest validation.`;
-            await askSolver(optimizationPrompt, `${job.taskId}-ccc-${level}-${attempt}-optimize`, candidateSignal);
-            return executeCandidate(optimizedDir, candidateSignal);
+            const optimizationPrompt = prompt.replaceAll(originalDir, optimizedDir) + `\nThe original solver in ${originalDir} exceeded its ${executionLimitMs / 1000}-second execution limit and has been stopped. Inspect its source and improve the algorithm, data structures or implementation for faster execution. Work only in ${optimizedDir}; leave the original source, inputs and outputs untouched. Return a complete faster solver recipe (or direct answers) for the same pending IDs. Check supplied examples, then return. The runner will execute your candidate with the same execution limit and validate its answer manifest.`;
+            await askSolver(optimizationPrompt, `${job.taskId}-ccc-solver`, candidateSignal, true);
+            return withExecutionLimit(executionSignal => executeCandidate(optimizedDir, executionSignal), candidateSignal);
           }, signal,
-          () => emit({ type: 'status', message: 'CCC авто: computation exceeded 10 seconds; original continues while AI prepares a faster solver' }),
-        ) : await readAnswers(answersFile, originalDir, pending);
+          () => emit({ type: 'status', message: `CCC авто: computation exceeded ${executionLimitMs / 1000} seconds; stopped solver, preparing one faster candidate` }),
+        ) : await timed('answer_validation', () => readAnswers(answersFile, originalDir, pending), { level, attempt });
       const rejected: string[] = []; const evaluations: Record<string, unknown> = {};
       for (const id of pending) {
         if ((state.nextSubmitAt || 0) > Date.now()) {
           emit({ type: 'status', message: 'CCC авто: waiting for submission cooldown' });
-          await delay(state.nextSubmitAt! - Date.now(), undefined, { signal });
+          await timed('cooldown', () => delay(Math.max(0, state.nextSubmitAt! - Date.now()), undefined, { signal }), { level, fileId: id });
         }
         signal.throwIfAborted();
         const content = answers.get(id)!;
         let submission: Record<string, unknown> = { contest, level, file_id: id, filename: `level-${level}-output.txt`, include_case_details: true };
         if (content.length <= 256 * 1024) submission.solution = content.toString('utf8');
         else {
-          const uploaded = await client.call('upload_artifact', { filename: submission.filename, data_base64: content.toString('base64') });
+          const uploaded = await timed('upload', () => client.call('upload_artifact', { filename: submission.filename, data_base64: content.toString('base64') }), { level, fileId: id });
           const artifactId = uploaded.artifact_id || uploaded.artifact?.artifact_id;
           if (!artifactId) throw new Error('CCC output upload returned no artifact ID');
           submission.artifact_id = artifactId;
@@ -249,11 +271,11 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
         emit({ type: 'tool', message: `CCC авто: submitting level ${level}, ${id}` });
         let result: any;
-        try { result = await client.call('submit_solution', submission); }
+        try { result = await timed('submission', () => client.call('submit_solution', submission), { level, fileId: id }); }
         catch (error) {
           signal.throwIfAborted();
           emit({ type: 'status', message: 'CCC авто: submission response lost; checking platform progress before continuing' });
-          const progress = await client.call('game_info', { contest });
+          const progress = await timed('progress', () => client.call('game_info', { contest }), { level });
           if (!passed(progress, level, id)) throw error;
           // Platform confirms delivery; do not dispatch this submission again.
           result = { evaluation: { isCorrect: true, recoveredFromProgress: true }, cooldownSec: 60 };
@@ -272,10 +294,11 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       pending = rejected; feedback = evaluations;
     }
     if (pending.length) throw new Error(`CCC level ${level}: ${pending.join(', ')} still rejected after three solution attempts. Outputs and evaluations are saved in ${folder}`);
-    const verified = await client.call('game_info', { contest });
+    const verified = await timed('progress', () => client.call('game_info', { contest }), { level });
     if (ids.some(id => !unscored.has(id) && !passed(verified, level, id))) throw new Error(`CCC level ${level}: accepted responses received, but platform progress is not confirmed. Check the site before continuing.`);
     info = verified;
   }
+  await reportTiming('total', Date.now() - startedAt);
   const text = `CCC авто: completed ${info.game?.name || contest}. Accepted ${accepted} new outputs; all scored inputs are confirmed in platform progress. Files: ${directory}`;
   emit({ type: 'delta', text });
   return text;

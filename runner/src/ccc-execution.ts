@@ -2,44 +2,45 @@ import { spawn } from 'node:child_process';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-// A slow original continues untouched while one replacement is prepared/run.
-// Only a completed, validated result can stop the competing work.
+export const executionLimitMs = 120_000;
+export class ExecutionLimitError extends Error {
+  constructor(limitMs: number) { super(`CCC computation exceeded ${limitMs / 1000} seconds`); }
+}
+
+export async function withExecutionLimit<T>(
+  run: (signal: AbortSignal) => Promise<T>, signal: AbortSignal, limitMs = executionLimitMs,
+): Promise<T> {
+  signal.throwIfAborted();
+  const controller = new AbortController();
+  const timeout = new ExecutionLimitError(limitMs);
+  const timer = setTimeout(() => controller.abort(timeout), limitMs);
+  try {
+    const value = await run(AbortSignal.any([signal, controller.signal]));
+    signal.throwIfAborted();
+    controller.signal.throwIfAborted();
+    return value;
+  } catch (error) {
+    signal.throwIfAborted();
+    if (controller.signal.aborted) throw timeout;
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
+// Optimization starts only after the original has exceeded its execution limit
+// and exited. There is no competing AI call or cancellation to await on success.
 export async function withOptimization<T>(
   runOriginal: (signal: AbortSignal) => Promise<T>,
   optimize: (signal: AbortSignal) => Promise<T>,
   signal: AbortSignal,
   onSlow: () => void,
-  thresholdMs = 10_000,
+  limitMs = executionLimitMs,
 ): Promise<T> {
-  signal.throwIfAborted();
-  const original = new AbortController(), replacement = new AbortController();
-  const originalSignal = AbortSignal.any([signal, original.signal]);
-  const replacementSignal = AbortSignal.any([signal, replacement.signal]);
-  let timer: NodeJS.Timeout | undefined;
-  let done = false, optimizing = false, originalFailed = false, replacementFailed = false;
-  let firstError: unknown;
-  let resolve!: (value: T) => void, reject!: (error: unknown) => void;
-  const result = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; });
-  const win = (value: T) => { if (!done) { done = true; resolve(value); } };
-  const fail = (error: unknown, isOriginal: boolean) => {
-    firstError ??= error;
-    if (isOriginal) originalFailed = true; else replacementFailed = true;
-    if (!done && (originalFailed && (!optimizing || replacementFailed))) { done = true; reject(firstError); }
-  };
-  const running = [Promise.resolve().then(() => runOriginal(originalSignal)).then(win, error => fail(error, true))];
-  timer = setTimeout(() => {
-    if (done || signal.aborted) return;
-    optimizing = true;
+  try { return await withExecutionLimit(runOriginal, signal, limitMs); }
+  catch (error) {
+    signal.throwIfAborted();
+    if (!(error instanceof ExecutionLimitError)) throw error;
     onSlow();
-    running.push(Promise.resolve().then(() => optimize(replacementSignal)).then(win, error => fail(error, false)));
-  }, thresholdMs);
-  const abort = () => { if (!done) { done = true; reject(signal.reason || new Error('Stopped')); } };
-  signal.addEventListener('abort', abort, { once: true });
-  try { return await result; }
-  finally {
-    clearTimeout(timer); signal.removeEventListener('abort', abort);
-    original.abort(); replacement.abort();
-    await Promise.allSettled(running);
+    return optimize(signal);
   }
 }
 

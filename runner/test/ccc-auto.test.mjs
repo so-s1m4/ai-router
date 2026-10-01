@@ -216,3 +216,18 @@ test('user cancellation stops automatic continuation during retry delay',async()
   await assert.rejects(client.call('game_info',{}),/abort/i);
   assert.equal(connects,1); await client.close();
 });
+
+
+test('example checks are requested and stage timings persist with restored-thread metadata', async () => fixture(async f => {
+  await f.run();
+  assert.match(f.solverJobs[0].prompt, /run the supplied examples locally/);
+  assert.doesNotMatch(f.solverJobs[0].prompt, /Do not run local tests|Platform evaluation is the only/);
+  const key = createHash('sha256').update('session:training-example').digest('hex').slice(0, 24);
+  const records = (await readFile(path.join(f.cwd, '.ai-router/ccc-auto', key, 'timings.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  for (const stage of ['progress', 'download', 'solver', 'execution', 'answer_validation', 'submission', 'total']) {
+    assert.ok(records.some(record => record.stage === stage));
+  }
+  assert.deepEqual(records.filter(r => r.stage === 'solver').map(r => r.reusedThread), [false, true]);
+  assert.ok(records.every(r => Number.isFinite(r.elapsedMs) && r.elapsedMs >= 0));
+  assert.equal(f.events.filter(e => e.data?.cccTiming).length, records.length);
+}, { recipe: true }));
