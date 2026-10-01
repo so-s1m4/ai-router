@@ -8,8 +8,8 @@ export const codeOutputSchema = {
 };
 
 export function fastLevelLimit(): number {
-  const value = Number(process.env.CCC_AUTO_FAST_LEVELS ?? 2);
-  return Number.isSafeInteger(value) && value >= 0 && value <= 100 ? value : 2;
+  const value = Number(process.env.CCC_AUTO_FAST_LEVELS ?? 3);
+  return Number.isSafeInteger(value) && value >= 0 && value <= 100 ? value : 3;
 }
 
 export function codePrompt(level: number, context: unknown): string {

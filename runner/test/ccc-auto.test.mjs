@@ -17,9 +17,11 @@ async function fixture(action, options = {}) {
   const passed = {};
   const originalFetch = globalThis.fetch;
   const originalFastLevels = process.env.CCC_AUTO_FAST_LEVELS;
-  process.env.CCC_AUTO_FAST_LEVELS = String(options.fastLevels ?? 0);
+  if (options.defaultFastLevels) delete process.env.CCC_AUTO_FAST_LEVELS;
+  else process.env.CCC_AUTO_FAST_LEVELS = String(options.fastLevels ?? 0);
+  const levels = options.levels ?? [1,2];
   globalThis.fetch = async () => new Response('1\nexample\n');
-  const info = () => ({ contest_slug:'training-example', game:{name:'Example'}, levels:[1,2].map(level=>({level, inputFiles:['0-example','1-small','2-large'],unscoredFiles:['0-example']})), participant:{score:{state:Object.fromEntries([1,2].map(level=>['level'+level,{passedFiles:{...passed[level]}}]))}} });
+  const info = () => ({ contest_slug:'training-example', game:{name:'Example'}, levels:levels.map(level=>({level, inputFiles:['0-example','1-small','2-large'],unscoredFiles:['0-example']})), participant:{score:{state:Object.fromEntries(levels.map(level=>['level'+level,{passedFiles:{...passed[level]}}]))}} });
   const client = {
     async close() {},
     async call(name, args) {
@@ -335,6 +337,11 @@ test('fast rejected outputs are corrected by the agent with platform feedback',a
   assert.match(f.solverJobs[1].prompt,/isCorrect/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,8);
 },{fastLevels:2,reject:true}));
+
+test('default fast path covers levels 1 through 3 and switches to the agent at level 4',async()=>fixture(async f=>{
+  await f.run();
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,true,false]);
+},{defaultFastLevels:true,levels:[1,2,3,4]}));
 
 test('levels beyond the fast threshold use the ordinary agent',async()=>fixture(async f=>{
   await f.run();
