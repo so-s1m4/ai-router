@@ -199,7 +199,7 @@ class AppServerConnection {
     };
     const remove = this.onNotification(handle);
     const abort = () => {
-      if (turnId) void this.request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
+      if (turnId) void this.request('turn/interrupt', { threadId, turnId }).catch(() => this.close());
       finish(new RunnerError('Stopped', 'canceled'));
     };
     signal.addEventListener('abort', abort, { once: true });
@@ -219,6 +219,9 @@ class AppServerConnection {
       });
       turnId = String(turn.turn?.id || '');
       if (!turnId) throw new RunnerError('App Server did not return turn', 'unavailable');
+      // Cancellation can arrive while turn/start is waiting for its reply.
+      // Interrupt the turn as soon as its ID becomes available.
+      if (signal.aborted) abort();
       for (const value of queued.splice(0)) handle(value);
       if (!settled) {
         activeSteering.set(job.jobId, async text => {

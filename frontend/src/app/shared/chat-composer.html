@@ -1,4 +1,8 @@
-<div class="hero-pill-bar" [class.bottom-composer-pill]="!hero">
+<div
+  class="hero-pill-bar"
+  [class.bottom-composer-pill]="!hero"
+  [class.composer-running]="vm.chatService.running()"
+>
   <input #filePicker type="file" multiple hidden (change)="vm.filesService.uploadFile($event)" />
   <button
     class="pill-btn-icon pill-btn-plus"
@@ -30,8 +34,9 @@
       class="pill-btn-voice btn-circle-stop"
       type="button"
       (click)="vm.chatService.cancel()"
-      title="Stop"
-      aria-label="Stop reply"
+      [disabled]="vm.chatService.canceling()"
+      [title]="vm.chatService.canceling() ? 'Stopping…' : 'Stop task'"
+      aria-label="Stop task"
     >
       <svg lucideSquare [size]="16"></svg></button
     ><button

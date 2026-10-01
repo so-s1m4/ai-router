@@ -87,6 +87,7 @@ export class ChatService {
   }
   draft = '';
   running = signal(false);
+  canceling = signal(false);
   runId = signal('');
   stream = signal('');
   activeAccount = signal('');
@@ -105,7 +106,13 @@ export class ChatService {
       .filter(
         (t) =>
           t.input.sessionId === this.sessionService.current()?.id &&
-          this.usageService.canResumeTask(t),
+          this.usageService.canResumeTask(t) &&
+          !this.sessionService.current()?.messages.some(
+            (m) => m.role === 'user' && !!m.at && m.at > t.updatedAt,
+          ) &&
+          !this.usageService.tasks().some(
+            (later) => later.input.sessionId === t.input.sessionId && later.createdAt > t.updatedAt,
+          ),
       ),
   );
   socket?: Socket;
@@ -364,8 +371,22 @@ export class ChatService {
       this.taskSubmitting.set(false);
     }
   }
-  cancel() {
-    if (this.runId()) this.socket?.emit('cancel', this.runId());
+  async cancel() {
+    const runId = this.runId();
+    if (!runId || this.canceling()) return;
+    this.canceling.set(true);
+    this.error.set('');
+    try {
+      await this.http.request('/tasks/' + runId, { method: 'DELETE' });
+      if (this.runId() === runId && this.running()) this.notice.set('Stopping task…');
+      await this.usageService.refreshTasks();
+      const sessionId = this.sessionService.current()?.id;
+      if (this.runId() === runId && sessionId) this.syncRun(sessionId);
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.canceling.set(false);
+    }
   }
   elapsed() {
     const start = Date.parse(this.runStartedAt());

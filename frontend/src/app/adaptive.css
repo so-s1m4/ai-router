@@ -171,6 +171,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .hero-pill-bar > .pill-btn-send, .hero-pill-bar > .btn-circle-stop { grid-column: 3; grid-row: 1; width: 44px; height: 44px; align-self: start; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
 .hero-pill-bar > .pill-input-wrap { grid-column: 2; grid-row: 1; }
 .hero-pill-bar > .pill-controls { grid-column: 1 / -1; grid-row: 2; }
+.hero-pill-bar.composer-running { grid-template-columns: 44px minmax(0,1fr) 44px 44px; }
+.hero-pill-bar.composer-running > .pill-btn-send { grid-column: 4; }
+.btn-circle-stop:disabled { opacity: .5; cursor: wait; }
 .pill-btn-send:disabled { opacity: .35; cursor: default; transform: none; }
 @media (min-width: 821px) {
   .hero-pill-bar > .pill-controls { justify-content: flex-start; }
