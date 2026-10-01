@@ -4,7 +4,10 @@ import path from 'node:path';
 import { runRecipe, withExecutionLimit } from './ccc-execution.js';
 
 export const codeOutputSchema = {
-  type: 'object', properties: { source: { type: 'string' } }, required: ['source'], additionalProperties: false,
+  type: 'object', properties: {
+    source: { type: 'string' },
+    outputMode: { type: 'string', enum: ['exact', 'constructive'] },
+  }, required: ['source', 'outputMode'], additionalProperties: false,
 };
 
 export function fastLevelLimit(): number {
@@ -13,7 +16,7 @@ export function fastLevelLimit(): number {
 }
 
 export function codePrompt(level: number, context: unknown): string {
-  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete C++17 source"}. No tools, file operations, plan or explanation. The runner compiles and checks examples and executes the scored inputs. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${JSON.stringify(context)}`;
+  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete C++17 source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. The runner compiles and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${JSON.stringify(context)}`;
 }
 
 async function compile(directory: string, signal: AbortSignal) {
@@ -44,6 +47,9 @@ async function compile(directory: string, signal: AbortSignal) {
 export async function prepareFastCode(response: string, directory: string,
   files: { name: string; path: string }[], signal: AbortSignal) {
   const value = JSON.parse(response);
+  if (value.outputMode !== undefined && !['exact', 'constructive'].includes(value.outputMode)) {
+    throw new Error('Fast solver returned an invalid output mode');
+  }
   if (typeof value.source !== 'string' || !value.source.trim() || Buffer.byteLength(value.source) > 256 * 1024) {
     throw new Error('Fast solver returned no usable C++ source');
   }
@@ -56,6 +62,9 @@ export async function prepareFastCode(response: string, directory: string,
   await writeFile(task, JSON.stringify({ inputs: examples.map((file, index) => ({file_id: String(index), path: file.path})) }));
   await withExecutionLimit(exampleSignal => runRecipe(directory, task, answers, exampleSignal), signal, 10_000);
   const outputs = JSON.parse(await readFile(answers, 'utf8')).answers;
+  // Nonunique constructions still run locally. Platform evaluation decides
+  // correctness; an exact text comparison cannot validate a construction.
+  if (value.outputMode === 'constructive') return;
   for (const [index, example] of examples.entries()) {
     const expectedName = example.name.replace(/^in_/, 'out_').replace(/^input/i, 'output').replace(/\.in$/i, '.out');
     const expected = files.find(file => file.name === expectedName);

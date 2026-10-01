@@ -91,6 +91,6 @@ process.stdin.on('data', chunk => {
     assert.equal(codeThread.config.web_search,'disabled');
     const codeTurn = (await readFile(path.join(root,'turns'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
     assert.equal(codeTurn.effort,'low');
-    assert.deepEqual(codeTurn.outputSchema.required,['source']);
+    assert.deepEqual(codeTurn.outputSchema.required,['source','outputMode']);
   } finally { closeCodexAppServers(); await rm(root, { recursive:true, force:true }); }
 });

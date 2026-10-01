@@ -45,11 +45,11 @@ async function fixture(action, options = {}) {
   };
   const solve = async (solverJob, signal, emit) => {
     solverJobs.push(solverJob);
-    assert.equal(solverJob.model,'gpt-6.1-sol'); assert.equal(solverJob.reasoning,solverJob.solverCodeOnly ? 'low' : 'medium'); assert.equal(solverJob.fast,true);
+    assert.equal(solverJob.model,'gpt-6.1-sol'); assert.ok(solverJob.solverCodeOnly ? solverJob.reasoning === 'low' : ['medium','high'].includes(solverJob.reasoning)); assert.equal(solverJob.fast,true);
     assert.equal(solverJob.solverOnly,true); assert.equal(solverJob.workflow,'standard');
     if (solverJob.solverCodeOnly) {
       emit({type:'usage',data:{inputTokens:10,outputTokens:5,totalTokens:15}});
-      return JSON.stringify({source:options.badCode ? 'not C++' : '#include <iostream>\nint main(){std::cout << 42 << std::endl;}'});
+      return JSON.stringify({source:options.badCode ? 'not C++' : '#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:options.outputMode ?? 'exact'});
     }
     const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
     const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
@@ -328,14 +328,14 @@ test('early levels generate C++ directly and runner compiles, runs and submits i
 
 test('fast compiler failure falls back to an agent before any submission',async()=>fixture(async f=>{
   assert.match(await f.run(),/Accepted 4 new outputs/);
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
   assert.match(f.solverJobs[1].prompt,/compilation failed/);
-  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,45);
+  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,60);
 },{fastLevels:2,badCode:true}));
 
 test('fast rejected outputs are corrected by the agent with platform feedback',async()=>fixture(async f=>{
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true]);
   assert.match(f.solverJobs[1].prompt,/isCorrect/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,5);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').slice(0,3).map(c=>c.args.file_id),['1-small','1-small','2-large']);
@@ -346,9 +346,9 @@ test('default light path continues through all levels until a failure',async()=>
   assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,true,true,true,true,true]);
 },{defaultFastLevels:true,levels:[1,2,3,4,5,6,7]}));
 
-test('light rejection on a later level preserves accepted inputs and switches all remaining levels',async()=>fixture(async f=>{
+test('light rejection preserves accepted inputs and the next level returns to light',async()=>fixture(async f=>{
   assert.match(await f.run(),/Accepted 6 new outputs/);
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,true]);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),
     [[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large'],[2,'2-large'],[3,'1-small'],[3,'2-large']]);
 },{defaultFastLevels:true,levels:[1,2,3],rejectAt:4}));
@@ -379,13 +379,34 @@ test('fast runner checks examples and hands a mismatch to the agent',async()=>fi
     return result;
   };
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
   assert.match(f.solverJobs[1].prompt,/example mismatch/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
 },{fastLevels:2}));
 
+test('nonunique examples keep the fast path and provide accepted source to the next level',async()=>fixture(async f=>{
+  const call=f.client.call.bind(f.client);
+  f.client.call=async(name,args)=>{
+    const result=await call(name,args);
+    if(name==='prepare_level')result.files.entries.push(
+      {artifact_id:'example-in',filename:'in_0-example.txt',bytes:10},
+      {artifact_id:'example-out',filename:'out_0-example.txt',bytes:10});
+    return result;
+  };
+  assert.match(await f.run(),/Accepted 4 new outputs/);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true]);
+  assert.match(f.solverJobs[1].prompt,/previousLevel.*source.*#include/);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+},{fastLevels:2,outputMode:'constructive'}));
 
-test('first light failure stays in agent mode after restart',async()=>fixture(async f=>{
+test('constructive outputs rejected by the platform still fall back before sending later inputs',async()=>fixture(async f=>{
+  await f.run();
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true]);
+  assert.match(f.solverJobs[1].prompt,/isCorrect/);
+  assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').slice(0,3).map(c=>c.args.file_id),['1-small','1-small','2-large']);
+},{fastLevels:2,outputMode:'constructive',rejectFirst:true}));
+
+test('light failure resumes correction after restart then returns to light',async()=>fixture(async f=>{
   const solve = async (solverJob, signal, emit) => {
     if (!solverJob.solverCodeOnly) throw new Error('Interrupted agent');
     return f.solve(solverJob, signal, emit);
@@ -395,7 +416,7 @@ test('first light failure stays in agent mode after restart',async()=>fixture(as
   const state=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'state.json'),'utf8'));
   assert.equal(state.fastFailed,true);
   await f.run({taskId:'continued'});
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
 },{defaultFastLevels:true,badCode:true}));
 
 test('light rejection stays in agent mode after restart without resubmitting accepted inputs',async()=>fixture(async f=>{
@@ -405,7 +426,68 @@ test('light rejection stays in agent mode after restart without resubmitting acc
   };
   await assert.rejects(runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event)),/Interrupted correction/);
   await f.run({taskId:'continued'});
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,false]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true]);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),
     [[1,'1-small'],[1,'2-large'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
 },{defaultFastLevels:true,rejectAt:2}));
+
+for (const winner of ['medium', 'high']) test(`20s starts medium and high Fast; ${winner} wins and next light inherits its code and context`, async t => fixture(async f => {
+  let lightStarted, backupsStarted;
+  const lightReady = new Promise(resolve => { lightStarted = resolve; });
+  const backupsReady = new Promise(resolve => { backupsStarted = resolve; });
+  const agents = [], stopped = [];
+  let nextLight;
+  const solve = async (solverJob, signal, emit) => {
+    if (solverJob.solverCodeOnly && solverJob.prompt.startsWith('Solve CCC level 2')) {
+      nextLight = solverJob;
+      return f.solve(solverJob, signal, emit);
+    }
+    emit({type:'usage',data:{inputTokens:10,outputTokens:5,totalTokens:15}});
+    emit({type:'checkpoint',data:{threadId:`thread-${solverJob.reasoning}`}});
+    if (solverJob.solverCodeOnly) {
+      const dir = path.join(f.cwd,'.ai-router/ccc-auto',createHash('sha256').update('session:training-example').digest('hex').slice(0,24),'level-1',`run-${createHash('sha256').update('task').digest('hex').slice(0,16)}-0-original`);
+      await writeFile(path.join(dir,'solution.cpp'),'// current light code');
+      lightStarted();
+    } else {
+      agents.push(solverJob);
+      if (agents.length === 2) backupsStarted();
+      await backupsReady;
+      assert.equal(signal.aborted, false);
+      assert.equal(solverJob.model,'gpt-6.1-sol');
+      assert.equal(solverJob.fast,true);
+      assert.match(solverJob.prompt,/Current light source.*current light code/);
+      if (solverJob.reasoning === winner) {
+        const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
+        const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
+        await writeFile(path.join(path.dirname(output),'solution.cpp'),`// ${winner} winner\n#include <iostream>\nint main(){std::cout << 42;}`);
+        await writeFile(output,JSON.stringify({answers:ids.map(file_id=>({file_id,solution:'42\n'}))}));
+        return 'Solver ready.';
+      }
+    }
+    return new Promise((resolve,reject) => {
+      signal.addEventListener('abort',()=>{stopped.push(solverJob.reasoning);reject(signal.reason);},{once:true});
+      if(signal.aborted)reject(signal.reason);
+    });
+  };
+  t.mock.timers.enable({apis:['setTimeout']});
+  const pending = runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event));
+  await lightReady;
+  t.mock.timers.tick(19_999);
+  assert.equal(agents.length,0);
+  t.mock.timers.tick(1);
+  t.mock.timers.reset();
+  assert.match(await pending,/Accepted 4 new outputs/);
+  assert.deepEqual(agents.map(j=>j.reasoning).sort(),['high','medium']);
+  assert.equal(new Set(agents.map(j=>j.taskId)).size,2);
+  assert.equal(new Set(agents.map(j=>j.jobId)).size,2);
+  assert.deepEqual(stopped.sort(),['low',winner === 'medium' ? 'high' : 'medium'].sort());
+  assert.match(nextLight.prompt,new RegExp(`previousLevel.*${winner} winner`));
+  assert.match(nextLight.prompt,/previousLevel.*Full statement.*previews/);
+  assert.equal(nextLight.reasoning,'low');
+  assert.equal(nextLight.fast,true);
+  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,60);
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const state=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'state.json'),'utf8'));
+  assert.equal(state.solverThread.threadId,`thread-${winner}`);
+  assert.equal(state.fastFailed,undefined);
+},{fastLevels:2}));
