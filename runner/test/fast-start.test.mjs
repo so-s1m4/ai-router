@@ -84,5 +84,13 @@ process.stdin.on('data', chunk => {
     assert.equal(threads.at(-1).config['mcp_servers.ccc.enabled'],false);
     assert.equal(threads.at(-1).config['mcp_servers.browser.enabled'],false);
     assert.ok(threads[0].config === undefined);
+    await execute({...solver,taskId:'code',solverCodeOnly:true,reasoning:'low'},new AbortController().signal,()=>{});
+    const codeThread = (await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
+    assert.equal(codeThread.config['features.shell_tool'],false);
+    assert.equal(codeThread.config['features.unified_exec'],false);
+    assert.equal(codeThread.config.web_search,'disabled');
+    const codeTurn = (await readFile(path.join(root,'turns'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
+    assert.equal(codeTurn.effort,'low');
+    assert.deepEqual(codeTurn.outputSchema.required,['source']);
   } finally { closeCodexAppServers(); await rm(root, { recursive:true, force:true }); }
 });

@@ -16,6 +16,8 @@ async function fixture(action, options = {}) {
   const calls = [], events = [], solverJobs = [];
   const passed = {};
   const originalFetch = globalThis.fetch;
+  const originalFastLevels = process.env.CCC_AUTO_FAST_LEVELS;
+  process.env.CCC_AUTO_FAST_LEVELS = String(options.fastLevels ?? 0);
   globalThis.fetch = async () => new Response('1\nexample\n');
   const info = () => ({ contest_slug:'training-example', game:{name:'Example'}, levels:[1,2].map(level=>({level, inputFiles:['0-example','1-small','2-large'],unscoredFiles:['0-example']})), participant:{score:{state:Object.fromEntries([1,2].map(level=>['level'+level,{passedFiles:{...passed[level]}}]))}} });
   const client = {
@@ -39,8 +41,12 @@ async function fixture(action, options = {}) {
   };
   const solve = async (solverJob, signal, emit) => {
     solverJobs.push(solverJob);
-    assert.equal(solverJob.model,'gpt-6.1-sol'); assert.equal(solverJob.reasoning,'medium'); assert.equal(solverJob.fast,true);
+    assert.equal(solverJob.model,'gpt-6.1-sol'); assert.equal(solverJob.reasoning,solverJob.solverCodeOnly ? 'low' : 'medium'); assert.equal(solverJob.fast,true);
     assert.equal(solverJob.solverOnly,true); assert.equal(solverJob.workflow,'standard');
+    if (solverJob.solverCodeOnly) {
+      emit({type:'usage',data:{inputTokens:10,outputTokens:5,totalTokens:15}});
+      return JSON.stringify({source:options.badCode ? 'not C++' : '#include <iostream>\nint main(){std::cout << 42 << std::endl;}'});
+    }
     const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
     const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
     const answers = ids.map(file_id=>({file_id,solution:'42\n'}));
@@ -55,7 +61,7 @@ async function fixture(action, options = {}) {
     return 'Solutions ready';
   };
   try { await action({cwd,controller,client,solve,calls,events,solverJobs,run:(overrides={}, runSignal=controller.signal)=>runCccAuto({...job,...overrides},cwd,client,solve,runSignal,event=>events.push(event))}); }
-  finally {globalThis.fetch=originalFetch;await rm(cwd,{recursive:true,force:true});}
+  finally {globalThis.fetch=originalFetch; if(originalFastLevels === undefined) delete process.env.CCC_AUTO_FAST_LEVELS; else process.env.CCC_AUTO_FAST_LEVELS=originalFastLevels;await rm(cwd,{recursive:true,force:true});}
 }
 
 test('CCC script solves levels, submits exact scored IDs and aggregates model usage',async()=>fixture(async f=>{
@@ -305,3 +311,58 @@ test('C++ helper streams examples and scored files through a native executable',
     await assert.rejects(readFile(path.join(cwd, 'answers.json')), {code:'ENOENT'});
   } finally { await rm(cwd, {recursive:true,force:true}); }
 });
+
+
+test('early levels generate C++ directly and runner compiles, runs and submits it',async()=>fixture(async f=>{
+  assert.match(await f.run(),/Accepted 4 new outputs/);
+  assert.deepEqual(f.solverJobs.map(j=>[j.solverCodeOnly,j.reasoning,j.previousThreadId]),[[true,'low',undefined],[true,'low',undefined]]);
+  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,30);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+  assert.ok(f.events.some(e=>e.data?.cccTiming?.stage==='compile_examples'));
+  assert.ok(f.events.some(e=>e.data?.cccTiming?.stage==='code_generation'));
+},{fastLevels:2}));
+
+test('fast compiler failure falls back to an agent before any submission',async()=>fixture(async f=>{
+  assert.match(await f.run(),/Accepted 4 new outputs/);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  assert.match(f.solverJobs[1].prompt,/compilation failed/);
+  assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,60);
+},{fastLevels:2,badCode:true}));
+
+test('fast rejected outputs are corrected by the agent with platform feedback',async()=>fixture(async f=>{
+  await f.run();
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  assert.match(f.solverJobs[1].prompt,/isCorrect/);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,8);
+},{fastLevels:2,reject:true}));
+
+test('levels beyond the fast threshold use the ordinary agent',async()=>fixture(async f=>{
+  await f.run();
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false]);
+},{fastLevels:1}));
+
+test('truncated statements bypass fast code generation',async()=>fixture(async f=>{
+  const call = f.client.call.bind(f.client);
+  f.client.call = async(name,args)=>{
+    const result = await call(name,args);
+    if(name==='prepare_level')result.files.entries[0].pdf_preview = {text:'x'.repeat(20000)};
+    return result;
+  };
+  await f.run();
+  assert.ok(f.solverJobs.every(j=>!j.solverCodeOnly));
+},{fastLevels:2}));
+
+test('fast runner checks examples and hands a mismatch to the agent',async()=>fixture(async f=>{
+  const call = f.client.call.bind(f.client);
+  f.client.call = async(name,args)=>{
+    const result = await call(name,args);
+    if(name==='prepare_level')result.files.entries.push(
+      {artifact_id:'example-in',filename:'in_0-example.txt',bytes:10},
+      {artifact_id:'example-out',filename:'out_0-example.txt',bytes:10});
+    return result;
+  };
+  await f.run();
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  assert.match(f.solverJobs[1].prompt,/example mismatch/);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+},{fastLevels:2}));

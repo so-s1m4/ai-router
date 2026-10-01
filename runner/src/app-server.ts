@@ -1,3 +1,4 @@
+import { codeOutputSchema } from './ccc-fast.js';
 import { parse } from 'smol-toml';
 import { globalMcpVersion, syncGlobalMcp } from './manager-mcp.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -134,6 +135,10 @@ class AppServerConnection {
       const config = parse(await readFile(`${this.home}/.codex/config.toml`, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; })) as any;
       solverConfig = Object.fromEntries(Object.keys(config.mcp_servers || {}).map(name => [`mcp_servers.${name}.enabled`, false]));
     }
+    if (job.solverCodeOnly) solverConfig = { ...solverConfig,
+      'features.shell_tool': false, 'features.unified_exec': false,
+      'features.apply_patch_freeform': false, 'features.multi_agent': false, web_search: 'disabled',
+    };
     const loaded = this.threads.get(job.taskId);
     const cached = loaded || existingThreadId;
     let threadId = cached;
@@ -147,6 +152,7 @@ class AppServerConnection {
         ...(job.model !== 'default' ? { model: job.model } : {}), cwd,
         approvalPolicy: 'never', sandbox: job.mode === 'task' ? taskSandbox : 'read-only',
         ...(solverConfig ? { config: solverConfig } : {}),
+        ...(job.solverCodeOnly ? { baseInstructions: 'Generate the requested C++ source as JSON. Use no tools. Return an empty source if the statement is insufficient.', developerInstructions: 'All compilation, examples, file I/O and submissions are handled by the caller.' } : {}),
         serviceName: 'ai_router_runner'
       });
       threadId = String(started.thread?.id || '');
@@ -226,6 +232,7 @@ class AppServerConnection {
         sandboxPolicy: job.mode === 'task' ? (taskSandbox === 'workspace-write' ? { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: !job.solverOnly } : { type: 'dangerFullAccess' }) : { type: 'readOnly', access: { type: 'fullAccess' } },
         ...(job.model !== 'default' ? { model: job.model } : {}),
         ...(job.reasoning && job.reasoning !== 'default' ? { effort: job.reasoning } : {}),
+        ...(job.solverCodeOnly ? { outputSchema: codeOutputSchema } : {}),
         serviceTierForTurn: job.fast ? 'fast' : 'default'
       });
       turnId = String(turn.turn?.id || '');
