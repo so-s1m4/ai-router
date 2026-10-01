@@ -19,6 +19,7 @@ RUN apt-get update \
        ripgrep \
        poppler-utils \
        python3 \
+       g++ \
        chromium \
        fonts-liberation \
        libasound2 \

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, copyFile } from 'node:fs/promises';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { prepareSolverTemplate } from '../dist/ccc-solver-template.js';
@@ -63,6 +63,9 @@ test('CCC script solves levels, submits exact scored IDs and aggregates model us
   assert.match(result,/Accepted 4 new outputs/);
   assert.equal(f.solverJobs.length,2);
   assert.match(f.solverJobs[0].prompt, /Target solver preparation: about 40 seconds/);
+  assert.match(f.solverJobs[0].prompt, /Write all solver algorithms in C\+\+17 from the first attempt/);
+  assert.match(f.solverJobs[0].prompt, /g\+\+ -std=c\+\+17 -O2 -pipe solution.cpp -o solution/);
+  assert.match(f.solverJobs[0].prompt, /"script":"cpp.cjs"/);
   assert.match(f.solverJobs[0].prompt, /Task context:.*Full statement/);
   assert.match(f.solverJobs[0].prompt, /\\nexample/);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),[[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
@@ -266,6 +269,39 @@ test('batch helper checks one example without writing a scored manifest', async 
     const result = spawnSync(process.execPath, ['solution.cjs', '--input', 'example.txt'], {cwd, encoding:'utf8'});
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, 'AB\nCD\n');
+    await assert.rejects(readFile(path.join(cwd, 'answers.json')), {code:'ENOENT'});
+  } finally { await rm(cwd, {recursive:true,force:true}); }
+});
+
+test('C++ helper streams examples and scored files through a native executable', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'ccc-native-'));
+  try {
+    await prepareSolverTemplate(cwd);
+    // cat exercises the same native stdin/stdout contract without a compiler dependency.
+    await copyFile('/bin/cat', path.join(cwd, 'solution'));
+    await writeFile(path.join(cwd, 'example.txt'), 'ab\ncd\n');
+    const example = spawnSync(process.execPath, ['cpp.cjs', '--input', 'example.txt'], {cwd, encoding:'utf8'});
+    assert.equal(example.status, 0, example.stderr);
+    assert.equal(example.stdout, 'ab\ncd\n');
+    await assert.rejects(readFile(path.join(cwd, 'answers.json')), {code:'ENOENT'});
+    const large = 'X'.repeat(2 * 1024 * 1024) + '\n';
+    await writeFile(path.join(cwd, 'large.txt'), large);
+    await writeFile(path.join(cwd, 'task.json'), JSON.stringify({inputs:[
+      {file_id:'small-id',path:path.join(cwd, 'example.txt')},
+      {file_id:'large-id',path:path.join(cwd, 'large.txt')},
+    ]}));
+    const batch = spawnSync(process.execPath, ['cpp.cjs', 'task.json', 'answers.json'], {cwd, encoding:'utf8'});
+    assert.equal(batch.status, 0, batch.stderr);
+    assert.deepEqual(JSON.parse(await readFile(path.join(cwd, 'answers.json'), 'utf8')), {answers:[
+      {file_id:'small-id',path:'output-0.txt'}, {file_id:'large-id',path:'output-1.txt'},
+    ]});
+    assert.equal(await readFile(path.join(cwd, 'output-0.txt'), 'utf8'), 'ab\ncd\n');
+    assert.equal(await readFile(path.join(cwd, 'output-1.txt'), 'utf8'), large);
+    await rm(path.join(cwd, 'answers.json'));
+    await copyFile('/bin/false', path.join(cwd, 'solution'));
+    const failed = spawnSync(process.execPath, ['cpp.cjs', 'task.json', 'answers.json'], {cwd, encoding:'utf8'});
+    assert.notEqual(failed.status, 0);
+    assert.match(failed.stderr, /C\+\+ solver failed/);
     await assert.rejects(readFile(path.join(cwd, 'answers.json')), {code:'ENOENT'});
   } finally { await rm(cwd, {recursive:true,force:true}); }
 });
