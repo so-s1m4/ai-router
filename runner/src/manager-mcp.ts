@@ -1,6 +1,6 @@
 import { parse, stringify } from 'smol-toml';
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -92,6 +92,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 }
 
 const syncing = new Map<string, Promise<void>>();
+// Manager writes are atomic and may come from another process.
+export async function globalMcpVersion() {
+  try {
+    const version = await stat(agyFile(path.join(root, 'global-mcp')), { bigint: true });
+    return `${version.ino}:${version.size}:${version.mtimeNs}:${version.ctimeNs}`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
+    throw error;
+  }
+}
 export async function syncGlobalMcp(home: string, provider: Provider) {
   const key = home + ':' + provider;
   const next = (syncing.get(key) || Promise.resolve()).catch(() => {}).then(async () => {

@@ -1,4 +1,4 @@
-import { syncGlobalMcp } from './manager-mcp.js';
+import { globalMcpVersion, syncGlobalMcp } from './manager-mcp.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { access, constants, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -26,6 +26,8 @@ export async function steerCodexJob(jobId: string, text: string) {
 }
 const processes = new Map<string, AppServerConnection>();
 const configVersions = new Map<string, string>();
+const mcpVersions = new Map<string, string>();
+const connecting = new Map<string, Promise<AppServerConnection>>();
 const codexBin = process.env.CODEX_BIN || 'codex';
 const taskSandbox = process.env.CODEX_TASK_SANDBOX === 'workspace-write' ? 'workspace-write' : 'danger-full-access';
 
@@ -126,9 +128,11 @@ class AppServerConnection {
   }
 
   private async runCurrent(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string): Promise<{ text: string; threadId: string }> {
-    const cached = this.threads.get(job.taskId) || existingThreadId;
+    const loaded = this.threads.get(job.taskId);
+    const cached = loaded || existingThreadId;
     let threadId = cached;
-    if (threadId) {
+    // A thread in this process is already loaded. Resume only across processes.
+    if (threadId && !loaded) {
       try { await this.request('thread/resume', { threadId }); }
       catch { threadId = undefined; }
     }
@@ -248,7 +252,19 @@ async function configVersion(home: string) {
 }
 
 async function currentConnection(home: string) {
-  await syncGlobalMcp(home, 'codex');
+  // Serialize acquisition so simultaneous prewarm/jobs share one sync/process.
+  const next = (connecting.get(home) || Promise.resolve()).catch(() => undefined).then(() => acquireConnection(home));
+  connecting.set(home, next);
+  try { return await next; }
+  finally { if (connecting.get(home) === next) connecting.delete(home); }
+}
+
+async function acquireConnection(home: string) {
+  const mcpVersion = await globalMcpVersion();
+  if (mcpVersions.get(home) !== mcpVersion) {
+    await syncGlobalMcp(home, 'codex');
+    mcpVersions.set(home, mcpVersion);
+  }
   const version = await configVersion(home);
   let connection = processes.get(home);
   if (connection && configVersions.get(home) !== version) {
@@ -277,7 +293,7 @@ export async function prewarmCodexAppServer(home: string) {
   await connection.ready();
 }
 
-export function closeCodexAppServers() { for (const connection of processes.values()) connection.close(); processes.clear(); configVersions.clear(); }
+export function closeCodexAppServers() { for (const connection of processes.values()) connection.close(); processes.clear(); configVersions.clear(); mcpVersions.clear(); }
 
 // Let active turns finish on their original process; new connections use the updated CLI.
 export function retireCodexAppServers() { for (const connection of processes.values()) connection.retire(); processes.clear(); configVersions.clear(); }

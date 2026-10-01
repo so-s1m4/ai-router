@@ -65,7 +65,7 @@
     class="pill-model-badge codex-fast-toggle"
     [class.codex-fast-active]="vm.modelService.codexFast()"
     [attr.aria-pressed]="vm.modelService.codexFast()"
-    title="Fast mode Codex: increased speed and limit consumption"
+    title="Fast: priority service, preserves selected model and reasoning; Auto prefers lighter models. Increased limit consumption."
     (click)="vm.modelService.codexFast.set(!vm.modelService.codexFast())"
   >
     Fast {{ vm.modelService.codexFast() ? 'on' : 'off' }}

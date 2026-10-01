@@ -24,3 +24,9 @@ export function automaticModels(models: Model[], blacklist: string[], complexity
   return [...new Set(models.map(m => m.id))].filter(id => id !== 'auto' && !blocked.has(id))
     .sort((a,b) => modelRank(a,complexity)-modelRank(b,complexity));
 }
+
+// Fast accelerates service, without reducing the model's reasoning effort.
+export function requestedReasoning(model: Model | undefined, reasoning: string, fast: boolean): string {
+  if (!fast || reasoning !== 'default') return reasoning;
+  return model?.defaultReasoning || reasoning;
+}

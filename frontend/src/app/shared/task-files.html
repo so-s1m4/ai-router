@@ -168,11 +168,12 @@
                 class="file-select-checkbox"
                 type="checkbox"
                 [checked]="vm.taskFilesService.selectedTaskFiles().has(node.path)"
-                (change)="
+                (click)="
                   vm.filesService.toggleFileSelection(
                     'task',
                     node.path,
-                    $any($event.target).checked
+                    $any($event.target).checked,
+                    $event.shiftKey
                   )
                 "
                 [disabled]="!!vm.taskFilesService.deletingFile()"

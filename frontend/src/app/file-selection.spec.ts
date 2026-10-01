@@ -47,6 +47,32 @@ describe('File selection and bulk deletion', () => {
     expect(app.libraryService.someLibraryFilesSelected()).toBeTrue();
   });
 
+  it('ranges follow task tree order and skip collapsed files', () => {
+    app.taskFilesService.taskFiles.set(['z.txt', 'nested/hidden.txt', 'b.txt', 'a.txt'].map(file));
+    app.taskFilesService.collapsedDirs.set(new Set(['nested']));
+    app.filesService.toggleFileSelection('task', 'z.txt', true);
+    app.filesService.toggleFileSelection('task', 'a.txt', true, true);
+    expect([...app.taskFilesService.selectedTaskFiles()].sort()).toEqual(['a.txt', 'b.txt', 'z.txt']);
+    app.filesService.toggleFileSelection('task', 'a.txt', false, true);
+    expect(app.taskFilesService.selectedTaskFiles().size).toBe(0);
+  });
+
+  it('ignores anchors hidden by the filter or belonging to a previous chat', () => {
+    app.libraryService.fileGroups.set([group('first', ['a.txt', 'b.pdf', 'c.pdf'])]);
+    const key = (name: string) => app.libraryService.librarySelectionKey(app.libraryService.fileGroups()[0], name);
+    app.filesService.toggleFileSelection('library', key('a.txt'), true);
+    app.libraryService.libraryQuery.set('.pdf');
+    app.filesService.toggleFileSelection('library', key('c.pdf'), true, true);
+    expect([...app.libraryService.selectedLibraryFiles()]).toEqual([key('a.txt'), key('c.pdf')]);
+    app.sessionService.current.set({ id: 'old' } as NonNullable<ReturnType<App['sessionService']['current']>>);
+    app.taskFilesService.taskFiles.set(['a.txt', 'b.txt', 'c.txt'].map(file));
+    app.filesService.toggleFileSelection('task', 'a.txt', true);
+    app.sessionService.current.set({ id: 'new' } as NonNullable<ReturnType<App['sessionService']['current']>>);
+    app.taskFilesService.selectedTaskFiles.set(new Set());
+    app.filesService.toggleFileSelection('task', 'c.txt', true, true);
+    expect([...app.taskFilesService.selectedTaskFiles()]).toEqual(['c.txt']);
+  });
+
   it('selects files in collapsed directories and respects the task filter', () => {
     app.taskFilesService.taskFiles.set(['nested/a.txt', 'nested/b.txt', 'other.pdf'].map(file));
     app.taskFilesService.collapsedDirs.set(new Set(['nested']));
@@ -164,6 +190,29 @@ describe('File selection and bulk deletion', () => {
 });
 
 describe('File selection controls', () => {
+  for (const reverse of [false, true]) {
+    it('shift-click selects 45 files across groups ' + (reverse ? 'upwards' : 'downwards'), async () => {
+      await TestBed.configureTestingModule({
+        imports: [FilesPageComponent], providers: [provideRouter([])],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(FilesPageComponent), app = fixture.componentInstance.vm;
+      app.libraryService.fileGroups.set([
+        group('first', Array.from({ length: 25 }, (_, i) => i + '.txt')),
+        group('second', Array.from({ length: 20 }, (_, i) => i + '.txt').concat('hidden.pdf')),
+      ]);
+      app.libraryService.libraryQuery.set('.txt');
+      fixture.detectChanges();
+      const boxes = fixture.nativeElement.querySelectorAll('.library-file .file-select-checkbox') as NodeListOf<HTMLInputElement>;
+      boxes[reverse ? 44 : 0].click();
+      fixture.detectChanges();
+      boxes[reverse ? 0 : 44].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+      fixture.detectChanges();
+      expect(app.libraryService.selectedLibraryFiles().size).toBe(45);
+      expect(fixture.nativeElement.querySelectorAll('.file-select-checkbox:checked').length).toBe(45);
+      fixture.destroy();
+    });
+  }
+
   it('renders selection and delete controls in the file library', async () => {
     await TestBed.configureTestingModule({
       imports: [FilesPageComponent, ChatPageComponent],
@@ -223,6 +272,14 @@ describe('File selection controls', () => {
       '.task-files-panel .file-select-all input',
     )!;
     expect(selectAll).toBeTruthy();
+    const boxes = root.querySelectorAll<HTMLInputElement>('.task-tree-file .file-select-checkbox');
+    boxes[0].click();
+    fixture.detectChanges();
+    boxes[1].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    fixture.detectChanges();
+    expect(app.taskFilesService.selectedTaskFiles().size).toBe(2);
+    selectAll.click();
+    fixture.detectChanges();
     selectAll.click();
     fixture.detectChanges();
     expect(root.querySelectorAll('.task-tree-file .file-select-checkbox:checked').length).toBe(2);

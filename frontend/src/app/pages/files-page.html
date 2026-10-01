@@ -104,11 +104,12 @@
                   .selectedLibraryFiles()
                   .has(vm.libraryService.librarySelectionKey(group, file.name))
               "
-              (change)="
+              (click)="
                 vm.filesService.toggleFileSelection(
                   'library',
                   vm.libraryService.librarySelectionKey(group, file.name),
-                  $any($event.target).checked
+                  $any($event.target).checked,
+                  $event.shiftKey
                 )
               "
               [disabled]="!!vm.taskFilesService.deletingFile()"

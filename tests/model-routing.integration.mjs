@@ -78,6 +78,26 @@ test('Auto selects models, resumes failed work on the same runner and counts eac
   assert.equal(filtered.ok,true);await waitFor(()=>jobs.length===4);assert.equal(jobs[3].model,'premium');
   runner.emit('job:result',{jobId:jobs[3].jobId,ok:true,text:'Done'});
   await waitFor(async()=>(await api('/tasks')).find(t=>t.id===filtered.runId).state==='completed');
+  await api('/user/model-blacklist','PUT',{blacklist:[]});
+  runner.emit('account:status',{accountId:account.id,provider:'codex',models:[{id:'economy',label:'Economy',reasoning:[{id:'high',label:'High'},{id:'low',label:'Low'}]},{id:'premium',label:'Premium'}]});
+  await waitFor(async()=>(await api('/accounts'))[0].models.find(m=>m.id==='economy')?.reasoning?.length===2);
+  const fastChat=await api('/sessions','POST',{});
+  const fast=await browser.timeout(5000).emitWithAck('run',{sessionId:fastChat.id,prompt:'Implement a database migration',service:'codex',model:'auto',fast:true});
+  assert.equal(fast.ok,true);await waitFor(()=>jobs.length===5);
+  assert.equal(jobs[4].model,'economy');assert.equal(jobs[4].reasoning,'default');assert.equal(jobs[4].fast,true);
+  runner.emit('job:result',{jobId:jobs[4].jobId,ok:true,text:'Fast done'});
+  await waitFor(async()=>(await api('/tasks')).find(t=>t.id===fast.runId).state==='completed');
+  for (const reasoning of ['medium', 'default']) {
+    const solChat=await api('/sessions','POST',{});
+    const sol=await browser.timeout(5000).emitWithAck('run',{sessionId:solChat.id,prompt:'Implement the change',service:'codex',model:'gpt-6.1-sol',reasoning,fast:true});
+    assert.equal(sol.ok,true);
+    const expected=reasoning==='medium'?6:7;
+    await waitFor(()=>jobs.length===expected);
+    const job=jobs.at(-1);
+    assert.equal(job.model,'gpt-6.1-sol');assert.equal(job.reasoning,'medium');assert.equal(job.fast,true);
+    runner.emit('job:result',{jobId:job.jobId,ok:true,text:'Sol done'});
+    await waitFor(async()=>(await api('/tasks')).find(t=>t.id===sol.runId).state==='completed');
+  }
  }finally{
   browser?.disconnect();runner?.disconnect();
   const exited=new Promise(resolve=>backend.once('exit',resolve));backend.kill('SIGTERM');await exited;

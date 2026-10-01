@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { automaticModels, modelTier, taskComplexity } from './model-routing.js';
+import { automaticModels, modelTier, requestedReasoning, taskComplexity } from './model-routing.js';
 
 test('Auto ranks economical models for simple tasks and stronger ones for complex work', () => {
   const models=['default','gpt-6-sol','gemini-flash','unknown','gpt-6-sol'].map(id=>({id,label:id}));
@@ -24,4 +24,14 @@ test('operator tier configuration overrides model name heuristics', () => {
     if(cheap===undefined)delete process.env.AUTO_CHEAP_MODELS;else process.env.AUTO_CHEAP_MODELS=cheap;
     if(strong===undefined)delete process.env.AUTO_STRONG_MODELS;else process.env.AUTO_STRONG_MODELS=strong;
   }
+});
+
+test('Fast preserves GPT-6.1 Sol medium reasoning and explicit choices', () => {
+  const model = { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', defaultReasoning: 'medium', reasoning: ['high', 'medium', 'low'].map(id => ({id, label:id})) };
+  assert.equal(requestedReasoning(model, 'default', true), 'medium');
+  assert.equal(requestedReasoning(model, 'medium', true), 'medium');
+  assert.equal(requestedReasoning(model, 'high', true), 'high');
+  assert.equal(requestedReasoning(model, 'default', false), 'default');
+  assert.equal(requestedReasoning(undefined, 'default', true), 'default');
+  assert.equal(requestedReasoning({ id:'test',label:'Test',reasoning: [{id:'minimal',label:'Minimal'}] }, 'default', true), 'default');
 });

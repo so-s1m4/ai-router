@@ -61,21 +61,45 @@ export class FilesService {
   emptyFileSelection() {
     return new Set<string>();
   }
-  toggleFileSelection(scope: 'library' | 'task', key: string, checked: boolean) {
+  private readonly selectionAnchors: Partial<Record<'library' | 'task', { key: string; context: string }>> = {};
+  toggleFileSelection(
+    scope: 'library' | 'task',
+    key: string,
+    checked: boolean,
+    shiftKey = false,
+  ) {
     if (this.taskFilesService.deletingFile()) return;
     const selection =
       scope === 'library'
         ? this.libraryService.selectedLibraryFiles
         : this.taskFilesService.selectedTaskFiles;
+    const context = scope === 'task' ? this.sessionService.current()?.id || '' : 'library';
+    const anchor = this.selectionAnchors[scope];
+    const keys =
+      scope === 'library'
+        ? this.libraryService.libraryVisibleKeys()
+        : this.taskFilesService.visibleFileTree()
+            .filter((node) => !node.isDir)
+            .map((node) => node.path);
+    const anchorIndex = anchor?.context === context && selection().size ? keys.indexOf(anchor.key) : -1;
+    const targetIndex = keys.indexOf(key);
+    const range =
+      shiftKey && anchorIndex >= 0 && targetIndex >= 0
+        ? keys.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)
+        : [key];
+    if (!shiftKey || anchorIndex < 0) this.selectionAnchors[scope] = { key, context };
     selection.update((current) => {
       const next = new Set(current);
-      if (checked) next.add(key);
-      else next.delete(key);
+      for (const item of range) {
+        if (checked) next.add(item);
+        else next.delete(item);
+      }
       return next;
     });
   }
   selectAllFiles(scope: 'library' | 'task', checked: boolean) {
     if (this.taskFilesService.deletingFile()) return;
+    delete this.selectionAnchors[scope];
     const keys =
       scope === 'library'
         ? this.libraryService.libraryVisibleKeys()
