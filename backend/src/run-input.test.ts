@@ -6,7 +6,7 @@ const base = { sessionId: '123e4567-e89b-42d3-a456-426614174000', prompt: 'https
 test('CCC mode pins provider, model, medium reasoning and Fast before queue persistence', () => {
   const input = sendSchema.parse({ ...base, workflow: 'ccc-auto', service: 'gemini', model: 'other-model', reasoning: 'high', fast: false, mode: 'chat' });
   assert.equal(input.service, 'codex');
-  assert.equal(input.model, 'gpt-6.1-sol');
+  assert.equal(input.model, 'gpt-6-astra');
   assert.equal(input.reasoning, 'medium');
   assert.equal(input.fast, true);
   assert.equal(input.mode, 'task');

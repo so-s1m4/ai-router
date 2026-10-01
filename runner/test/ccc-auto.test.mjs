@@ -37,9 +37,8 @@ async function fixture(action, options = {}) {
   };
   const solve = async (solverJob, signal, emit) => {
     solverJobs.push(solverJob);
-    assert.equal(solverJob.model,'gpt-6.1-sol'); assert.equal(solverJob.reasoning,'medium'); assert.equal(solverJob.fast,true);
+    assert.equal(solverJob.model,'gpt-6-astra'); assert.equal(solverJob.reasoning,'medium'); assert.equal(solverJob.fast,true);
     assert.equal(solverJob.solverOnly,true); assert.equal(solverJob.workflow,'standard');
-    assert.equal(solverJob.previousThreadId,solverJobs.length === 1 ? undefined : 'solver-thread');
     const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
     const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
     const answers = ids.map(file_id=>({file_id,solution:'42\n'}));
@@ -53,7 +52,7 @@ async function fixture(action, options = {}) {
     emit({type:'delta',text:'Repeated internal solver summary'});
     return 'Solutions ready';
   };
-  try { await action({cwd,controller,client,solve,calls,events,solverJobs,run:()=>runCccAuto(job,cwd,client,solve,controller.signal,event=>events.push(event))}); }
+  try { await action({cwd,controller,client,solve,calls,events,solverJobs,run:(overrides={}, runSignal=controller.signal)=>runCccAuto({...job,...overrides},cwd,client,solve,runSignal,event=>events.push(event))}); }
   finally {globalThis.fetch=originalFetch;await rm(cwd,{recursive:true,force:true});}
 }
 
@@ -81,6 +80,32 @@ test('levels and corrections continue one solver thread and reuse verified platf
   assert.equal(f.calls.filter(c=>c.name==='game_info').length,3);
   assert.equal(f.events.filter(e=>e.type==='checkpoint').length,0);
 },{reject:true}));
+test('interrupted solver saves its thread and continuation restores it after restart',async()=>fixture(async f=>{
+  let interrupted=true;
+  const solve=async(solverJob,signal,emit)=>{
+    if(interrupted){
+      interrupted=false;
+      emit({type:'checkpoint',data:{threadId:'saved-solver-thread'}});
+      throw new Error('Stopped');
+    }
+    assert.equal(solverJob.previousThreadId,'saved-solver-thread');
+    return f.solve(solverJob,signal,event=>emit(event.type==='checkpoint'?{...event,data:{threadId:'saved-solver-thread'}}:event));
+  };
+  await assert.rejects(runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event)),/Stopped/);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,0);
+  await runCccAuto({...job,taskId:'continued'},f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event));
+  assert.equal(f.solverJobs.length,2);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+}));
+test('account handoff does not restore another account solver thread',async()=>fixture(async f=>{
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const folder=path.join(f.cwd,'.ai-router/ccc-auto',key);
+  await mkdir(folder,{recursive:true});
+  await writeFile(path.join(folder,'state.json'),JSON.stringify({contest:'training-example',submissions:{},solverThread:{accountId:'another-account',threadId:'private-thread'}}));
+  await f.run();
+  assert.equal(f.solverJobs[0].previousThreadId,undefined);
+  assert.equal(f.solverJobs[1].previousThreadId,'solver-thread');
+}));
 test('a slow download does not block later files when another worker becomes free',async()=>fixture(async f=>{
   const call=f.client.call.bind(f.client);
   f.client.call=async(name,args)=>{
