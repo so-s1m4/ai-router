@@ -89,6 +89,7 @@ export class ModelsService {
   selectedModel = signal<string>('auto');
   selectedReasoning = signal<string>('default');
   codexFast = signal(false);
+  workflow = signal<'standard' | 'ccc-auto'>('standard');
   models = computed(() => {
     const autoModel: Model = { id: 'auto', label: 'Auto · by task complexity' };
     const blacklist = new Set(this.modelBlacklist());

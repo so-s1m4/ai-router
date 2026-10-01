@@ -357,6 +357,7 @@ export class ChatService {
         model: this.modelService.selectedModel(),
         reasoning: this.modelService.selectedReasoning(),
         fast: service === 'codex' && this.modelService.codexFast(),
+        workflow: this.modelService.workflow(),
         mode: 'task',
       });
       if (!ack.ok) throw new Error(ack.error || 'Unable to queue task');

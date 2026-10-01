@@ -38,6 +38,7 @@ services:
       CLI_AUTO_UPDATE: ${CLI_AUTO_UPDATE:-true}
       CLI_UPDATE_INTERVAL_SECONDS: ${CLI_UPDATE_INTERVAL_SECONDS:-21600}
       CODEX_APP_SERVER_MODE: ${CODEX_APP_SERVER_MODE:-true}
+      CCC_AUTO_MCP_NAME: ${CCC_AUTO_MCP_NAME:-ccc}
       CODEX_TASK_SANDBOX: ${CODEX_TASK_SANDBOX:-danger-full-access}
     volumes:
       - local_runner_data:/runner-data

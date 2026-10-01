@@ -20,7 +20,10 @@ process.stdin.on('data', chunk => {
   fs.appendFileSync(process.env.RUNNER_DATA_DIR + '/requests', message.method + '\\n');
   if (message.method === 'thread/resume') send({id:message.id,result:{thread:{id:'thread'}}});
   if (message.method === 'initialize') send({id:message.id,result:{}});
-  if (message.method === 'thread/start') send({id:message.id,result:{thread:{id:'thread'}}});
+  if (message.method === 'thread/start') {
+   fs.appendFileSync(process.env.RUNNER_DATA_DIR + '/threads', JSON.stringify(message.params) + '\\n');
+   send({id:message.id,result:{thread:{id:'thread'}}});
+  }
   if (message.method === 'turn/start') {
    fs.appendFileSync(process.env.RUNNER_DATA_DIR + '/turns', JSON.stringify(message.params) + '\\n');
    const turnId = 'turn-' + ++turns;
@@ -73,5 +76,13 @@ process.stdin.on('data', chunk => {
     await prewarmCodexAppServer(home);
     const updatedCalls = (await readFile(path.join(root, 'calls'), 'utf8')).trim().split('\n').map(JSON.parse);
     assert.equal(updatedCalls.length, 2);
+    // The CCC solver keeps local command tools but receives no configured MCP tools.
+    await writeFile(path.join(home, '.codex/config.toml'), 'model = "gpt-6.1-sol"\n[mcp_servers.ccc]\nurl = "https://ccc.example/mcp"\n[mcp_servers.browser]\ncommand = "browser-mcp"\n');
+    const solver = {jobId:'solver',taskId:'solver',sessionId:'session',accountId:'account',provider:'codex',mode:'task',model:'gpt-6.1-sol',reasoning:'medium',fast:true,solverOnly:true,prompt:'Solve locally'};
+    assert.equal(await execute(solver,new AbortController().signal,()=>{}),'Done');
+    const threads = (await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(threads.at(-1).config['mcp_servers.ccc.enabled'],false);
+    assert.equal(threads.at(-1).config['mcp_servers.browser.enabled'],false);
+    assert.ok(threads[0].config === undefined);
   } finally { closeCodexAppServers(); await rm(root, { recursive:true, force:true }); }
 });

@@ -1,3 +1,4 @@
+import { parse } from 'smol-toml';
 import { globalMcpVersion, syncGlobalMcp } from './manager-mcp.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { access, constants, readFile } from 'node:fs/promises';
@@ -128,6 +129,11 @@ class AppServerConnection {
   }
 
   private async runCurrent(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string): Promise<{ text: string; threadId: string }> {
+    let solverConfig: Record<string, unknown> | undefined;
+    if (job.solverOnly) {
+      const config = parse(await readFile(`${this.home}/.codex/config.toml`, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; })) as any;
+      solverConfig = Object.fromEntries(Object.keys(config.mcp_servers || {}).map(name => [`mcp_servers.${name}.enabled`, false]));
+    }
     const loaded = this.threads.get(job.taskId);
     const cached = loaded || existingThreadId;
     let threadId = cached;
@@ -140,6 +146,7 @@ class AppServerConnection {
       const started = await this.request('thread/start', {
         ...(job.model !== 'default' ? { model: job.model } : {}), cwd,
         approvalPolicy: 'never', sandbox: job.mode === 'task' ? taskSandbox : 'read-only',
+        ...(solverConfig ? { config: solverConfig } : {}),
         serviceName: 'ai_router_runner'
       });
       threadId = String(started.thread?.id || '');
@@ -216,7 +223,7 @@ class AppServerConnection {
       const turn = await this.request('turn/start', {
         threadId, input: [{ type: 'text', text: job.prompt }], cwd,
         approvalPolicy: 'never',
-        sandboxPolicy: job.mode === 'task' ? (taskSandbox === 'workspace-write' ? { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: true } : { type: 'dangerFullAccess' }) : { type: 'readOnly', access: { type: 'fullAccess' } },
+        sandboxPolicy: job.mode === 'task' ? (taskSandbox === 'workspace-write' ? { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: !job.solverOnly } : { type: 'dangerFullAccess' }) : { type: 'readOnly', access: { type: 'fullAccess' } },
         ...(job.model !== 'default' ? { model: job.model } : {}),
         ...(job.reasoning && job.reasoning !== 'default' ? { effort: job.reasoning } : {}),
         serviceTierForTurn: job.fast ? 'fast' : 'default'

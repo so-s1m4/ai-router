@@ -1,3 +1,19 @@
+<div class="pill-select-wrapper" title="Execution mode">
+  <select [ngModel]="vm.modelService.workflow()"
+    (ngModelChange)="vm.modelService.workflow.set($event)"
+    class="pill-select-overlay" aria-label="Execution mode">
+    <option value="standard">Обычный</option>
+    <option value="ccc-auto">CCC авто</option>
+  </select>
+  <button class="pill-model-badge" type="button" tabindex="-1">
+    <span>{{ vm.modelService.workflow() === 'ccc-auto' ? 'CCC авто' : 'Обычный' }}</span>
+    <svg lucideChevronDown [size]="12"></svg>
+  </button>
+</div>
+
+@if (vm.modelService.workflow() === 'ccc-auto') {
+  <span class="pill-model-badge" title="Отправьте ссылку на игру CCC: получение файлов, решение, отправка и проверка выполняются автоматически.">6.1-sol · medium · Fast</span>
+} @else {
 <!-- SERVICE / PROVIDER PILL -->
 
 <div class="pill-select-wrapper" title="AI Provider">
@@ -70,4 +86,6 @@
   >
     Fast {{ vm.modelService.codexFast() ? 'on' : 'off' }}
   </button>
+}
+
 }

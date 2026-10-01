@@ -17,6 +17,8 @@ RUN apt-get update \
        git \
        openssh-client \
        ripgrep \
+       poppler-utils \
+       python3 \
        chromium \
        fonts-liberation \
        libasound2 \
