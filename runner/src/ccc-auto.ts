@@ -1,6 +1,7 @@
+import { prepareSolverTemplate } from './ccc-solver-template.js';
 import { runRecipe, withOptimization, withExecutionLimit, executionLimitMs } from './ccc-execution.js';
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { CccClient } from './ccc-client.js';
@@ -25,6 +26,30 @@ async function batch<T, R>(items: T[], action: (item: T, index: number) => Promi
 type Submission = { status: 'submitting' | 'accepted' | 'rejected'; evaluation?: unknown; deliveryJobId?: number };
 type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; solverThread?: { accountId: string; threadId: string } };
 export type Solver = (job: Job, signal: AbortSignal, emit: (event: Event) => void) => Promise<string>;
+
+// Give the model the statement and small input samples without a discovery turn.
+export async function solverContext(files: { name: string; path: string; pdf_preview?: unknown }[], inputs: { file_id: string; path: string }[]) {
+  const samples = files.filter(file => /example|sample/i.test(file.name) && /\.(txt|in|out)$/i.test(file.name)).slice(0, 4);
+  const paths = [...new Set([...samples.map(file => file.path), ...inputs.slice(0, 1).map(input => input.path)])];
+  const previews = await batch(paths, async file => {
+    const handle = await open(file, 'r');
+    try {
+      const bytes = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+      const lines = bytes.subarray(0, bytesRead).toString('utf8').split('\n');
+      const truncated = (await handle.stat()).size > bytesRead || lines.length > 16;
+      return { path: file, text: lines.slice(0, 16).join('\n'), truncated };
+    } finally { await handle.close(); }
+  });
+  let remaining = 16000;
+  return { files: files.map(file => {
+    if (!file.pdf_preview) return { name: file.name, path: file.path };
+    const preview = JSON.stringify(file.pdf_preview);
+    const text = preview.slice(0, remaining);
+    remaining -= text.length;
+    return { name: file.name, path: file.path, pdf_preview: text, truncated: text.length < preview.length };
+  }), inputs, previews };
+}
 
 export function contestReference(prompt: string): string {
   // Backend history must never select a link from an earlier request.
@@ -126,16 +151,23 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
   }
   await reportTiming('progress', initialProgressMs);
   const completedUsage: Record<string, number> = {};
+  const runId = createHash('sha256').update(job.taskId).digest('hex').slice(0, 16);
   let solverThreadId = state.solverThread?.accountId === job.accountId ? state.solverThread.threadId : undefined;
   async function askSolver(solverPrompt: string, solverTaskId: string, solverSignal: AbortSignal, reuseThread = false) {
     let latestUsage: Record<string, number> = {};
     let checkpoint: string | undefined;
     const solverStartedAt = Date.now();
     let firstToolMs: number | undefined;
+    let lastToolMs: number | undefined;
+    let toolCount = 0;
     try {
       await timed('solver', () => solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: 'medium', fast: true }, solverSignal, event => {
         // The workflow reports progress; internal solver narration is not a chat reply.
-        if (event.type === 'tool') firstToolMs ??= Date.now() - solverStartedAt;
+        if (event.type === 'tool') {
+          lastToolMs = Date.now() - solverStartedAt;
+          firstToolMs ??= lastToolMs;
+          toolCount++;
+        }
         if (event.type === 'checkpoint') {
           if (typeof event.data?.threadId === 'string') checkpoint = event.data.threadId;
           return;
@@ -151,7 +183,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         } else emit(event.type === 'status' && event.data?.steeringAvailable ? { ...event, data: { ...event.data, steeringAvailable: false } } : event);
       }), { solverTaskId, reusedThread: Boolean(reuseThread && solverThreadId) });
     } finally {
-      if (firstToolMs !== undefined) await reportTiming('solver_first_tool', firstToolMs, { solverTaskId });
+      if (firstToolMs !== undefined) await reportTiming('solver_first_tool', firstToolMs, { solverTaskId, toolCount, lastToolMs });
       if (reuseThread && checkpoint) {
         solverThreadId = checkpoint;
         state.solverThread = { accountId: job.accountId, threadId: checkpoint };
@@ -212,15 +244,17 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     const manifest = path.join(folder, 'task.json');
     await atomic(manifest, { contest, level, level_info: prepared.level_info, files, inputs });
     await reportTiming('download', Date.now() - downloadStartedAt, { level });
+    const context = await timed('solver_context', () => solverContext(files, inputs), { level });
     let feedback: unknown = undefined;
     for (let attempt = 0; attempt < 3 && pending.length; attempt++) {
       signal.throwIfAborted();
-      const originalDir = path.join(folder, `run-${job.taskId}-${attempt}-original`);
+      const originalDir = path.join(folder, `run-${runId}-${attempt}-original`);
       await mkdir(originalDir, { recursive: true, mode: 0o700 });
+      await prepareSolverTemplate(originalDir);
       const answersFile = path.join(originalDir, 'answers.json');
       const taskFile = path.join(folder, `pending-${attempt}.json`);
       await atomic(taskFile, { contest, level, files, inputs: inputs.filter(input => pending.includes(input.file_id)) });
-      const prompt = `Solve CCC level ${level}. The script manages all MCP and platform operations. Do not call MCP, browse the platform, submit answers, or read account/configuration secrets. Read ${taskFile} and batch the necessary local reads. Use the supplied PDF text previews first; extract or render the PDF only if required information is missing. Read input headers or a small sample to learn the format, not entire large inputs. If this thread already analyzed this level, continue that analysis and reuse its solver source in the new run directory instead of rediscovering the statement. Reuse the previous level solver only if relevant. Solve directly: no plan, progress narration, repeated summaries, unrelated discovery, benchmark suite, or speculative checks.\nFor tasks requiring computation, create ${path.join(originalDir, 'solver.json')} with JSON {"runtime":"node","script":"solution.js"} (or runtime "python3" with a local Python script). Put the complete solver source and helpers inside ${originalDir}. The script will be invoked with two arguments: task manifest path (${taskFile}) and answer manifest path (${answersFile}); read those arguments and write outputs relative to its working directory. Before returning, run the supplied examples locally and compare against expected outputs when present. Fix any mismatch. Keep checks focused on examples and a few small cases needed to resolve ambiguity; do not run the full scored input batch or build a benchmark suite. The runner executes the full input batch and submits outputs to CCC; use rejection feedback to correct the solver. Computation has a 120-second execution limit; only after that limit will the runner stop it and request one optimized candidate. For trivial answers you may directly write ${answersFile} with JSON {"answers":[{"file_id":"exact ID","path":"output path relative to ${originalDir}"}]} or use "solution" instead of "path" for small text answers. Exactly one answer for each pending ID: ${JSON.stringify(pending)}. Include inexpensive correctness checks inside the solver when useful for this task. Put output files inside ${originalDir}. Finish with only "Solver ready."; the runner reports execution and submission results.\nUser request: ${(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}\nEvaluation feedback: ${JSON.stringify(feedback ?? null)}`;
+      const prompt = `Solve CCC level ${level}. The script manages all MCP and platform operations. Do not call MCP, browse the platform, submit answers, or read account/configuration secrets. Target solver preparation: about 40 seconds. Use workdir ${originalDir} for local commands and relative filenames for solver.json and solution.cjs; avoid repeating absolute paths in code and command text. The task paths, statement previews, examples and input sample are supplied below; use them directly without rereading the manifest or these files. Batch any additional reads only when the supplied context is incomplete or ambiguous. Extract or render the PDF only if required information is missing. Do not read entire large inputs. If this thread already analyzed this level, continue that analysis and reuse its solver source in the new run directory instead of rediscovering the statement. Reuse the previous level solver only if relevant. Solve directly: no plan, progress narration, repeated summaries, unrelated discovery, benchmark suite, or speculative checks.\nFor the shortest implementation, use the supplied ${path.join(originalDir, 'batch.cjs')}: write solution.cjs with require('./batch.cjs').runBatch(solve); and a function solve(text) returning output text for one entire input file. The helper already reads the manifest, processes all files, writes outputs and answers.json. Do not reimplement this I/O or read the helper. Check an example using node solution.cjs --input EXAMPLE_PATH from your run directory. Prefer a compact implementation and the supplied example check; add extra checks only to resolve an actual uncertainty.\nFor tasks requiring computation, create ${path.join(originalDir, 'solver.json')} with JSON {"runtime":"node","script":"solution.cjs"} (or runtime "python3" with a local Python script). Put the complete solver source and helpers inside ${originalDir}. The script will be invoked with two arguments: task manifest path (${taskFile}) and answer manifest path (${answersFile}); read those arguments and write outputs relative to its working directory. Before returning, run the supplied examples locally and compare against expected outputs when present. Fix any mismatch. Keep checks focused on examples and a few small cases needed to resolve ambiguity; do not run the full scored input batch or build a benchmark suite. The runner executes the full input batch and submits outputs to CCC; use rejection feedback to correct the solver. Computation has a 120-second execution limit; only after that limit will the runner stop it and request one optimized candidate. For trivial answers you may directly write ${answersFile} with JSON {"answers":[{"file_id":"exact ID","path":"output path relative to ${originalDir}"}]} or use "solution" instead of "path" for small text answers. Exactly one answer for each pending ID: ${JSON.stringify(pending)}. Avoid redundant defensive checks and boilerplate already handled by the supplied helper. Put output files inside ${originalDir}. Finish with only "Solver ready."; the runner reports execution and submission results.\nTask context: ${JSON.stringify({ ...context, inputs: context.inputs.filter(input => pending.includes(input.file_id)) })}\nUser request: ${(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}\nEvaluation feedback: ${JSON.stringify(feedback ?? null)}`;
       emit({ type: 'status', message: `CCC авто: solving level ${level}${attempt ? ' (correcting rejected answers)' : ''}` });
       const solvingStartedAt = Date.now();
       await askSolver(prompt, `${job.taskId}-ccc-solver`, signal, true);
@@ -243,8 +277,9 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         ? await withOptimization(
           candidateSignal => executeCandidate(originalDir, candidateSignal),
           async candidateSignal => {
-            const optimizedDir = path.join(folder, `run-${job.taskId}-${attempt}-optimized`);
+            const optimizedDir = path.join(folder, `run-${runId}-${attempt}-optimized`);
             await mkdir(optimizedDir, { recursive: true, mode: 0o700 });
+            await prepareSolverTemplate(optimizedDir);
             const optimizationPrompt = prompt.replaceAll(originalDir, optimizedDir) + `\nThe original solver in ${originalDir} exceeded its ${executionLimitMs / 1000}-second execution limit and has been stopped. Inspect its source and improve the algorithm, data structures or implementation for faster execution. Work only in ${optimizedDir}; leave the original source, inputs and outputs untouched. Return a complete faster solver recipe (or direct answers) for the same pending IDs. Check supplied examples, then return. The runner will execute your candidate with the same execution limit and validate its answer manifest.`;
             await askSolver(optimizationPrompt, `${job.taskId}-ccc-solver`, candidateSignal, true);
             return withExecutionLimit(executionSignal => executeCandidate(optimizedDir, executionSignal), candidateSignal);

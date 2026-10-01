@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { prepareSolverTemplate } from '../dist/ccc-solver-template.js';
 import path from 'node:path';
-import { runCccAuto, contestReference, readAnswers } from '../dist/ccc-auto.js';
+import { runCccAuto, contestReference, readAnswers, solverContext } from '../dist/ccc-auto.js';
 import { recoveringCcc, toolData } from '../dist/ccc-client.js';
 
 const job = { taskId:'task', jobId:'job', sessionId:'session', accountId:'account', provider:'codex', model:'ignored', mode:'task', workflow:'ccc-auto', prompt:'https://codingcontest.org/contests/training-example/game' };
@@ -45,7 +47,7 @@ async function fixture(action, options = {}) {
     if (options.invalid) answers[0].file_id='invented-id';
     if (options.recipe) {
       await writeFile(path.join(path.dirname(output),'solver.json'),JSON.stringify({runtime:'node',script:'solution.cjs'}));
-      await writeFile(path.join(path.dirname(output),'solution.cjs'),`const fs=require('node:fs');const task=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));fs.writeFileSync(process.argv[3],JSON.stringify({answers:task.inputs.map(input=>({file_id:input.file_id,solution:'42\\n'}))}));`);
+      await writeFile(path.join(path.dirname(output),'solution.cjs'),`require('./batch.cjs').runBatch(()=>'42\\n');`);
     } else await writeFile(output,JSON.stringify({answers}));
     emit({type:'usage',data:{inputTokens:10,outputTokens:5,totalTokens:15}});
     emit({type:'checkpoint',data:{threadId:'solver-thread'}});
@@ -60,6 +62,9 @@ test('CCC script solves levels, submits exact scored IDs and aggregates model us
   const result=await f.run();
   assert.match(result,/Accepted 4 new outputs/);
   assert.equal(f.solverJobs.length,2);
+  assert.match(f.solverJobs[0].prompt, /Target solver preparation: about 40 seconds/);
+  assert.match(f.solverJobs[0].prompt, /Task context:.*Full statement/);
+  assert.match(f.solverJobs[0].prompt, /\\nexample/);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),[[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
   assert.equal(f.events.filter(e=>e.type==='checkpoint').length,0);
   assert.deepEqual(f.events.filter(e=>e.type==='delta').map(e=>e.text),[result]);
@@ -231,3 +236,36 @@ test('example checks are requested and stage timings persist with restored-threa
   assert.ok(records.every(r => Number.isFinite(r.elapsedMs) && r.elapsedMs >= 0));
   assert.equal(f.events.filter(e => e.data?.cccTiming).length, records.length);
 }, { recipe: true }));
+
+test('solver context supplies examples and bounded headers, marking incomplete previews', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'ccc-context-'));
+  try {
+    const example = path.join(cwd, 'example.txt'), large = path.join(cwd, 'large.txt');
+    await writeFile(example, '2\nAB\nCD\n');
+    await writeFile(large, '100000\n' + 'X'.repeat(100000));
+    const context = await solverContext([
+      {name:'in_0-example.txt',path:example},
+      {name:'level.pdf',path:'statement.pdf',pdf_preview:{text:'S'.repeat(20000)}},
+    ], [{file_id:'1-large',path:large}]);
+    assert.equal(context.previews[0].text, '2\nAB\nCD\n');
+    assert.equal(context.previews[0].truncated, false);
+    assert.equal(context.previews[1].truncated, true);
+    assert.ok(context.previews[1].text.startsWith('100000\n'));
+    assert.ok(context.previews[1].text.length <= 4096);
+    assert.equal(context.files[1].pdf_preview.length, 16000);
+    assert.equal(context.files[1].truncated, true);
+  } finally { await rm(cwd, {recursive:true,force:true}); }
+});
+
+test('batch helper checks one example without writing a scored manifest', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'ccc-example-'));
+  try {
+    await prepareSolverTemplate(cwd);
+    await writeFile(path.join(cwd, 'solution.cjs'), "require('./batch.cjs').runBatch(async text => text.toUpperCase());");
+    await writeFile(path.join(cwd, 'example.txt'), 'ab\ncd\n');
+    const result = spawnSync(process.execPath, ['solution.cjs', '--input', 'example.txt'], {cwd, encoding:'utf8'});
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'AB\nCD\n');
+    await assert.rejects(readFile(path.join(cwd, 'answers.json')), {code:'ENOENT'});
+  } finally { await rm(cwd, {recursive:true,force:true}); }
+});
