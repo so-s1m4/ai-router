@@ -12,7 +12,7 @@ describe('CCC execution mode', () => {
     const mode = fixture.nativeElement.querySelector('[aria-label="Execution mode"]') as HTMLSelectElement;
     mode.value = 'ccc-auto'; mode.dispatchEvent(new Event('change')); fixture.detectChanges();
     expect(vm.modelService.workflow()).toBe('ccc-auto');
-    expect(fixture.nativeElement.textContent).toContain('Astra · medium · Fast');
+    expect(fixture.nativeElement.textContent).toContain('6.1 Sol · medium · Fast');
     expect(fixture.nativeElement.querySelector('[aria-label="Provider"]')).toBeNull();
     mode.value = 'standard'; mode.dispatchEvent(new Event('change')); fixture.detectChanges();
     expect(vm.modelService.selectedService()).toBe('gemini');

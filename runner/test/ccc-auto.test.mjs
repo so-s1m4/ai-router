@@ -37,7 +37,7 @@ async function fixture(action, options = {}) {
   };
   const solve = async (solverJob, signal, emit) => {
     solverJobs.push(solverJob);
-    assert.equal(solverJob.model,'gpt-6-astra'); assert.equal(solverJob.reasoning,'medium'); assert.equal(solverJob.fast,true);
+    assert.equal(solverJob.model,'gpt-6.1-sol'); assert.equal(solverJob.reasoning,'medium'); assert.equal(solverJob.fast,true);
     assert.equal(solverJob.solverOnly,true); assert.equal(solverJob.workflow,'standard');
     const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
     const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);

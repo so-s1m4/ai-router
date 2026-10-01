@@ -115,7 +115,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     let latestUsage: Record<string, number> = {};
     let checkpoint: string | undefined;
     try {
-      await solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6-astra', reasoning: 'medium', fast: true }, solverSignal, event => {
+      await solve({ ...job, workflow: 'standard', solverOnly: true, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: 'medium', fast: true }, solverSignal, event => {
         // The workflow reports progress; internal solver narration is not a chat reply.
         if (event.type === 'checkpoint') {
           if (typeof event.data?.threadId === 'string') checkpoint = event.data.threadId;
@@ -202,7 +202,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       emit({ type: 'status', message: `CCC авто: solving level ${level}${attempt ? ' (correcting rejected answers)' : ''}` });
       const solvingStartedAt = Date.now();
       await askSolver(prompt, `${job.taskId}-ccc-solver`, signal, true);
-      emit({ type: 'status', message: `CCC авто: level ${level} solver prepared in ${Math.round((Date.now() - solvingStartedAt) / 1000)}s (Astra / medium / Fast)` });
+      emit({ type: 'status', message: `CCC авто: level ${level} solver prepared in ${Math.round((Date.now() - solvingStartedAt) / 1000)}s (6.1 Sol / medium / Fast)` });
       // Load submission files and check their envelope; CCC production evaluates correctness.
       const hasRecipe = async (dir: string) => {
         try { await readFile(path.join(dir, 'solver.json')); return true; }
