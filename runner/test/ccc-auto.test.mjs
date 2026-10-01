@@ -47,6 +47,7 @@ async function fixture(action, options = {}) {
     } else await writeFile(output,JSON.stringify({answers}));
     emit({type:'usage',data:{inputTokens:10,outputTokens:5,totalTokens:15}});
     emit({type:'checkpoint',data:{threadId:'solver-thread'}});
+    emit({type:'delta',text:'Repeated internal solver summary'});
     return 'Solutions ready';
   };
   try { await action({cwd,controller,client,solve,calls,events,solverJobs,run:()=>runCccAuto(job,cwd,client,solve,controller.signal,event=>events.push(event))}); }
@@ -59,6 +60,7 @@ test('CCC script solves levels, submits exact scored IDs and aggregates model us
   assert.equal(f.solverJobs.length,2);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),[[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
   assert.equal(f.events.filter(e=>e.type==='checkpoint').length,0);
+  assert.deepEqual(f.events.filter(e=>e.type==='delta').map(e=>e.text),[result]);
   assert.equal(f.events.filter(e=>e.type==='usage').at(-1).data.totalTokens,30);
   await f.run();
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
