@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runRecipe, withExecutionLimit } from './ccc-execution.js';
 
@@ -19,7 +20,7 @@ export function codePrompt(level: number, context: unknown): string {
   return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete C++17 source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. The runner compiles and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${JSON.stringify(context)}`;
 }
 
-async function compile(directory: string, signal: AbortSignal) {
+async function compileUncached(directory: string, signal: AbortSignal) {
   await withExecutionLimit(async compileSignal => {
     compileSignal.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
@@ -44,8 +45,35 @@ async function compile(directory: string, signal: AbortSignal) {
   }, signal, 30_000);
 }
 
+// Scope native artifacts to the contest and invalidate when compiler or flags change.
+let compilerVersion: Promise<string> | undefined;
+function compilerIdentity() {
+  return compilerVersion ??= new Promise<string>((resolve, reject) => {
+    const child = spawn('g++', ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let version = '';
+    child.stdout.on('data', chunk => { version += chunk; });
+    child.on('error', reject);
+    child.on('close', code => code === 0 ? resolve(version) : reject(new Error('Unable to identify C++ compiler')));
+  });
+}
+async function compile(directory: string, signal: AbortSignal, cache: string) {
+  const identity = await compilerIdentity();
+  signal.throwIfAborted();
+  const source = await readFile(path.join(directory, 'solution.cpp'));
+  const key = createHash('sha256').update(source).update(identity).update(process.platform + process.arch + '-std=c++17 -O2 -pipe').digest('hex');
+  await mkdir(cache, { recursive: true, mode: 0o700 });
+  const binary = path.join(cache, key);
+  try { await copyFile(binary, path.join(directory, 'solution')); return; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  await compileUncached(directory, signal);
+  signal.throwIfAborted();
+  const temporary = binary + '.' + createHash('sha256').update(directory).digest('hex').slice(0, 16) + '.tmp';
+  await copyFile(path.join(directory, 'solution'), temporary);
+  await rename(temporary, binary);
+}
+
 export async function prepareFastCode(response: string, directory: string,
-  files: { name: string; path: string }[], signal: AbortSignal) {
+  files: { name: string; path: string }[], signal: AbortSignal, cache = path.join(directory, '.compiled')) {
   const value = JSON.parse(response);
   if (value.outputMode !== undefined && !['exact', 'constructive'].includes(value.outputMode)) {
     throw new Error('Fast solver returned an invalid output mode');
@@ -54,7 +82,7 @@ export async function prepareFastCode(response: string, directory: string,
     throw new Error('Fast solver returned no usable C++ source');
   }
   await writeFile(path.join(directory, 'solution.cpp'), value.source, { mode: 0o600 });
-  await compile(directory, signal);
+  await compile(directory, signal, cache);
   await writeFile(path.join(directory, 'solver.json'), JSON.stringify({ runtime: 'node', script: 'cpp.cjs' }), { mode: 0o600 });
   const examples = files.filter(file => /example|sample/i.test(file.name) && /^(in_|input)|\.(in)$/i.test(file.name));
   if (!examples.length) return;

@@ -12,16 +12,50 @@ test('quick scripts complete without invoking optimization', async () => {
   await delay(30);
   assert.equal(optimized,false);
 });
-test('optimization starts only after the timed-out original has stopped', async () => {
-  let originalStopped = false, slow = false;
+test('optimization starts while original stays alive and faster result cancels original', async () => {
+  let originalSignal, slow = false;
   const result = await withOptimization(async signal => {
-    try { await delay(500, undefined, { signal }); return 'original'; }
-    finally { originalStopped = signal.aborted; }
+    originalSignal = signal;
+    await delay(500, undefined, { signal });
+    return 'original';
   }, async () => {
-    assert.equal(originalStopped, true);
+    assert.equal(originalSignal.aborted, false);
     return 'optimized';
   }, new AbortController().signal, () => { slow = true; }, 20);
   assert.equal(result, 'optimized'); assert.equal(slow, true);
+  assert.equal(originalSignal.aborted, true);
+});
+test('original can win while optimizer is preparing', async () => {
+  let optimizerSignal;
+  const result = await withOptimization(async signal => {
+    await delay(40, undefined, { signal });
+    return 'original';
+  }, async signal => {
+    optimizerSignal = signal;
+    await delay(500, undefined, { signal });
+    return 'optimized';
+  }, new AbortController().signal, () => {}, 10);
+  assert.equal(result, 'original'); assert.equal(optimizerSignal.aborted, true);
+});
+test('failed optimization leaves the original running', async () => {
+  assert.equal(await withOptimization(async signal => {
+    await delay(40, undefined, { signal });
+    return 'original';
+  }, async () => { throw new Error('Optimization failed'); }, new AbortController().signal, () => {}, 10), 'original');
+});
+test('failed original leaves an already running optimizer alive', async () => {
+  assert.equal(await withOptimization(async signal => {
+    await delay(30, undefined, { signal });
+    throw new Error('Original failed');
+  }, async signal => {
+    await delay(50, undefined, { signal });
+    return 'optimized';
+  }, new AbortController().signal, () => {}, 10), 'optimized');
+});
+test('both failed computations report an error', async () => {
+  await assert.rejects(withOptimization(async signal => {
+    await delay(30, undefined, { signal }); throw new Error('Original failed');
+  }, async () => { throw new Error('Optimizer failed'); }, new AbortController().signal, () => {}, 10), /Original failed/);
 });
 test('execution failures do not launch an optimizer', async () => {
   let optimized = false;
@@ -34,7 +68,7 @@ test('user stop does not launch optimization', async () => {
   await delay(10); controller.abort();
   await assert.rejects(pending, /abort/i); assert.equal(optimized, false);
 });
-test('user stop cancels optimization after an execution timeout', async () => {
+test('user stop cancels both computations during optimization', async () => {
   const controller = new AbortController(); let optimizedStopped = false;
   const pending = withOptimization(signal => delay(500, undefined, { signal }), async signal => {
     controller.abort();
@@ -48,23 +82,29 @@ test('a successful result returns immediately without waiting for cancellation',
   assert.equal(await withOptimization(async () => 'done', async () => { optimized = true; await delay(500); }, new AbortController().signal, () => {}, 100), 'done');
   assert.equal(optimized, false);
 });
-test('real solver is stopped before optimization starts', { timeout: 5000 }, async () => {
+test('real solver stays alive while optimization is preparing', { timeout: 5000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'ccc-script-'));
   try {
     await writeFile(path.join(root, 'solver.json'), JSON.stringify({ runtime: 'node', script: 'solution.cjs' }));
     await writeFile(path.join(root, 'solution.cjs'), `const fs=require('node:fs');fs.writeFileSync('pid',String(process.pid));setTimeout(()=>{},60000);`);
+    let finished;
+    const closed = new Promise(resolve => { finished = resolve; });
     const answer = await withOptimization(async signal => {
-      await runRecipe(root, path.join(root, 'task.json'), path.join(root, 'answer.txt'), signal);
+      try { await runRecipe(root, path.join(root, 'task.json'), path.join(root, 'answer.txt'), signal); }
+      finally { finished(); }
       return 'original';
     }, async () => {
       const pid = Number(await readFile(path.join(root, 'pid'), 'utf8'));
-      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+      assert.doesNotThrow(() => process.kill(pid, 0));
       return 'optimized';
     }, new AbortController().signal, () => {}, 500);
     assert.equal(answer, 'optimized');
+    await closed;
+    const pid = Number(await readFile(path.join(root, 'pid'), 'utf8'));
+    assert.throws(() => process.kill(pid, 0), {code:'ESRCH'});
   } finally { await rm(root, { recursive: true, force: true }); }
 });
-test('optimized execution also has a limit', async () => {
+test('explicit limits remain available for compilation and examples', async () => {
   await assert.rejects(withExecutionLimit(signal => delay(500, undefined, { signal }), new AbortController().signal, 10), /exceeded/);
 });
 

@@ -163,10 +163,25 @@ test('validates the entire answer batch before sending any answer',async()=>fixt
   await assert.rejects(f.run(),/duplicate, unknown or invalid/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,0);
 },{invalid:true}));
-test('cancellation during cooldown prevents the next submission',async()=>fixture(async f=>{
-  const pending=f.run();
-  const timer=setInterval(()=>{if(f.calls.some(c=>c.name==='submit_solution'))f.controller.abort();},5);
-  try {await assert.rejects(pending,/abort/i);}finally{clearInterval(timer);}
+test('submits all answers without waiting for returned or saved cooldowns',async()=>fixture(async f=>{
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const directory=path.join(f.cwd,'.ai-router/ccc-auto',key);
+  await mkdir(directory,{recursive:true});
+  await writeFile(path.join(directory,'state.json'),JSON.stringify({contest:'training-example',submissions:{},nextSubmitAt:Date.now()+86400_000}));
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),2000);
+  try {assert.match(await f.run({},controller.signal),/Accepted 4 new outputs/);}finally{clearTimeout(timer);}
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+  assert.equal(f.events.some(e=>/cooldown/.test(e.message ?? '') || e.data?.cccTiming?.stage==='cooldown'),false);
+},{cooldown:86400}));
+test('cancellation after submission prevents the next submission',async()=>fixture(async f=>{
+  const call=f.client.call.bind(f.client);
+  f.client.call=async(name,args)=>{
+    const result=await call(name,args);
+    if(name==='submit_solution')f.controller.abort();
+    return result;
+  };
+  await assert.rejects(f.run(),/abort/i);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,1);
 },{cooldown:10}));
 test('contest link comes from the current request, with explicit errors for challenge and unrelated URLs',()=>{
@@ -302,11 +317,11 @@ test('C++ helper streams examples and scored files through a native executable',
     ]}));
     const batch = spawnSync(process.execPath, ['cpp.cjs', 'task.json', 'answers.json'], {cwd, encoding:'utf8'});
     assert.equal(batch.status, 0, batch.stderr);
-    assert.deepEqual(JSON.parse(await readFile(path.join(cwd, 'answers.json'), 'utf8')), {answers:[
-      {file_id:'small-id',path:'output-0.txt'}, {file_id:'large-id',path:'output-1.txt'},
-    ]});
-    assert.equal(await readFile(path.join(cwd, 'output-0.txt'), 'utf8'), 'ab\ncd\n');
-    assert.equal(await readFile(path.join(cwd, 'output-1.txt'), 'utf8'), large);
+    const answers = JSON.parse(await readFile(path.join(cwd, 'answers.json'), 'utf8')).answers;
+    assert.deepEqual(answers.map(answer => answer.file_id), ['small-id', 'large-id']);
+    assert.notEqual(answers[0].path, answers[1].path);
+    assert.equal(await readFile(path.join(cwd, answers[0].path), 'utf8'), 'ab\ncd\n');
+    assert.equal(await readFile(path.join(cwd, answers[1].path), 'utf8'), large);
     await rm(path.join(cwd, 'answers.json'));
     await copyFile('/bin/false', path.join(cwd, 'solution'));
     const failed = spawnSync(process.execPath, ['cpp.cjs', 'task.json', 'answers.json'], {cwd, encoding:'utf8'});
@@ -690,3 +705,26 @@ test('platform feedback reaches an already generating high and is reused in its 
   assert.match(await runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e),{steer:async(id,text)=>{messages.push({id,text});release();}}),/Accepted 2 new outputs/);
   assert.ok(messages.some(m=>m.id.includes('retained-code-0') && m.text.includes('isCorrect')));
 },{fastLevels:1,levels:[1],rejectFirst:true}));
+
+for (const reject of [false, true]) test(`smallest input is evaluated before larger computation (rejection=${reject})`, async () => fixture(async f => {
+  const call = f.client.call.bind(f.client);
+  f.client.call = async (name, args) => {
+    if (name === 'get_artifact_download_url') return {url:`https://example.com/${args.artifact_id}`};
+    const result = await call(name, args);
+    if (name === 'get_level_input') delete result.bytes;
+    if (name === 'submit_solution' && f.calls.filter(c => c.name === name).length === 1) {
+      assert.equal(args.file_id, '2-large'); // File names do not determine actual size.
+      assert.equal(await readFile(path.join(f.cwd, 'executed'), 'utf8'), 'small\n');
+    }
+    return result;
+  };
+  globalThis.fetch = async url => new Response(url.endsWith('/statement') ? '1\nexample\n' : url.endsWith('/2-large') ? 'small' : 'large'.repeat(50));
+  const solve = async (solverJob, signal, emit) => {
+    await f.solve(solverJob, signal, emit);
+    const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(path.join(path.dirname(output), 'solution.cjs'), `const fs=require('node:fs');require('./batch.cjs').runBatch(text=>{fs.appendFileSync(${JSON.stringify(path.join(f.cwd,'executed'))},text==='small'?'small\\n':'large\\n');return '42\\n';});`);
+    return 'ready';
+  };
+  await runCccAuto(job, f.cwd, f.client, solve, f.controller.signal, event => f.events.push(event));
+  assert.equal(await readFile(path.join(f.cwd, 'executed'), 'utf8'), reject ? 'small\nsmall\nlarge\n' : 'small\nlarge\n');
+}, {recipe:true, levels:[1], rejectFirst:reject}));

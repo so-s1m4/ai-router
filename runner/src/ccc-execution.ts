@@ -34,7 +34,8 @@ async function reserveWorkers(signal: AbortSignal) {
     });
   }
   signal.throwIfAborted();
-  const count = Math.max(1, Math.min(2, workerBudget() - cppWorkers));
+  // Leave CPU capacity for a competing solver on small runners.
+  const count = Math.max(1, Math.min(2, Math.ceil(workerBudget() / 2), workerBudget() - cppWorkers));
   cppWorkers += count;
   return { count, release: () => { cppWorkers -= count; for (const ready of [...workerWaiters]) ready(); } };
 }
@@ -63,21 +64,44 @@ export async function withExecutionLimit<T>(
   } finally { clearTimeout(timer); }
 }
 
-// Optimization starts only after the original has exceeded its execution limit
-// and exited. There is no competing AI call or cancellation to await on success.
+export const optimizationDelayMs = 10_000;
+
+// Keep the original alive while preparing and running a faster candidate.
+// A failed optimizer must not discard a still-running original.
 export async function withOptimization<T>(
   runOriginal: (signal: AbortSignal) => Promise<T>,
   optimize: (signal: AbortSignal) => Promise<T>,
   signal: AbortSignal,
   onSlow: () => void,
-  limitMs = executionLimitMs,
+  delayMs = optimizationDelayMs,
 ): Promise<T> {
-  try { return await withExecutionLimit(runOriginal, signal, limitMs); }
-  catch (error) {
-    signal.throwIfAborted();
-    if (!(error instanceof ExecutionLimitError)) throw error;
-    onSlow();
-    return optimize(signal);
+  signal.throwIfAborted();
+  const controller = new AbortController();
+  const candidateSignal = AbortSignal.any([signal, controller.signal]);
+  let timer: NodeJS.Timeout | undefined;
+  let abort: () => void = () => {};
+  const result = new Promise<T>((resolve, reject) => {
+    let started = false, failed = 0, originalError: unknown;
+    const failure = (error: unknown, original: boolean) => {
+      if (original) originalError = error;
+      if (!started || ++failed === 2) reject(originalError ?? error);
+    };
+    abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    timer = setTimeout(() => {
+      if (candidateSignal.aborted) return;
+      started = true;
+      try { onSlow(); } catch (error) { reject(error); return; }
+      Promise.resolve().then(() => optimize(candidateSignal)).then(resolve, error => failure(error, false));
+    }, delayMs);
+    Promise.resolve().then(() => runOriginal(candidateSignal)).then(resolve, error => failure(error, true));
+    if (signal.aborted) abort();
+  });
+  try { return await result; }
+  finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+    controller.abort(new Error('CCC execution race finished'));
   }
 }
 
