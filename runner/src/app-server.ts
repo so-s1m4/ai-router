@@ -1,5 +1,5 @@
+import { personalMcpOverrides } from './personal-mcp.js';
 import { codeOutputSchema } from './ccc-fast.js';
-import { parse } from 'smol-toml';
 import { globalMcpVersion, syncGlobalMcp } from './manager-mcp.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { access, constants, readFile } from 'node:fs/promises';
@@ -130,11 +130,8 @@ class AppServerConnection {
   }
 
   private async runCurrent(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string): Promise<{ text: string; threadId: string }> {
-    let solverConfig: Record<string, unknown> | undefined;
-    if (job.solverOnly) {
-      const config = parse(await readFile(`${this.home}/.codex/config.toml`, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; })) as any;
-      solverConfig = Object.fromEntries(Object.keys(config.mcp_servers || {}).map(name => [`mcp_servers.${name}.enabled`, false]));
-    }
+    const mcpConfig = await personalMcpOverrides(this.home, job);
+    let solverConfig: Record<string, unknown> | undefined = Object.keys(mcpConfig).length ? mcpConfig : undefined;
     if (job.solverCodeOnly) solverConfig = { ...solverConfig,
       'features.shell_tool': false, 'features.unified_exec': false,
       'features.apply_patch_freeform': false, 'features.multi_agent': false, web_search: 'disabled',
@@ -144,7 +141,7 @@ class AppServerConnection {
     let threadId = cached;
     // A thread in this process is already loaded. Resume only across processes.
     if (threadId && !loaded) {
-      try { await this.request('thread/resume', { threadId }); }
+      try { await this.request('thread/resume', { threadId, config: solverConfig }); }
       catch { threadId = undefined; }
     }
     if (!threadId) {

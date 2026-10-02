@@ -84,6 +84,15 @@ process.stdin.on('data', chunk => {
     assert.equal(threads.at(-1).config['mcp_servers.ccc.enabled'],false);
     assert.equal(threads.at(-1).config['mcp_servers.browser.enabled'],false);
     assert.ok(threads[0].config === undefined);
+    const personalMcp = [{name:'mine',url:'https://friend.example/mcp',headers:{Authorization:'Bearer friend-secret'}}];
+    await execute({...solver,taskId:'friend',solverOnly:false,sharedExecution:true,personalMcp},new AbortController().signal,()=>{});
+    const personalThread = (await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
+    assert.equal(personalThread.config['mcp_servers.ccc.enabled'],false);
+    assert.equal(personalThread.config['mcp_servers.browser.enabled'],false);
+    assert.deepEqual(personalThread.config['mcp_servers.personal_mine'],{url:personalMcp[0].url,http_headers:personalMcp[0].headers,enabled:true});
+    await execute({...solver,taskId:'owner-again',solverOnly:false},new AbortController().signal,()=>{});
+    assert.equal((await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1).config,undefined);
+    assert.equal((await readFile(path.join(home,'.codex/config.toml'),'utf8')).includes('friend-secret'),false);
     await execute({...solver,taskId:'code',solverCodeOnly:true,reasoning:'low'},new AbortController().signal,()=>{});
     const codeThread = (await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
     assert.equal(codeThread.config['features.shell_tool'],false);

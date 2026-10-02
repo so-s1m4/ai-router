@@ -1,3 +1,4 @@
+import { PersonalMcpComponent } from '../shared/personal-mcp';
 import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -37,6 +38,7 @@ import { SharedAccessComponent } from '../shared/shared-access';
     AccountDetailsDialogComponent,
     AddAccountFormComponent,
     SharedAccessComponent,
+    PersonalMcpComponent,
   ],
   templateUrl: './accounts-page.html',
   host: { style: 'display: contents' },

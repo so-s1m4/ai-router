@@ -1,3 +1,4 @@
+import { personalMcpSchema } from './personal-mcp.js';
 import { CliUpdater } from './cli-updater.js';
 import { readApiKey, saveApiKey } from './openai-key.js';
 import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
@@ -16,7 +17,7 @@ const url=process.env.ROUTER_SERVER_URL?.replace(/\/$/,'');if(!url)throw new Err
 const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data'),file=path.join(root,'device.json');
 interface Device {id:string;secret:string;name:string}
 async function device():Promise<Device>{try{return JSON.parse(await readFile(file,'utf8')) as Device;}catch{}const code=process.env.ROUTER_PAIRING_CODE;if(!code)throw new Error('Set ROUTER_PAIRING_CODE once to enroll this runner');const response=await fetch(url+'/api/runner/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});if(!response.ok)throw new Error('Pairing failed: '+response.status);const d=await response.json() as Device;await mkdir(root,{recursive:true,mode:0o700});await writeFile(file,JSON.stringify(d),{mode:0o600});return d;}
-const jobSchema=z.object({jobId:z.string().uuid(),taskId:z.string().uuid(),continuationOf:z.string().uuid().optional(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),workflow:z.enum(['standard','ccc-auto']).default('standard'),mode:z.enum(['chat','task']).optional().default('task')});
+const jobSchema=z.object({personalMcp:z.array(personalMcpSchema).max(20).optional(),sharedExecution:z.boolean().optional(),jobId:z.string().uuid(),taskId:z.string().uuid(),continuationOf:z.string().uuid().optional(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),workflow:z.enum(['standard','ccc-auto']).default('standard'),mode:z.enum(['chat','task']).optional().default('task')});
 async function start(){
  const active=new Map<string,AbortController>();
  const updater=new CliUpdater({root,busy:()=>active.size>0,promoted:provider=>{if(provider==='codex')retireCodexAppServers();}});
