@@ -72,6 +72,6 @@ export async function prepareFastCode(response: string, directory: string,
     const actual = await readFile(path.join(directory, outputs[index].path), 'utf8');
     const wanted = await readFile(expected.path, 'utf8');
     const normalize = (text: string) => text.trim().split(/\s+/).join(' ');
-    if (normalize(actual) !== normalize(wanted)) throw new Error(`Fast solver example mismatch: ${example.name}`);
+    if (normalize(actual) !== normalize(wanted)) throw new Error(`Fast solver example mismatch: ${example.name}\nExpected: ${wanted.slice(0, 6000)}\nActual: ${actual.slice(0, 6000)}`);
   }
 }

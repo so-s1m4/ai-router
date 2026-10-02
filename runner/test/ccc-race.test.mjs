@@ -127,3 +127,14 @@ test('uncertain platform validation stops the race without submitting queued can
   }), /unknown submission/);
   assert.deepEqual(checks, ['light']);
 });
+
+test('a loser ignoring cancellation cannot hold the next level indefinitely', async () => {
+  let cleanup;
+  const started = Date.now();
+  assert.equal(await raceLight(async () => 'winner', [], new AbortController().signal, () => {}, 1000, {
+    background: async () => new Promise(() => {}),
+    onCleanup: (elapsedMs, drained) => { cleanup = {elapsedMs, drained}; },
+  }), 'winner');
+  assert.equal(cleanup.drained, false);
+  assert.ok(Date.now() - started < 1000);
+});

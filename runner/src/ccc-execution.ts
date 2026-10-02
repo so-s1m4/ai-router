@@ -1,6 +1,43 @@
+import { availableParallelism, freemem } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+// Shared across racing candidates: bound native processes by CPU and memory.
+const cppMemoryBytes = 512 * 1024 * 1024;
+function workerBudget() {
+  let memory = freemem();
+  let cpus = availableParallelism();
+  try {
+    const [quota, period] = readFileSync('/sys/fs/cgroup/cpu.max', 'utf8').trim().split(/\s+/).map(Number);
+    if (Number.isFinite(quota) && period > 0) cpus = Math.min(cpus, Math.max(1, Math.floor(quota / period)));
+  } catch {}
+  try {
+    const limit = Number(readFileSync('/sys/fs/cgroup/memory.max', 'utf8'));
+    const used = Number(readFileSync('/sys/fs/cgroup/memory.current', 'utf8'));
+    if (Number.isFinite(limit)) memory = Math.min(memory, Math.max(0, limit - used));
+  } catch {}
+  return Math.max(1, Math.min(4, cpus, Math.floor(memory / (cppMemoryBytes * 1.25))));
+}
+let cppWorkers = 0;
+const workerWaiters = new Set<() => void>();
+async function reserveWorkers(signal: AbortSignal) {
+  while (cppWorkers >= workerBudget()) {
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => { workerWaiters.delete(ready); signal.removeEventListener('abort', abort); };
+      const ready = () => { cleanup(); resolve(); };
+      const abort = () => { cleanup(); reject(signal.reason); };
+      workerWaiters.add(ready);
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    });
+  }
+  signal.throwIfAborted();
+  const count = Math.max(1, Math.min(2, workerBudget() - cppWorkers));
+  cppWorkers += count;
+  return { count, release: () => { cppWorkers -= count; for (const ready of [...workerWaiters]) ready(); } };
+}
 
 export const executionLimitMs = 120_000;
 export class ExecutionLimitError extends Error {
@@ -55,34 +92,34 @@ export async function runRecipe(directory: string, taskFile: string, answersFile
   const root = await realpath(directory), script = await realpath(path.resolve(directory, recipe.script));
   if (!script.startsWith(root + path.sep)) throw new Error('CCC solver source must stay inside its candidate folder');
   const binary = recipe.runtime === 'node' ? process.execPath : 'python3';
-  await new Promise<void>((resolve, reject) => {
-    let log = '', canceled = false;
-    const child = spawn(binary, [script, taskFile, answersFile], {
-      cwd: directory, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { PATH: process.env.PATH, LANG: 'C.UTF-8', PYTHONUNBUFFERED: '1' },
+  const workers = recipe.runtime === 'node' && path.basename(script) === 'cpp.cjs' ? await reserveWorkers(signal) : undefined;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let log = '', canceled = false;
+      const child = spawn(binary, [script, taskFile, answersFile], {
+        cwd: directory, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { PATH: process.env.PATH, LANG: 'C.UTF-8', PYTHONUNBUFFERED: '1', CCC_CPP_WORKERS: String(workers?.count ?? 1), CCC_CPP_MEMORY_BYTES: String(cppMemoryBytes) },
+      });
+      const append = (chunk: Buffer) => { log = (log + chunk.toString()).slice(-64000); };
+      child.stdout.on('data', append); child.stderr.on('data', append);
+      const stop = () => {
+        canceled = true;
+        if (!child.pid) return;
+        try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+      };
+      signal.addEventListener('abort', stop, { once: true });
+      if (signal.aborted) stop();
+      const cleanup = () => { signal.removeEventListener('abort', stop); };
+      child.on('error', error => { cleanup(); reject(new Error(`Unable to start CCC solver (${recipe.runtime}): ${error.message}`)); });
+      child.on('close', async code => {
+        cleanup();
+        try {
+          await writeFile(path.join(directory, 'execution.log'), log, { mode: 0o600 });
+          if (canceled) reject(signal.reason || new Error('Stopped'));
+          else if (code !== 0) reject(new Error(`CCC solver exited with code ${code}: ${log.slice(-8000)}; see ${path.join(directory, 'execution.log')}`));
+          else resolve();
+        } catch (error) { reject(error); }
+      });
     });
-    const append = (chunk: Buffer) => { log = (log + chunk.toString()).slice(-64000); };
-    child.stdout.on('data', append); child.stderr.on('data', append);
-    let killTimer: NodeJS.Timeout | undefined;
-    const stop = () => {
-      canceled = true;
-      if (!child.pid) return;
-      try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill('SIGTERM'); }
-      killTimer = setTimeout(() => { try { process.kill(-child.pid!, 'SIGKILL'); } catch {} }, 1000);
-      killTimer.unref();
-    };
-    signal.addEventListener('abort', stop, { once: true });
-    if (signal.aborted) stop();
-    const cleanup = () => { signal.removeEventListener('abort', stop); if (!canceled) clearTimeout(killTimer); };
-    child.on('error', error => { cleanup(); reject(new Error(`Unable to start CCC solver (${recipe.runtime}): ${error.message}`)); });
-    child.on('close', async code => {
-      cleanup();
-      try {
-        await writeFile(path.join(directory, 'execution.log'), log, { mode: 0o600 });
-        if (canceled) reject(signal.reason || new Error('Stopped'));
-        else if (code !== 0) reject(new Error(`CCC solver exited with code ${code}; see ${path.join(directory, 'execution.log')}`));
-        else resolve();
-      } catch (error) { reject(error); }
-    });
-  });
+  } finally { workers?.release(); }
 }

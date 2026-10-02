@@ -1,4 +1,5 @@
 import { codePrompt, fastLevelLimit, prepareFastCode } from './ccc-fast.js';
+import { steerCodexJob } from './app-server.js';
 import { raceLight } from './ccc-race.js';
 import { prepareSolverTemplate } from './ccc-solver-template.js';
 import { runRecipe, withOptimization, withExecutionLimit, executionLimitMs } from './ccc-execution.js';
@@ -26,7 +27,8 @@ async function batch<T, R>(items: T[], action: (item: T, index: number) => Promi
   return results;
 }
 type Submission = { status: 'submitting' | 'accepted' | 'rejected'; evaluation?: unknown; deliveryJobId?: number };
-type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; fastFailed?: boolean; fastFailedLevel?: number; fastFeedback?: unknown; solverThread?: { accountId: string; threadId: string } };
+type SolverThread = { accountId: string; threadId: string };
+type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; fastFailed?: boolean; fastFailedLevel?: number; fastFeedback?: unknown; solverThread?: SolverThread; lightThread?: SolverThread; winnerAgent?: SolverThread & { reasoning: string } };
 export type Solver = (job: Job, signal: AbortSignal, emit: (event: Event) => void) => Promise<string>;
 
 // Give the model the statement and small input samples without a discovery turn.
@@ -131,7 +133,7 @@ export async function readAnswers(file: string, directory: string, ids: string[]
   return answers;
 }
 
-export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve: Solver, signal: AbortSignal, emit: (event: Event) => void): Promise<string> {
+export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve: Solver, signal: AbortSignal, emit: (event: Event) => void, options: { steer?: typeof steerCodexJob } = {}): Promise<string> {
   const reference = contestReference(job.originalPrompt || job.prompt);
   emit({ type: 'status', message: 'CCC авто: checking contest and progress' });
   const startedAt = Date.now();
@@ -147,7 +149,13 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
   try { state = JSON.parse(await readFile(stateFile, 'utf8')); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; state = { contest, submissions: {} }; }
   if (state.contest !== contest || !state.submissions) throw new Error('CCC saved progress does not match this contest');
-  const save = () => atomic(stateFile, state);
+  let saveTail = Promise.resolve();
+  const save = () => {
+    const snapshot = structuredClone(state);
+    const write = saveTail.then(() => atomic(stateFile, snapshot));
+    saveTail = write.catch(() => {});
+    return write;
+  };
   const timingsFile = path.join(directory, 'timings.jsonl');
   const reportTiming = async (stage: string, elapsedMs: number, details: Record<string, unknown> = {}) => {
     const data = { stage, elapsedMs, ...details };
@@ -171,8 +179,11 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
   const runId = createHash('sha256').update(job.taskId).digest('hex').slice(0, 16);
   let regularSolverTaskId = `${job.taskId}-ccc-solver`;
   let solverThreadId = state.solverThread?.accountId === job.accountId ? state.solverThread.threadId : undefined;
+  let lightThreadId = state.lightThread?.accountId === job.accountId ? state.lightThread.threadId : undefined;
+  let winnerAgent = state.winnerAgent?.accountId === job.accountId ? state.winnerAgent : undefined;
   async function askSolver(solverPrompt: string, solverTaskId: string, solverSignal: AbortSignal, reuseThread = false, codeOnly = false,
-    options: { reasoning?: string; onCheckpoint?: (threadId: string) => void } = {}) {
+    options: { reasoning?: string; previousThreadId?: string; onCheckpoint?: (threadId: string) => void } = {}) {
+    const previousThreadId = options.previousThreadId ?? (reuseThread ? solverThreadId : undefined);
     let latestUsage: Record<string, number> = {};
     const usageKey = Symbol(solverTaskId);
     activeUsage.set(usageKey, latestUsage);
@@ -181,8 +192,9 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     let firstToolMs: number | undefined;
     let lastToolMs: number | undefined;
     let toolCount = 0;
+    activeSolvers.add(solverTaskId);
     try {
-      return await timed(codeOnly ? 'code_generation' : 'solver', () => solve({ ...job, jobId: solverTaskId, workflow: 'standard', solverOnly: true, solverCodeOnly: codeOnly, previousThreadId: reuseThread ? solverThreadId : undefined, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: options.reasoning ?? (codeOnly ? 'low' : 'medium'), fast: true }, solverSignal, event => {
+      return await timed(codeOnly ? 'code_generation' : 'solver', () => solve({ ...job, jobId: solverTaskId, workflow: 'standard', solverOnly: true, solverCodeOnly: codeOnly, previousThreadId, taskId: solverTaskId, prompt: solverPrompt, model: 'gpt-6.1-sol', reasoning: options.reasoning ?? (codeOnly ? 'low' : 'medium'), fast: true }, solverSignal, event => {
         // The workflow reports progress; internal solver narration is not a chat reply.
         if (event.type === 'tool') {
           lastToolMs = Date.now() - solverStartedAt;
@@ -190,6 +202,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           toolCount++;
         }
         if (event.type === 'checkpoint') {
+          if (solverSignal.aborted) return;
           if (typeof event.data?.threadId === 'string') { checkpoint = event.data.threadId; options.onCheckpoint?.(checkpoint); }
           return;
         }
@@ -202,19 +215,21 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           latestUsage.totalTokens ??= (latestUsage.inputTokens || 0) + (latestUsage.outputTokens || 0);
           emitUsage();
         } else emit(event.type === 'status' && event.data?.steeringAvailable ? { ...event, data: { ...event.data, steeringAvailable: false } } : event);
-      }), { solverTaskId, reusedThread: Boolean(reuseThread && solverThreadId) });
+      }), { solverTaskId, reusedThread: Boolean(previousThreadId) });
     } finally {
+      activeSolvers.delete(solverTaskId);
       activeUsage.delete(usageKey);
       for (const [field, value] of Object.entries(latestUsage)) completedUsage[field] = (completedUsage[field] || 0) + value;
       emitUsage();
       if (firstToolMs !== undefined) await reportTiming('solver_first_tool', firstToolMs, { solverTaskId, toolCount, lastToolMs });
-      if (reuseThread && checkpoint) {
+      if (reuseThread && checkpoint && !solverSignal.aborted) {
         solverThreadId = checkpoint;
         state.solverThread = { accountId: job.accountId, threadId: checkpoint };
         await save();
       }
     }
   }
+  const activeSolvers = new Set<string>();
   let accepted = 0;
   let previousLevelContext: unknown;
   const levels = [...(info.levels || [])].sort((a: any, b: any) => a.level - b.level);
@@ -270,6 +285,13 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     await reportTiming('download', Date.now() - downloadStartedAt, { level });
     const context = await timed('solver_context', () => solverContext(files, inputs), { level });
     let feedback: unknown = state.fastFailedLevel === level ? state.fastFeedback : undefined;
+    let feedbackVersion = 0;
+    const broadcastFeedback = () => {
+      feedbackVersion++;
+      for (const taskId of activeSolvers) {
+        void (options.steer ?? steerCodexJob)(taskId, `Platform rejected a candidate. Correct your solver using this feedback: ${JSON.stringify(feedback)}`).catch(() => {});
+      }
+    };
     let successfulDirectory: string | undefined;
     const submitAnswers = async (answers: Map<string, Buffer>, lightWinner: boolean, sourceDirectory: string, racing = false) => {
       const rejected: string[] = []; const evaluations: Record<string, unknown> = {};
@@ -322,6 +344,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       }
       pending = rejected;
       feedback = rejected.length ? { evaluations, sourceDirectory, source: await solverSource(sourceDirectory) } : evaluations;
+      if (rejected.length) broadcastFeedback();
       if (rejected.length && state.fastFailedLevel === level) { state.fastFeedback = feedback; await save(); }
       return pending.length === 0;
     };
@@ -347,15 +370,33 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         emit({ type: 'status', message: `CCC авто: level ${level} — generating C++ directly (low / Fast)` });
         try {
           const candidateIds = [...pending];
-          const agentCandidate = (reasoning: string, label = reasoning) => async (candidateSignal: AbortSignal) => {
+          const directCandidate = (reasoning: string, label = reasoning, previousThreadId?: string) => async (candidateSignal: AbortSignal) => {
             const candidateDir = path.join(folder, `run-${runId}-${attempt}-${label}`);
             await mkdir(candidateDir, { recursive: true, mode: 0o700 });
             await prepareSolverTemplate(candidateDir);
             candidateSignal.throwIfAborted();
-            let threadId: string | undefined;
-            const lightSource = await solverSource(originalDir);
-            await askSolver(prompt.replaceAll(originalDir, candidateDir) + `\nPreparation feedback: ${JSON.stringify(feedback ?? null)}\nCurrent light source (unverified): ${JSON.stringify(lightSource ?? null)}\nWork only in your own run directory; other solvers are running independently.`, `${job.taskId}-ccc-${level}-${attempt}-${label}`, candidateSignal, false, false,
-              { reasoning, onCheckpoint: value => { threadId = value; } });
+            let threadId = previousThreadId;
+            for (let revision = 0; ; revision++) {
+              const version = feedbackVersion;
+              const lightSource = await solverSource(originalDir);
+              const response = await askSolver(codePrompt(level, { ...context, evaluationFeedback: feedback ?? null,
+                previousLevel: previousLevelContext, currentLightSource: lightSource,
+                userRequest: (job.originalPrompt || job.prompt).split('Current user request:\n').at(-1) }),
+                `${job.taskId}-ccc-${level}-${attempt}-${label}-code-${revision}`, candidateSignal, false, true,
+                { reasoning, previousThreadId: threadId, onCheckpoint: value => { threadId = value; } });
+              candidateSignal.throwIfAborted();
+              if (version !== feedbackVersion && revision < 2) continue;
+              const generated = JSON.parse(response);
+              if (!generated.source?.trim()) {
+                // Missing diagrams or attachments require tools in a separate full-agent thread.
+                await askSolver(prompt.replaceAll(originalDir, candidateDir) + `\nPreparation feedback: ${JSON.stringify(feedback ?? null)}`,
+                  `${job.taskId}-ccc-${level}-${attempt}-${label}-agent`, candidateSignal, false, false,
+                  { reasoning });
+              } else {
+                await timed('compile_examples', () => prepareFastCode(response, candidateDir, files, candidateSignal), { level, candidate: label });
+              }
+              break;
+            }
             candidateSignal.throwIfAborted();
             const output = path.join(candidateDir, 'answers.json');
             const recipe = await readFile(path.join(candidateDir, 'solver.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
@@ -364,20 +405,45 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
             const answers = await timed('answer_validation', () => readAnswers(output, candidateDir, candidateIds), { level, attempt, candidate: label });
             return { answers, directory: candidateDir, reasoning, threadId };
           };
-          const background = agentCandidate('medium', 'background');
-          const needsBackground = (state.fastFailed && state.fastFailedLevel === level) || attempt > 0;
-          if (needsBackground) emit({ type: 'status', message: `CCC авто: level ${level} — starting background agent alongside light` });
+          const retained = winnerAgent;
+          const background = retained ? directCandidate(retained.reasoning, 'retained', retained.threadId) : directCandidate('medium', 'background');
+          const needsBackground = Boolean(retained) || (state.fastFailed && state.fastFailedLevel === level) || attempt > 0;
+          const delayedReasonings = ['medium', 'high'].filter(reasoning => reasoning !== retained?.reasoning);
+          if (retained) emit({ type: 'status', message: `CCC авто: level ${level} — continuing previous winner ${retained.reasoning} alongside light in its existing thread` });
+          if (needsBackground) emit({ type: 'status', message: `CCC авто: level ${level} — starting background candidate alongside light` });
           let lightGeneration = attempt;
-          const winner = await raceLight(async candidateSignal => {
-            const source = await askSolver(codePrompt(level, { ...context, evaluationFeedback: feedback ?? null, previousLevel: previousLevelContext, userRequest: (job.originalPrompt || job.prompt).split('Current user request:\n').at(-1) }), `${job.taskId}-ccc-code-${level}-${lightGeneration++}`, candidateSignal, false, true);
-            candidateSignal.throwIfAborted();
-            await timed('compile_examples', () => prepareFastCode(source, originalDir, files, candidateSignal), { level });
-            await timed('execution', () => withExecutionLimit(s => runRecipe(originalDir, taskFile, answersFile, s), candidateSignal), { level, attempt, candidate: 'fast' });
-            candidateSignal.throwIfAborted();
-            const answers = await timed('answer_validation', () => readAnswers(answersFile, originalDir, candidateIds), { level, attempt });
-            return { answers, directory: originalDir, reasoning: 'low', threadId: undefined as string | undefined };
-          }, ['medium', 'high'].map(reasoning => agentCandidate(reasoning)), signal,
-            () => emit({ type: 'status', message: `CCC авто: level ${level} — adding 6.1 Sol medium / Fast and high / Fast after 20s` }), undefined, {
+          const runLight = async (candidateSignal: AbortSignal) => {
+            for (let repair = 0; ; repair++) {
+              const version = feedbackVersion;
+              const source = await askSolver(codePrompt(level, { ...context, evaluationFeedback: feedback ?? null, previousLevel: previousLevelContext, userRequest: (job.originalPrompt || job.prompt).split('Current user request:\n').at(-1) }), `${job.taskId}-ccc-code-${level}-${lightGeneration++}`, candidateSignal, false, true, {
+                previousThreadId: lightThreadId,
+                onCheckpoint: threadId => { lightThreadId = threadId; state.lightThread = { accountId: job.accountId, threadId }; },
+              });
+              candidateSignal.throwIfAborted();
+              if (version !== feedbackVersion && repair < 2) continue;
+              try {
+                await timed('compile_examples', () => prepareFastCode(source, originalDir, files, candidateSignal), { level });
+              } catch (error) {
+                candidateSignal.throwIfAborted();
+                if (!JSON.parse(source).source?.trim() || repair >= 2) throw error;
+                feedback = { ...(typeof feedback === 'object' && feedback ? feedback : {}), preparationError: String(error).slice(-16000), source: await solverSource(originalDir) };
+                state.fastFailed = true;
+                state.fastFailedLevel = level;
+                state.fastFeedback = feedback;
+                await save();
+                emit({ type: 'status', message: `CCC авто: level ${level} — repairing light in its existing thread` });
+                continue;
+              }
+              await timed('execution', () => withExecutionLimit(s => runRecipe(originalDir, taskFile, answersFile, s), candidateSignal), { level, attempt, candidate: 'fast' });
+              candidateSignal.throwIfAborted();
+              const answers = await timed('answer_validation', () => readAnswers(answersFile, originalDir, candidateIds), { level, attempt });
+              if (version !== feedbackVersion && repair < 2) continue;
+              return { answers, directory: originalDir, reasoning: 'low', threadId: undefined as string | undefined };
+            }
+          };
+          const winner = await raceLight(runLight, delayedReasonings.map(reasoning => directCandidate(reasoning)), signal,
+            () => emit({ type: 'status', message: `CCC авто: level ${level} — adding 6.1 Sol ${delayedReasonings.join(' and ')} / Fast after 20s` }), undefined, {
+              onCleanup: (elapsedMs, drained) => reportTiming('cancellation', elapsedMs, { level, drained }),
               background: needsBackground ? background : undefined,
               rejectedLightBackground: background,
               lightRetries: 2,
@@ -392,7 +458,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
                 feedback = { fastPreparationError: String(error).slice(-8000), sourceDirectory: originalDir };
                 state.fastFeedback = feedback;
                 await save();
-                emit({ type: 'status', message: `CCC авто: level ${level} — light preparation failed; starting background agent, keeping delayed medium/high` });
+                emit({ type: 'status', message: `CCC авто: level ${level} — light preparation failed; starting background candidate, keeping delayed medium/high` });
                 return background(candidateSignal);
               },
             });
@@ -400,6 +466,8 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           successfulDirectory = winner.directory;
           lightWinner = winner.reasoning === 'low';
           candidateLabel = lightWinner ? 'direct C++ / low / Fast' : `6.1 Sol / ${winner.reasoning} / Fast`;
+          winnerAgent = !lightWinner && winner.threadId ? { accountId: job.accountId, threadId: winner.threadId, reasoning: winner.reasoning } : undefined;
+          state.winnerAgent = winnerAgent;
           if (winner.threadId) {
             solverThreadId = winner.threadId;
             regularSolverTaskId = `${job.taskId}-ccc-${level}-${winner.reasoning}`;
@@ -453,7 +521,10 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           }, signal,
           () => emit({ type: 'status', message: `CCC авто: computation exceeded ${executionLimitMs / 1000} seconds; stopped solver, preparing one faster candidate` }),
         ) : await timed('answer_validation', () => readAnswers(answersFile, originalDir, pending), { level, attempt }));
-      if (!fastAnswers) await submitAnswers(answers, lightWinner, successfulDirectory!);
+      if (!fastAnswers && await submitAnswers(answers, lightWinner, successfulDirectory!)) {
+        winnerAgent = solverThreadId ? { accountId: job.accountId, threadId: solverThreadId, reasoning: 'medium' } : undefined;
+        state.winnerAgent = winnerAgent;
+      }
     }
     if (pending.length) throw new Error(`CCC level ${level}: ${pending.join(', ')} still rejected after three solution attempts. Outputs and evaluations are saved in ${folder}`);
     const verified = await timed('progress', () => client.call('game_info', { contest }), { level });

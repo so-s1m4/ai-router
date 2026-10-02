@@ -7,7 +7,7 @@ export async function raceLight<T>(
   signal: AbortSignal,
   onSlow: () => void,
   headStartMs = lightHeadStartMs,
-  options: { background?: (signal: AbortSignal) => Promise<T>; recoverLight?: (error: unknown, signal: AbortSignal) => Promise<T>; accept?: (value: T) => Promise<boolean>; rejectedLightBackground?: (signal: AbortSignal) => Promise<T>; lightRetries?: number } = {},
+  options: { background?: (signal: AbortSignal) => Promise<T>; recoverLight?: (error: unknown, signal: AbortSignal) => Promise<T>; accept?: (value: T) => Promise<boolean>; rejectedLightBackground?: (signal: AbortSignal) => Promise<T>; lightRetries?: number; onCleanup?: (elapsedMs: number, drained: boolean) => void | Promise<void> } = {},
 ): Promise<T> {
   signal.throwIfAborted();
   const controller = new AbortController();
@@ -76,7 +76,14 @@ export async function raceLight<T>(
     clearTimeout(timer);
     signal.removeEventListener('abort', abort);
     controller.abort(new Error('CCC candidate race finished'));
-    // Join canceled work before persisting usage or starting the next level.
-    await Promise.allSettled(tasks);
+    const started = Date.now();
+    let drained = false;
+    let cleanupTimer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled(tasks).then(() => { drained = true; }),
+      new Promise<void>(resolve => { cleanupTimer = setTimeout(resolve, 100); }),
+    ]);
+    clearTimeout(cleanupTimer);
+    await options.onCleanup?.(Date.now() - started, drained);
   }
 }

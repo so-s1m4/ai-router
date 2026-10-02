@@ -20,6 +20,7 @@ RUN apt-get update \
        poppler-utils \
        python3 \
        g++ \
+       util-linux \
        chromium \
        fonts-liberation \
        libasound2 \

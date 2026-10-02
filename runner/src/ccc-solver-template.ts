@@ -29,31 +29,55 @@ exports.runBatch = async function(solve) {
   // the native solver so large inputs and outputs never fill a JS buffer.
   await writeFile(path.join(directory, 'cpp.cjs'), `const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
-function output(file, target) {
+const { spawn } = require('node:child_process');
+const children = new Set();
+async function output(file, target) {
   const input = fs.openSync(file, 'r');
   const destination = target === undefined ? 1 : fs.openSync(target, 'w');
   try {
-    const result = spawnSync(path.join(__dirname, 'solution'), [], {
-      stdio: [input, destination, 'inherit'],
+    await new Promise((resolve, reject) => {
+      const binary = path.join(__dirname, 'solution');
+      const memory = process.env.CCC_CPP_MEMORY_BYTES;
+      const child = spawn(process.platform === 'linux' ? 'prlimit' : binary,
+        process.platform === 'linux' ? ['--as=' + memory, '--', binary] : [],
+        { stdio: [input, destination, 'inherit'] });
+      children.add(child);
+      child.on('error', reject);
+      child.on('close', (code, signal) => {
+        children.delete(child);
+        if (code !== 0) reject(new Error('C++ solver failed: ' + (signal || code)));
+        else resolve();
+      });
     });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error('C++ solver failed: ' + (result.signal || result.status));
   } finally {
     fs.closeSync(input);
     if (target !== undefined) fs.closeSync(destination);
   }
 }
-if (process.argv[2] === '--input') {
-  output(process.argv[3]);
-} else {
-  const task = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-  const answers = task.inputs.map((input, index) => {
-    const name = 'output-' + index + '.txt';
-    output(input.path, name);
-    return {file_id: input.file_id, path: name};
-  });
-  fs.writeFileSync(process.argv[3], JSON.stringify({answers}));
-}
+(async () => {
+  // Standalone example invocations use the same bounded memory default.
+  process.env.CCC_CPP_MEMORY_BYTES ||= String(512 * 1024 * 1024);
+  if (process.argv[2] === '--input') {
+    await output(process.argv[3]);
+  } else {
+    const task = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+    const answers = new Array(task.inputs.length);
+    let next = 0;
+    await Promise.all(Array.from({length: Math.min(Number(process.env.CCC_CPP_WORKERS || 1), task.inputs.length)}, async () => {
+      while (next < task.inputs.length) {
+        const index = next++;
+        const input = task.inputs[index];
+        const name = 'output-' + index + '.txt';
+        await output(input.path, name);
+        answers[index] = {file_id: input.file_id, path: name};
+      }
+    }));
+    fs.writeFileSync(process.argv[3], JSON.stringify({answers}));
+  }
+})().catch(error => {
+  for (const child of children) child.kill('SIGKILL');
+  console.error(error);
+  process.exitCode = 1;
+});
 `, { mode: 0o600 });
 }

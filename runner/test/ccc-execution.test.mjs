@@ -67,3 +67,32 @@ test('real solver is stopped before optimization starts', { timeout: 5000 }, asy
 test('optimized execution also has a limit', async () => {
   await assert.rejects(withExecutionLimit(signal => delay(500, undefined, { signal }), new AbortController().signal, 10), /exceeded/);
 });
+
+test('native batches overlap with bounded workers and per-process memory', async () => {
+  const { prepareSolverTemplate } = await import('../dist/ccc-solver-template.js');
+  const { availableParallelism, freemem } = await import('node:os');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ccc-parallel-'));
+  try {
+    await prepareSolverTemplate(root);
+    await writeFile(path.join(root,'solver.json'),JSON.stringify({runtime:'node',script:'cpp.cjs'}));
+    await writeFile(path.join(root,'solution'), '#!/bin/sh\necho start >> workers.log\nsleep 0.1\nulimit -v\ncat\necho end >> workers.log\n', {mode:0o700});
+    await writeFile(path.join(root,'input'),'hello\n');
+    await writeFile(path.join(root,'task.json'),JSON.stringify({inputs:Array.from({length:4},(_,i)=>({file_id:String(i),path:path.join(root,'input')}))}));
+    await runRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal);
+    let active=0, maximum=0;
+    for (const event of (await readFile(path.join(root,'workers.log'),'utf8')).trim().split('\n')) {
+      active += event === 'start' ? 1 : -1;
+      maximum=Math.max(maximum,active);
+    }
+    assert.equal(active,0);
+    assert.ok(maximum <= 2);
+    if (availableParallelism() >= 2 && freemem() > 2 * 1024 ** 3) assert.equal(maximum,2);
+    const answers=JSON.parse(await readFile(path.join(root,'answers.json'),'utf8')).answers;
+    assert.deepEqual(answers.map(a=>a.file_id),['0','1','2','3']);
+    for (const answer of answers) {
+      const text=await readFile(path.join(root,answer.path),'utf8');
+      if(process.platform === 'linux') assert.equal(text,'524288\nhello\n');
+      else assert.match(text,/hello/);
+    }
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
