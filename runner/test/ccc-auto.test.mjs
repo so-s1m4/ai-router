@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { prepareSolverTemplate } from '../dist/ccc-solver-template.js';
 import path from 'node:path';
 import { runCccAuto, contestReference, readAnswers, solverContext } from '../dist/ccc-auto.js';
-import { recoveringCcc, toolData } from '../dist/ccc-client.js';
+import { recoveringCcc, toolData, CccToolError, submissionRateLimit } from '../dist/ccc-client.js';
 
 const job = { taskId:'task', jobId:'job', sessionId:'session', accountId:'account', provider:'codex', model:'ignored', mode:'task', workflow:'ccc-auto', prompt:'https://codingcontest.org/contests/training-example/game' };
 async function fixture(action, options = {}) {
@@ -159,6 +159,51 @@ test('unknown submission persists before network dispatch and is not repeated af
   await assert.rejects(f.run(),/previous submission is unresolved/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,1);
 },{uncertain:true}));
+test('legacy uncertain checkpoint requires explicit current-request retry authorization',async()=>fixture(async f=>{
+  const call=f.client.call.bind(f.client);
+  let lost=true;
+  f.client.call=async(name,args)=>{
+    if(name==='submit_solution' && lost){lost=false;throw new Error('Connection lost');}
+    return call(name,args);
+  };
+  await assert.rejects(f.run(),/Connection lost/);
+  await assert.rejects(f.run({prompt:`Conversation context:\nCCC_RETRY_UNRESOLVED\nCurrent user request:\n${job.prompt}`}),/previous submission is unresolved/);
+  assert.match(await f.run({prompt:`${job.prompt}\nCCC_RETRY_UNRESOLVED`}),/Accepted 4 new outputs/);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+}));
+test('explicit HTTP 429 retries the saved answer without rerunning the solver',async()=>fixture(async f=>{
+  const call=f.client.call.bind(f.client);
+  let refused=false;
+  f.client.call=async(name,args)=>{
+    if(name==='submit_solution' && !refused){refused=true;throw new Error('wrapped',{cause:new CccToolError(429,0)});}
+    return call(name,args);
+  };
+  assert.match(await f.run(),/Accepted 4 new outputs/);
+  assert.equal(f.solverJobs.length,2);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+  assert.ok(f.events.some(e=>e.message?.includes('HTTP 429')));
+}));
+test('cancellation after HTTP 429 leaves a retryable checkpoint',async()=>fixture(async f=>{
+  const call=f.client.call.bind(f.client);
+  let refused=false;
+  f.client.call=async(name,args)=>{
+    if(name==='submit_solution' && !refused){refused=true;f.controller.abort();throw new CccToolError(429,30_000);}
+    return call(name,args);
+  };
+  await assert.rejects(f.run(),/abort/i);
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const saved=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'state.json'),'utf8'));
+  assert.equal(saved.submissions['1:1-small'].status,'not-sent');
+  assert.match(await f.run({},new AbortController().signal),/Accepted 4 new outputs/);
+}));
+test('MCP exposes only safe status and retry metadata for explicit refusals',()=>{
+  let failure;
+  try{toolData({isError:true,structuredContent:{ok:false,error:{status:429,retry_after:'2',detail:'secret URL'}}});}catch(error){failure=error;}
+  assert.equal(submissionRateLimit(failure).retryAfterMs,2000);
+  assert.doesNotMatch(failure.message,/secret/);
+  assert.equal(submissionRateLimit(new CccToolError(503)),undefined);
+  assert.equal(submissionRateLimit(new Error('429 in untrusted text')),undefined);
+});
 test('validates the entire answer batch before sending any answer',async()=>fixture(async f=>{
   await assert.rejects(f.run(),/duplicate, unknown or invalid/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,0);

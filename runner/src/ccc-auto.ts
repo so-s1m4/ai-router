@@ -7,6 +7,8 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CccClient } from './ccc-client.js';
+import { submissionRateLimit } from './ccc-client.js';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Event, Job } from './cli.js';
 
 const maxBytes = 30 * 1024 * 1024;
@@ -25,7 +27,7 @@ async function batch<T, R>(items: T[], action: (item: T, index: number) => Promi
   }
   return results;
 }
-type Submission = { status: 'submitting' | 'accepted' | 'rejected'; evaluation?: unknown; deliveryJobId?: number };
+type Submission = { status: 'submitting' | 'accepted' | 'rejected' | 'not-sent'; evaluation?: unknown; deliveryJobId?: number };
 type SolverThread = { accountId: string; threadId: string };
 type State = { contest: string; submissions: Record<string, Submission>; fastFailed?: boolean; fastFailedLevel?: number; fastFeedback?: unknown; solverThread?: SolverThread; lightThread?: SolverThread; candidateThreads?: Record<string, SolverThread>; winnerAgent?: SolverThread & { reasoning: string } };
 export type Solver = (job: Job, signal: AbortSignal, emit: (event: Event) => void) => Promise<string>;
@@ -134,6 +136,8 @@ export async function readAnswers(file: string, directory: string, ids: string[]
 
 export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve: Solver, signal: AbortSignal, emit: (event: Event) => void, options: { steer?: typeof steerCodexJob } = {}): Promise<string> {
   const reference = contestReference(job.originalPrompt || job.prompt);
+  // Explicit recovery authorization must come from this request, never quoted chat history.
+  const retryUnresolved = /\bCCC_RETRY_UNRESOLVED\b/.test((job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)!);
   emit({ type: 'status', message: 'CCC авто: checking contest and progress' });
   const startedAt = Date.now();
   const progressStartedAt = Date.now();
@@ -245,7 +249,12 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     let pending = ids.filter(id => !unscored.has(id) && !passed(info, level, id));
     for (const id of pending) {
       const previous = state.submissions[`${level}:${id}`];
-      if (previous?.status === 'submitting' || previous?.status === 'accepted') throw new Error(`CCC level ${level}, ${id}: previous submission is unresolved. Check platform progress before continuing; it will not be sent twice.`);
+      if (previous?.status === 'submitting' && retryUnresolved) {
+        // Fresh platform progress above did not confirm acceptance. The user explicitly allowed a retry.
+        state.submissions[`${level}:${id}`] = { status: 'not-sent' };
+        await save();
+        emit({ type: 'status', message: `CCC авто: retry authorized for level ${level}, ${id}; saved solver results will be reused when available` });
+      } else if (previous?.status === 'submitting' || previous?.status === 'accepted') throw new Error(`CCC level ${level}, ${id}: previous submission is unresolved. Check platform progress before continuing; it will not be sent twice. To explicitly allow retrying an unconfirmed submission, send the contest URL with CCC_RETRY_UNRESOLVED.`);
     }
     if (!pending.length) continue;
     emit({ type: 'status', message: `CCC авто: fetching level ${level} (${pending.length} inputs)` });
@@ -315,10 +324,26 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           submission.artifact_id = artifactId;
         }
         // Persist before dispatch. Lost responses remain uncertain even after cancellation/restart.
-        state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
         emit({ type: 'tool', message: `CCC авто: submitting level ${level}, ${id}` });
         let result: any;
-        try { result = await timed('submission', () => client.call('submit_solution', submission), { level, fileId: id }); }
+        try {
+          for (let retry = 0; ; retry++) {
+            signal.throwIfAborted();
+            state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
+            try {
+              result = await timed('submission', () => client.call('submit_solution', submission), { level, fileId: id });
+              break;
+            } catch (error) {
+              const rateLimit = submissionRateLimit(error);
+              if (!rateLimit) throw error;
+              // An explicit HTTP refusal is not an uncertain delivery. Preserve this across cancellation/restart.
+              state.submissions[`${level}:${id}`] = { status: 'not-sent' }; await save();
+              if (retry >= 5) throw error;
+              emit({ type: 'status', message: 'CCC авто: server refused submission (HTTP 429); retrying saved answer' });
+              await delay(Math.max(1000, rateLimit.retryAfterMs ?? 1000), undefined, { signal });
+            }
+          }
+        }
         catch (error) {
           signal.throwIfAborted();
           emit({ type: 'status', message: 'CCC авто: submission response lost; checking platform progress before continuing' });

@@ -11,6 +11,18 @@ export interface CccClient {
   close(): Promise<void>;
 }
 
+export class CccToolError extends Error {
+  constructor(public status?: number, public retryAfterMs?: number) {
+    super(`CCC MCP operation failed${status ? ` (HTTP ${status})` : ''}; check access or server status`);
+  }
+}
+
+export function submissionRateLimit(error: unknown): CccToolError | undefined {
+  if (error instanceof CccToolError && error.status === 429) return error;
+  if (error instanceof Error && error.cause) return submissionRateLimit(error.cause);
+  return undefined;
+}
+
 export function toolData(result: any): any {
   let value = result.structuredContent;
   if (!value) {
@@ -19,7 +31,10 @@ export function toolData(result: any): any {
   }
   if (result.isError || value.ok === false) {
     // Do not include server messages: they may contain authenticated URLs.
-    throw new Error('CCC MCP operation failed; check access, cooldown and server status');
+    const status = Number(value.error?.status);
+    const retry = Number(value.error?.retry_after);
+    throw new CccToolError(Number.isInteger(status) && status >= 400 && status <= 599 ? status : undefined,
+      value.error?.retry_after != null && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry * 1000) : undefined);
   }
   return value.data ?? value;
 }
