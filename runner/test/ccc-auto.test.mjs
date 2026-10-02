@@ -335,8 +335,8 @@ test('fast compiler failure falls back to an agent before any submission',async(
 
 test('fast rejected outputs are corrected by the agent with platform feedback',async()=>fixture(async f=>{
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true]);
-  assert.match(f.solverJobs[1].prompt,/isCorrect/);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,true]);
+  assert.match(f.solverJobs.find(j=>!j.solverCodeOnly).prompt,/isCorrect/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,5);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').slice(0,3).map(c=>c.args.file_id),['1-small','1-small','2-large']);
 },{fastLevels:2,rejectFirst:true}));
@@ -348,7 +348,7 @@ test('default light path continues through all levels until a failure',async()=>
 
 test('light rejection preserves accepted inputs and the next level returns to light',async()=>fixture(async f=>{
   assert.match(await f.run(),/Accepted 6 new outputs/);
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,true]);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,true,false,true]);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),
     [[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large'],[2,'2-large'],[3,'1-small'],[3,'2-large']]);
 },{defaultFastLevels:true,levels:[1,2,3],rejectAt:4}));
@@ -401,32 +401,32 @@ test('nonunique examples keep the fast path and provide accepted source to the n
 
 test('constructive outputs rejected by the platform still fall back before sending later inputs',async()=>fixture(async f=>{
   await f.run();
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true]);
-  assert.match(f.solverJobs[1].prompt,/isCorrect/);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,true]);
+  assert.match(f.solverJobs.find(j=>!j.solverCodeOnly).prompt,/isCorrect/);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').slice(0,3).map(c=>c.args.file_id),['1-small','1-small','2-large']);
 },{fastLevels:2,outputMode:'constructive',rejectFirst:true}));
 
 test('light failure resumes correction after restart then returns to light',async()=>fixture(async f=>{
   const solve = async (solverJob, signal, emit) => {
-    if (!solverJob.solverCodeOnly) throw new Error('Interrupted agent');
+    if (!solverJob.solverCodeOnly) { f.controller.abort(new Error('Interrupted agent')); throw f.controller.signal.reason; }
     return f.solve(solverJob, signal, emit);
   };
   await assert.rejects(runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event)),/Interrupted agent/);
   const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
   const state=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'state.json'),'utf8'));
   assert.equal(state.fastFailed,true);
-  await f.run({taskId:'continued'});
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true,false]);
+  await f.run({taskId:'continued'}, new AbortController().signal);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,false,true,false]);
 },{defaultFastLevels:true,badCode:true}));
 
-test('light rejection stays in agent mode after restart without resubmitting accepted inputs',async()=>fixture(async f=>{
+test('light rejection resumes light and background agent after restart without resubmitting accepted inputs',async()=>fixture(async f=>{
   const solve = async (solverJob, signal, emit) => {
-    if (!solverJob.solverCodeOnly) throw new Error('Interrupted correction');
+    if (!solverJob.solverCodeOnly) { f.controller.abort(new Error('Interrupted correction')); throw f.controller.signal.reason; }
     return f.solve(solverJob, signal, emit);
   };
   await assert.rejects(runCccAuto(job,f.cwd,f.client,solve,f.controller.signal,event=>f.events.push(event)),/Interrupted correction/);
-  await f.run({taskId:'continued'});
-  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,false,true]);
+  await f.run({taskId:'continued'}, new AbortController().signal);
+  assert.deepEqual(f.solverJobs.map(j=>Boolean(j.solverCodeOnly)),[true,true,true,false,true]);
   assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>[c.args.level,c.args.file_id]),
     [[1,'1-small'],[1,'2-large'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
 },{defaultFastLevels:true,rejectAt:2}));
@@ -491,3 +491,77 @@ for (const winner of ['medium', 'high']) test(`20s starts medium and high Fast; 
   assert.equal(state.solverThread.threadId,`thread-${winner}`);
   assert.equal(state.fastFailed,undefined);
 },{fastLevels:2}));
+
+test('rejected light retries beside background, then medium/high race and next level starts light', async t => fixture(async f => {
+  let correctionStarted, backupsStarted;
+  const correctionReady = new Promise(resolve => { correctionStarted = resolve; });
+  const backupsReady = new Promise(resolve => { backupsStarted = resolve; });
+  const started = [], canceled = [];
+  let nextLight;
+  const solve = async (solverJob, signal, emit) => {
+    if (solverJob.prompt.startsWith('Solve CCC level 2')) {
+      nextLight = solverJob;
+      return f.solve(solverJob, signal, emit);
+    }
+    if (solverJob.taskId.endsWith('-ccc-code-1-0')) return f.solve(solverJob, signal, emit);
+    const label = solverJob.solverCodeOnly ? 'light' : solverJob.taskId.split('-').at(-1);
+    started.push(label);
+    assert.match(solverJob.prompt, /isCorrect/);
+    if (label === 'background') correctionStarted();
+    if (['medium', 'high'].includes(label)) {
+      if (label === 'high') backupsStarted();
+      await backupsReady;
+      if (label === 'high') return f.solve(solverJob, signal, emit);
+    }
+    try { await new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), {once:true});
+      if (signal.aborted) reject(signal.reason);
+    }); } finally { canceled.push(label); }
+  };
+  t.mock.timers.enable({apis:['setTimeout']});
+  const pending = runCccAuto(job, f.cwd, f.client, solve, f.controller.signal, event => f.events.push(event));
+  await correctionReady;
+  assert.deepEqual(started, ['light','background']);
+  t.mock.timers.tick(19_999);
+  assert.deepEqual(started, ['light','background']);
+  t.mock.timers.tick(1);
+  t.mock.timers.reset();
+  assert.match(await pending, /Accepted 4 new outputs/);
+  assert.deepEqual(started, ['light','background','medium','high']);
+  assert.deepEqual(canceled.sort(), ['background','light','medium']);
+  assert.equal(nextLight.solverCodeOnly, true);
+  assert.equal(nextLight.reasoning, 'low');
+  assert.equal(f.calls.filter(c => c.name === 'submit_solution').length, 5);
+}, {fastLevels:2, rejectFirst:true}));
+
+test('rejected retry does not cancel or restart the background solver; acceptance starts next light', async () => fixture(async f => {
+  let releaseBackground;
+  const retryRejected = new Promise(resolve => { releaseBackground = resolve; });
+  let backgroundSignal;
+  const call = f.client.call.bind(f.client);
+  f.client.call = async (name, args) => {
+    const result = await call(name, args);
+    if (name === 'submit_solution' && f.calls.filter(c => c.name === name).length === 2) {
+      assert.equal(result.evaluation.isCorrect, false);
+      assert.equal(backgroundSignal.aborted, false);
+      releaseBackground();
+    }
+    return result;
+  };
+  let backgroundRuns = 0;
+  const solve = async (solverJob, signal, emit) => {
+    if (solverJob.taskId.endsWith('-background')) {
+      backgroundRuns++;
+      backgroundSignal = signal;
+      await retryRejected;
+      assert.equal(signal.aborted, false);
+    }
+    return f.solve(solverJob, signal, emit);
+  };
+  assert.match(await runCccAuto(job, f.cwd, f.client, solve, f.controller.signal, event => f.events.push(event)), /Accepted 4 new outputs/);
+  assert.equal(backgroundRuns, 1);
+  assert.equal(backgroundSignal.aborted, true);
+  assert.deepEqual(f.calls.filter(c => c.name === 'submit_solution').map(c => [c.args.level, c.args.file_id]),
+    [[1,'1-small'],[1,'1-small'],[1,'1-small'],[1,'2-large'],[2,'1-small'],[2,'2-large']]);
+  assert.equal(f.solverJobs.find(j => j.prompt.startsWith('Solve CCC level 2')).solverCodeOnly, true);
+}, {fastLevels:2, rejectFirst:true, rejectAt:2}));

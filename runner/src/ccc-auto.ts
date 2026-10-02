@@ -26,7 +26,7 @@ async function batch<T, R>(items: T[], action: (item: T, index: number) => Promi
   return results;
 }
 type Submission = { status: 'submitting' | 'accepted' | 'rejected'; evaluation?: unknown; deliveryJobId?: number };
-type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; fastFailed?: boolean; fastFailedLevel?: number; solverThread?: { accountId: string; threadId: string } };
+type State = { contest: string; submissions: Record<string, Submission>; nextSubmitAt?: number; fastFailed?: boolean; fastFailedLevel?: number; fastFeedback?: unknown; solverThread?: { accountId: string; threadId: string } };
 export type Solver = (job: Job, signal: AbortSignal, emit: (event: Event) => void) => Promise<string>;
 
 // Give the model the statement and small input samples without a discovery turn.
@@ -269,8 +269,62 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     await atomic(manifest, { contest, level, level_info: prepared.level_info, files, inputs });
     await reportTiming('download', Date.now() - downloadStartedAt, { level });
     const context = await timed('solver_context', () => solverContext(files, inputs), { level });
-    let feedback: unknown = undefined;
+    let feedback: unknown = state.fastFailedLevel === level ? state.fastFeedback : undefined;
     let successfulDirectory: string | undefined;
+    const submitAnswers = async (answers: Map<string, Buffer>, lightWinner: boolean, sourceDirectory: string, racing = false) => {
+      const rejected: string[] = []; const evaluations: Record<string, unknown> = {};
+      for (const id of [...pending]) {
+        if ((state.nextSubmitAt || 0) > Date.now()) {
+          emit({ type: 'status', message: 'CCC авто: waiting for submission cooldown' });
+          await timed('cooldown', () => delay(Math.max(0, state.nextSubmitAt! - Date.now()), undefined, { signal }), { level, fileId: id });
+        }
+        signal.throwIfAborted();
+        const content = answers.get(id)!;
+        let submission: Record<string, unknown> = { contest, level, file_id: id, filename: `level-${level}-output.txt`, include_case_details: true };
+        if (content.length <= 256 * 1024) submission.solution = content.toString('utf8');
+        else {
+          const uploaded = await timed('upload', () => client.call('upload_artifact', { filename: submission.filename, data_base64: content.toString('base64') }), { level, fileId: id });
+          const artifactId = uploaded.artifact_id || uploaded.artifact?.artifact_id;
+          if (!artifactId) throw new Error('CCC output upload returned no artifact ID');
+          submission.artifact_id = artifactId;
+        }
+        // Persist before dispatch. Lost responses remain uncertain even after cancellation/restart.
+        state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
+        emit({ type: 'tool', message: `CCC авто: submitting level ${level}, ${id}` });
+        let result: any;
+        try { result = await timed('submission', () => client.call('submit_solution', submission), { level, fileId: id }); }
+        catch (error) {
+          signal.throwIfAborted();
+          emit({ type: 'status', message: 'CCC авто: submission response lost; checking platform progress before continuing' });
+          const progress = await timed('progress', () => client.call('game_info', { contest }), { level });
+          if (!passed(progress, level, id)) throw error;
+          // Platform confirms delivery; do not dispatch this submission again.
+          result = { evaluation: { isCorrect: true, recoveredFromProgress: true }, cooldownSec: 60 };
+        }
+        const correct = result.evaluation?.isCorrect;
+        if (typeof correct !== 'boolean') throw new Error('CCC submission has no definitive evaluation; check platform progress before continuing');
+        const cooldown = Number(result.cooldownSec ?? 0);
+        if (!Number.isFinite(cooldown) || cooldown < 0 || cooldown > 86400) throw new Error('CCC returned an invalid cooldown; check platform progress before continuing');
+        if (!correct && lightWinner) { state.fastFailed = true; state.fastFailedLevel = level; }
+        state.nextSubmitAt = Date.now() + cooldown * 1000;
+        state.submissions[`${level}:${id}`] = { status: correct ? 'accepted' : 'rejected', evaluation: result.evaluation, deliveryJobId: result.delivery_job_id };
+        await save();
+        emit({ type: 'status', message: `CCC авто: level ${level}, ${id} — ${correct ? 'accepted' : 'rejected'}` });
+        if (correct) accepted++;
+        else {
+          rejected.push(id); evaluations[id] = result.evaluation;
+          if (lightWinner || racing) {
+            emit({ type: 'status', message: 'CCC авто: answer rejected; other candidates continue solving' });
+            rejected.push(...pending.slice(pending.indexOf(id) + 1));
+            break;
+          }
+        }
+      }
+      pending = rejected;
+      feedback = rejected.length ? { evaluations, sourceDirectory, source: await solverSource(sourceDirectory) } : evaluations;
+      if (rejected.length && state.fastFailedLevel === level) { state.fastFeedback = feedback; await save(); }
+      return pending.length === 0;
+    };
     for (let attempt = 0; attempt < 3 && pending.length; attempt++) {
       signal.throwIfAborted();
       const originalDir = path.join(folder, `run-${runId}-${attempt}-original`);
@@ -285,37 +339,63 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       const solvingStartedAt = Date.now();
       let fastAnswers: Map<string, Buffer> | undefined;
       let lightWinner = false;
+      let submissionFailed = false;
       let candidateLabel = '6.1 Sol / medium / Fast';
-      const fastEligible = attempt === 0 && !(state.fastFailed && state.fastFailedLevel === level) && level <= fastLevelLimit()
+      const fastEligible = level <= fastLevelLimit()
         && context.files.some(file => file.pdf_preview) && !context.files.some(file => file.truncated);
       if (fastEligible) {
         emit({ type: 'status', message: `CCC авто: level ${level} — generating C++ directly (low / Fast)` });
         try {
-          const winner = await raceLight(async candidateSignal => {
-            const source = await askSolver(codePrompt(level, { ...context, previousLevel: previousLevelContext, userRequest: (job.originalPrompt || job.prompt).split('Current user request:\n').at(-1) }), `${job.taskId}-ccc-code-${level}`, candidateSignal, false, true);
-            candidateSignal.throwIfAborted();
-            await timed('compile_examples', () => prepareFastCode(source, originalDir, files, candidateSignal), { level });
-            await timed('execution', () => withExecutionLimit(s => runRecipe(originalDir, taskFile, answersFile, s), candidateSignal), { level, attempt, candidate: 'fast' });
-            candidateSignal.throwIfAborted();
-            const answers = await timed('answer_validation', () => readAnswers(answersFile, originalDir, pending), { level, attempt });
-            return { answers, directory: originalDir, reasoning: 'low', threadId: undefined as string | undefined };
-          }, ['medium', 'high'].map(reasoning => async (candidateSignal: AbortSignal) => {
-            const candidateDir = path.join(folder, `run-${runId}-${attempt}-${reasoning}`);
+          const candidateIds = [...pending];
+          const agentCandidate = (reasoning: string, label = reasoning) => async (candidateSignal: AbortSignal) => {
+            const candidateDir = path.join(folder, `run-${runId}-${attempt}-${label}`);
             await mkdir(candidateDir, { recursive: true, mode: 0o700 });
             await prepareSolverTemplate(candidateDir);
             candidateSignal.throwIfAborted();
             let threadId: string | undefined;
             const lightSource = await solverSource(originalDir);
-            await askSolver(prompt.replaceAll(originalDir, candidateDir) + `\nCurrent light source (unverified): ${JSON.stringify(lightSource ?? null)}\nWork only in your own run directory; other solvers are running independently.`, `${job.taskId}-ccc-${level}-${reasoning}`, candidateSignal, false, false,
+            await askSolver(prompt.replaceAll(originalDir, candidateDir) + `\nPreparation feedback: ${JSON.stringify(feedback ?? null)}\nCurrent light source (unverified): ${JSON.stringify(lightSource ?? null)}\nWork only in your own run directory; other solvers are running independently.`, `${job.taskId}-ccc-${level}-${attempt}-${label}`, candidateSignal, false, false,
               { reasoning, onCheckpoint: value => { threadId = value; } });
             candidateSignal.throwIfAborted();
             const output = path.join(candidateDir, 'answers.json');
             const recipe = await readFile(path.join(candidateDir, 'solver.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
-            if (recipe) await timed('execution', () => withExecutionLimit(s => runRecipe(candidateDir, taskFile, output, s), candidateSignal), { level, attempt, candidate: reasoning });
+            if (recipe) await timed('execution', () => withExecutionLimit(s => runRecipe(candidateDir, taskFile, output, s), candidateSignal), { level, attempt, candidate: label });
             candidateSignal.throwIfAborted();
-            const answers = await timed('answer_validation', () => readAnswers(output, candidateDir, pending), { level, attempt, candidate: reasoning });
+            const answers = await timed('answer_validation', () => readAnswers(output, candidateDir, candidateIds), { level, attempt, candidate: label });
             return { answers, directory: candidateDir, reasoning, threadId };
-          }), signal, () => emit({ type: 'status', message: `CCC авто: level ${level} — light still running after 20s; adding 6.1 Sol medium / Fast and high / Fast in parallel` }));
+          };
+          const background = agentCandidate('medium', 'background');
+          const needsBackground = (state.fastFailed && state.fastFailedLevel === level) || attempt > 0;
+          if (needsBackground) emit({ type: 'status', message: `CCC авто: level ${level} — starting background agent alongside light` });
+          let lightGeneration = attempt;
+          const winner = await raceLight(async candidateSignal => {
+            const source = await askSolver(codePrompt(level, { ...context, evaluationFeedback: feedback ?? null, previousLevel: previousLevelContext, userRequest: (job.originalPrompt || job.prompt).split('Current user request:\n').at(-1) }), `${job.taskId}-ccc-code-${level}-${lightGeneration++}`, candidateSignal, false, true);
+            candidateSignal.throwIfAborted();
+            await timed('compile_examples', () => prepareFastCode(source, originalDir, files, candidateSignal), { level });
+            await timed('execution', () => withExecutionLimit(s => runRecipe(originalDir, taskFile, answersFile, s), candidateSignal), { level, attempt, candidate: 'fast' });
+            candidateSignal.throwIfAborted();
+            const answers = await timed('answer_validation', () => readAnswers(answersFile, originalDir, candidateIds), { level, attempt });
+            return { answers, directory: originalDir, reasoning: 'low', threadId: undefined as string | undefined };
+          }, ['medium', 'high'].map(reasoning => agentCandidate(reasoning)), signal,
+            () => emit({ type: 'status', message: `CCC авто: level ${level} — adding 6.1 Sol medium / Fast and high / Fast after 20s` }), undefined, {
+              background: needsBackground ? background : undefined,
+              rejectedLightBackground: background,
+              lightRetries: 2,
+              accept: async candidate => {
+                try { return await submitAnswers(candidate.answers, candidate.reasoning === 'low', candidate.directory, true); }
+                catch (error) { submissionFailed = true; throw error; }
+              },
+              recoverLight: async (error, candidateSignal) => {
+                if (['rate_limit', 'auth', 'unavailable'].includes((error as { code?: string })?.code || '')) throw error;
+                state.fastFailed = true;
+                state.fastFailedLevel = level;
+                feedback = { fastPreparationError: String(error).slice(-8000), sourceDirectory: originalDir };
+                state.fastFeedback = feedback;
+                await save();
+                emit({ type: 'status', message: `CCC авто: level ${level} — light preparation failed; starting background agent, keeping delayed medium/high` });
+                return background(candidateSignal);
+              },
+            });
           fastAnswers = winner.answers;
           successfulDirectory = winner.directory;
           lightWinner = winner.reasoning === 'low';
@@ -328,6 +408,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           }
         } catch (error) {
           signal.throwIfAborted();
+          if (submissionFailed) throw error;
           if (['rate_limit', 'auth', 'unavailable'].includes((error as {code?: string}).code || '')) throw error;
           state.fastFailed = true;
           state.fastFailedLevel = level;
@@ -372,56 +453,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           }, signal,
           () => emit({ type: 'status', message: `CCC авто: computation exceeded ${executionLimitMs / 1000} seconds; stopped solver, preparing one faster candidate` }),
         ) : await timed('answer_validation', () => readAnswers(answersFile, originalDir, pending), { level, attempt }));
-      const rejected: string[] = []; const evaluations: Record<string, unknown> = {};
-      for (const id of pending) {
-        if ((state.nextSubmitAt || 0) > Date.now()) {
-          emit({ type: 'status', message: 'CCC авто: waiting for submission cooldown' });
-          await timed('cooldown', () => delay(Math.max(0, state.nextSubmitAt! - Date.now()), undefined, { signal }), { level, fileId: id });
-        }
-        signal.throwIfAborted();
-        const content = answers.get(id)!;
-        let submission: Record<string, unknown> = { contest, level, file_id: id, filename: `level-${level}-output.txt`, include_case_details: true };
-        if (content.length <= 256 * 1024) submission.solution = content.toString('utf8');
-        else {
-          const uploaded = await timed('upload', () => client.call('upload_artifact', { filename: submission.filename, data_base64: content.toString('base64') }), { level, fileId: id });
-          const artifactId = uploaded.artifact_id || uploaded.artifact?.artifact_id;
-          if (!artifactId) throw new Error('CCC output upload returned no artifact ID');
-          submission.artifact_id = artifactId;
-        }
-        // Persist before dispatch. Lost responses remain uncertain even after cancellation/restart.
-        state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
-        emit({ type: 'tool', message: `CCC авто: submitting level ${level}, ${id}` });
-        let result: any;
-        try { result = await timed('submission', () => client.call('submit_solution', submission), { level, fileId: id }); }
-        catch (error) {
-          signal.throwIfAborted();
-          emit({ type: 'status', message: 'CCC авто: submission response lost; checking platform progress before continuing' });
-          const progress = await timed('progress', () => client.call('game_info', { contest }), { level });
-          if (!passed(progress, level, id)) throw error;
-          // Platform confirms delivery; do not dispatch this submission again.
-          result = { evaluation: { isCorrect: true, recoveredFromProgress: true }, cooldownSec: 60 };
-        }
-        const correct = result.evaluation?.isCorrect;
-        if (typeof correct !== 'boolean') throw new Error('CCC submission has no definitive evaluation; check platform progress before continuing');
-        const cooldown = Number(result.cooldownSec ?? 0);
-        if (!Number.isFinite(cooldown) || cooldown < 0 || cooldown > 86400) throw new Error('CCC returned an invalid cooldown; check platform progress before continuing');
-        if (!correct && lightWinner) { state.fastFailed = true; state.fastFailedLevel = level; }
-        state.nextSubmitAt = Date.now() + cooldown * 1000;
-        state.submissions[`${level}:${id}`] = { status: correct ? 'accepted' : 'rejected', evaluation: result.evaluation, deliveryJobId: result.delivery_job_id };
-        await save();
-        emit({ type: 'status', message: `CCC авто: level ${level}, ${id} — ${correct ? 'accepted' : 'rejected'}` });
-        if (correct) accepted++;
-        else {
-          rejected.push(id); evaluations[id] = result.evaluation;
-          if (lightWinner) {
-            emit({ type: 'status', message: 'CCC авто: light answer rejected; using agent for this level' });
-            rejected.push(...pending.slice(pending.indexOf(id) + 1));
-            break;
-          }
-        }
-      }
-      pending = rejected;
-      feedback = rejected.length ? { evaluations, sourceDirectory: successfulDirectory, source: await solverSource(successfulDirectory!) } : evaluations;
+      if (!fastAnswers) await submitAnswers(answers, lightWinner, successfulDirectory!);
     }
     if (pending.length) throw new Error(`CCC level ${level}: ${pending.join(', ')} still rejected after three solution attempts. Outputs and evaluations are saved in ${folder}`);
     const verified = await timed('progress', () => client.call('game_info', { contest }), { level });
@@ -429,6 +461,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     info = verified;
     delete state.fastFailed;
     delete state.fastFailedLevel;
+    delete state.fastFeedback;
     await save();
     const source = successfulDirectory ? await solverSource(successfulDirectory) : undefined;
     previousLevelContext = { level, ...context, source };
