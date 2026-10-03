@@ -25,6 +25,10 @@ export class CccAutoPageComponent implements OnInit {
   candidateAccounts(c:CccCandidate){return this.accounts.accounts().filter(a=>!a.shared&&a.provider===c.provider);}
   models(c:CccCandidate){return [...new Map(this.candidateAccounts(c).filter(a=>!c.accountId||a.id===c.accountId).flatMap(a=>a.models).filter(m=>m.id!=='default').map(m=>[m.id,m])).values()];}
   providerChanged(c:CccCandidate){c.accountId=undefined;c.model=c.provider==='codex'?'gpt-6.1-sol':'openrouter/auto';if(c.provider==='openrouter')c.fast=false;}
+  routingProviders(c:CccCandidate){return c.openRouterRouting?.only.join(', ') ?? '';}
+  setRoutingProviders(c:CccCandidate,value:string){c.openRouterRouting={only:[...new Set(value.split(/[,\s]+/).filter(Boolean))],allowFallbacks:c.openRouterRouting?.allowFallbacks ?? true};}
+  setRoutingFallbacks(c:CccCandidate,value:boolean){c.openRouterRouting={only:c.openRouterRouting?.only ?? [],allowFallbacks:value};}
+  useGoogleFlex(c:CccCandidate){c.openRouterRouting={only:['google-ai-studio/flex'],allowFallbacks:false};}
   addCandidate(index:number){const row=this.settings.levels[index];if(row.candidates.length>=8)return;row.candidates.push({id:'candidate-'+Date.now().toString(36),enabled:true,provider:'codex',model:'gpt-6.1-sol',reasoning:'high',delaySeconds:30,mode:'code',fast:true});}
   removeCandidate(index:number,id:string){const row=this.settings.levels[index];if(row.candidates.length>1)row.candidates=row.candidates.filter(c=>c.id!==id);}
   copyCandidates(index:number){const candidates=this.settings.levels[index].candidates;for(const row of this.settings.levels)row.candidates=structuredClone(candidates);this.notice='Состав участников скопирован на все диапазоны. Нажмите «Сохранить».';}

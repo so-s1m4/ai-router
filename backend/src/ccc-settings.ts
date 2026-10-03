@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+export const openRouterRoutingSchema = z.object({
+  only: z.array(z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*$/)).max(20),
+  allowFallbacks: z.boolean(),
+}).strict();
+export type OpenRouterRouting = z.infer<typeof openRouterRoutingSchema>;
+
 export const cccCandidateSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/),
   enabled: z.boolean(),
@@ -10,6 +16,7 @@ export const cccCandidateSchema = z.object({
   delaySeconds: z.number().min(0).max(3600),
   mode: z.enum(['code', 'agent']),
   fast: z.boolean(),
+  openRouterRouting: openRouterRoutingSchema.optional(),
 }).strict();
 export const cccAutoSchema = z.object({
   version: z.literal(1),

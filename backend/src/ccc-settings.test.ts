@@ -24,11 +24,22 @@ test('CCC settings persist atomically and stay isolated per user',async()=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'ccc-settings-'));process.env.DATA_DIR=dir;
   try{
     const {readCccSettings,saveCccSettings}=await import('./ccc-settings-store.js');
-    const s=defaultCccAutoSettings();s.submissionIntervalSeconds=2.5;s.levels[0].candidates[0].provider='openrouter';s.levels[0].candidates[0].model='anthropic/claude-test';
+    const s=defaultCccAutoSettings();s.submissionIntervalSeconds=2.5;s.levels[0].candidates[0].provider='openrouter';s.levels[0].candidates[0].model='anthropic/claude-test';s.levels[0].candidates[0].openRouterRouting={only:['google-ai-studio/flex'],allowFallbacks:false};
     await saveCccSettings('user-one',s);assert.deepEqual(await readCccSettings('user-one'),s);
     assert.deepEqual(await readCccSettings('user-two'),defaultCccAutoSettings());
     const next=structuredClone(s);next.solutionAttempts=4;
     await Promise.all([saveCccSettings('user-one',s),saveCccSettings('user-one',next)]);
     assert.deepEqual(await readCccSettings('user-one'),next);
   }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('CCC routing validates endpoint slugs and remains compatible with legacy settings',()=>{
+  const settings=defaultCccAutoSettings();
+  assert.equal(cccAutoSchema.parse(settings).levels[0].candidates[0].openRouterRouting,undefined);
+  const candidate=settings.levels[0].candidates[0];candidate.provider='openrouter';
+  candidate.openRouterRouting={only:['google-ai-studio/flex'],allowFallbacks:false};
+  assert.deepEqual(cccAutoSchema.parse(JSON.parse(JSON.stringify(settings))).levels[0].candidates[0].openRouterRouting,candidate.openRouterRouting);
+  for(const routing of [{only:[''],allowFallbacks:false},{only:['google ai'],allowFallbacks:false},{only:['google-ai-studio/flex'],allowFallbacks:'false'},{only:Array(21).fill('google'),allowFallbacks:true}]){
+    assert.equal(cccAutoSchema.safeParse({...settings,levels:[{from:1,to:null,candidates:[{...candidate,openRouterRouting:routing}]}]}).success,false);
+  }
 });

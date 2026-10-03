@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { executeOpenRouter, saveOpenRouterKey, openRouterModels } from '../dist/openrouter.js';
+import { executeOpenRouter, saveOpenRouterKey, openRouterModels, openRouterBody } from '../dist/openrouter.js';
 
 const job={model:'test/model',mode:'chat',reasoning:'high',prompt:'Hello'};
 test('OpenRouter validates keys, stores private credentials and sends model/reasoning/usage',async()=>{
@@ -28,12 +28,12 @@ test('OpenRouter tool loop executes task commands and returns results to model',
   const dir=await mkdtemp(path.join(os.tmpdir(),'openrouter-tools-'));const original=globalThis.fetch;const events=[];let calls=0;
   globalThis.fetch=async(url,options)=>{
     if(url.endsWith('/key'))return Response.json({data:{}});
-    const body=JSON.parse(options.body);calls++;
+    const body=JSON.parse(options.body);calls++;assert.deepEqual(body.provider,{only:['google-ai-studio/flex'],allow_fallbacks:false});
     if(calls===1){assert.ok(body.tools.length);return Response.json({choices:[{message:{role:'assistant',content:null,tool_calls:[{id:'tool-1',type:'function',function:{name:'run_command',arguments:JSON.stringify({command:"printf hello > result.txt"})}}]}}],usage:{prompt_tokens:5,completion_tokens:5,total_tokens:10}});}
     assert.match(body.messages.at(-1).content,/Exit code: 0/);assert.equal(body.messages.at(-1).tool_call_id,'tool-1');
     return Response.json({choices:[{message:{content:'Created result.txt'},finish_reason:'stop'}],usage:{prompt_tokens:5,completion_tokens:5,total_tokens:10}});
   };
-  try{await saveOpenRouterKey(dir,'sk-or-test-12345678901234567890');assert.equal(await executeOpenRouter({...job,mode:'task'},dir,dir,new AbortController().signal,e=>events.push(e)),'Created result.txt');assert.equal(await readFile(path.join(dir,'result.txt'),'utf8'),'hello');assert.equal(events.filter(e=>e.type==='usage').at(-1).data.totalTokens,20);}
+  try{await saveOpenRouterKey(dir,'sk-or-test-12345678901234567890');assert.equal(await executeOpenRouter({...job,mode:'task',openRouterRouting:{only:['google-ai-studio/flex'],allowFallbacks:false}},dir,dir,new AbortController().signal,e=>events.push(e)),'Created result.txt');assert.equal(await readFile(path.join(dir,'result.txt'),'utf8'),'hello');assert.equal(events.filter(e=>e.type==='usage').at(-1).data.totalTokens,20);}
   finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
 });
 test('OpenRouter filters non-text models and exposes reasoning support',()=>{
@@ -43,11 +43,17 @@ test('OpenRouter code mode retries unsupported structured output without tools a
   const dir=await mkdtemp(path.join(os.tmpdir(),'openrouter-json-'));const original=globalThis.fetch;let calls=0;
   globalThis.fetch=async(url,options)=>{
     if(url.endsWith('/key'))return Response.json({data:{}});
-    calls++;const body=JSON.parse(options.body);assert.equal(body.tools,undefined);
+    calls++;const body=JSON.parse(options.body);assert.equal(body.tools,undefined);assert.deepEqual(body.provider,{only:['google-ai-studio/flex'],allow_fallbacks:false});
     if(calls===1){assert.equal(body.response_format.type,'json_schema');return new Response('{}',{status:400});}
     assert.equal(body.response_format,undefined);
     return Response.json({choices:[{message:{content:'```json\n{"source":"int main(){}","outputMode":"exact"}\n```'},finish_reason:'stop'}]});
   };
-  try{await saveOpenRouterKey(dir,'sk-or-test-12345678901234567890');const result=await executeOpenRouter({...job,mode:'task',solverCodeOnly:true},dir,dir,new AbortController().signal,()=>{});assert.equal(JSON.parse(result).source,'int main(){}');assert.equal(calls,2);}
+  try{await saveOpenRouterKey(dir,'sk-or-test-12345678901234567890');const result=await executeOpenRouter({...job,mode:'task',solverCodeOnly:true,openRouterRouting:{only:['google-ai-studio/flex'],allowFallbacks:false}},dir,dir,new AbortController().signal,()=>{});assert.equal(JSON.parse(result).source,'int main(){}');assert.equal(calls,2);}
   finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
+});
+
+test('OpenRouter routing preserves legacy defaults and supports automatic or restricted providers',()=>{
+  assert.equal(openRouterBody(job,[]).provider,undefined);
+  assert.deepEqual(openRouterBody({...job,openRouterRouting:{only:[],allowFallbacks:false}},[]).provider,{allow_fallbacks:false});
+  assert.deepEqual(openRouterBody({...job,openRouterRouting:{only:['google-ai-studio/flex','google-vertex'],allowFallbacks:true}},[]).provider,{only:['google-ai-studio/flex','google-vertex'],allow_fallbacks:true});
 });

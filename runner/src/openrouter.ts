@@ -52,6 +52,7 @@ async function runCommand(command:string,cwd:string,signal:AbortSignal):Promise<
 }
 export function openRouterBody(job:Job,messages:unknown[]) {
   return {model:job.model==='default'?'openrouter/auto':job.model,messages,stream:false,
+    ...(job.openRouterRouting?{provider:{...(job.openRouterRouting.only.length?{only:job.openRouterRouting.only}:{}),allow_fallbacks:job.openRouterRouting.allowFallbacks}}:{}),
     ...(job.reasoning&&job.reasoning!=='default'?{reasoning:job.reasoning==='none'?{enabled:false}:{effort:job.reasoning==='max'?'xhigh':job.reasoning}}:{}),
     ...(job.solverCodeOnly?{response_format:{type:'json_schema',json_schema:{name:'ccc_solver',strict:true,schema:codeOutputSchema}}}:job.mode==='task'?{tools,tool_choice:'auto'}:{})};
 }

@@ -936,7 +936,7 @@ test('a lost probe response blocks queued candidates while their results are sav
 test('configured CCC rules select model/account/provider by level and report their usage separately',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
   const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.extraInstructions='Use exact integer arithmetic';
-  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/fast',fast:false}];
+  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/fast',fast:false,openRouterRouting:{only:['google-ai-studio/flex'],allowFallbacks:false}}];
   settings.levels[1].candidates=[{...settings.levels[1].candidates[0],accountId:'codex-account',model:'custom-codex',reasoning:'high'}];
   const seen=[];
   const solve=async(j,s,e)=>{seen.push(j);e({type:'usage',data:{totalTokens:15,inputTokens:10,outputTokens:5}});return JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:'exact'});};
@@ -945,6 +945,7 @@ test('configured CCC rules select model/account/provider by level and report the
   assert.deepEqual(seen.map(j=>[j.provider,j.accountId,j.model,j.reasoning,j.fast]),[['openrouter','openrouter-account','test/fast','low',false],['codex','codex-account','custom-codex','high',true]]);
   assert.ok(seen.every(j=>j.prompt.includes('Use exact integer arithmetic')));
   const usage=f.events.filter(e=>e.type==='usage').at(-1).data;
+  assert.deepEqual(seen[0].openRouterRouting,{only:['google-ai-studio/flex'],allowFallbacks:false});assert.equal(seen[1].openRouterRouting,undefined);
   assert.equal(usage.totalTokens,30);assert.deepEqual(usage.cccUsage.map(g=>[g.provider,g.model,g.usage.totalTokens]),[['openrouter','test/fast',15],['codex','custom-codex',15]]);
 }));
 test('configured candidates recover from rejection within solution attempt limit',async()=>fixture(async f=>{

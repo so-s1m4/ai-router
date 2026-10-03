@@ -215,7 +215,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     let toolCount = 0;
     activeSolvers.add(solverTaskId);
     try {
-      return await timed(codeOnly ? 'code_generation' : 'solver', () => solve({ ...job, jobId: solverTaskId, workflow: 'standard', solverOnly: true, solverCodeOnly: codeOnly, previousThreadId, taskId: solverTaskId, prompt: solverPrompt, provider: candidate?.provider ?? job.provider, accountId: candidate?.accountId ?? job.accountId, personalMcp: candidate?.provider === 'openrouter' ? [] : job.personalMcp, model: candidate?.model ?? 'gpt-6.1-sol', reasoning: candidate?.reasoning ?? options.reasoning ?? (codeOnly ? 'low' : 'medium'), fast: candidate?.fast ?? true }, solverSignal, event => {
+      return await timed(codeOnly ? 'code_generation' : 'solver', () => solve({ ...job, jobId: solverTaskId, workflow: 'standard', solverOnly: true, solverCodeOnly: codeOnly, previousThreadId, taskId: solverTaskId, prompt: solverPrompt, provider: candidate?.provider ?? job.provider, openRouterRouting: candidate?.provider === 'openrouter' ? candidate.openRouterRouting : undefined, accountId: candidate?.accountId ?? job.accountId, personalMcp: candidate?.provider === 'openrouter' ? [] : job.personalMcp, model: candidate?.model ?? 'gpt-6.1-sol', reasoning: candidate?.reasoning ?? options.reasoning ?? (codeOnly ? 'low' : 'medium'), fast: candidate?.fast ?? true }, solverSignal, event => {
         // The workflow reports progress; internal solver narration is not a chat reply.
         if (event.type === 'tool') {
           lastToolMs = Date.now() - solverStartedAt;

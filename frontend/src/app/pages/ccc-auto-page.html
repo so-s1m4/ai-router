@@ -27,6 +27,14 @@
                 <label>Способ решения<select class="custom-select" [(ngModel)]="candidate.mode"><option value="code">Прямая генерация C++</option><option value="agent">Агент с инструментами</option></select></label>
                 <label class="toggle fast"><input type="checkbox" [(ngModel)]="candidate.fast" [disabled]="candidate.provider !== 'codex'" />Codex Fast</label>
               </div>
+              @if (candidate.provider === 'openrouter') {
+                <div class="field-grid">
+                  <label>Разрешённые провайдеры OpenRouter<input class="custom-input" [ngModel]="routingProviders(candidate)" (ngModelChange)="setRoutingProviders(candidate,$event)" placeholder="google-ai-studio/flex" maxlength="2100" /><span class="muted">Slugs через запятую. Пусто — автоматический выбор. Запросы ограничены этим списком.</span></label>
+                  <label class="toggle"><input type="checkbox" [ngModel]="candidate.openRouterRouting?.allowFallbacks ?? true" (ngModelChange)="setRoutingFallbacks(candidate,$event)" />Разрешить fallback при недоступности провайдера</label>
+                </div>
+                <button class="btn" (click)="useGoogleFlex(candidate)">Только Google AI Studio Flex</button>
+                <p class="muted">Flex задаёт провайдера, модель выбирается выше. Если fallback выключен и провайдер недоступен, участник завершится с ошибкой; остальные продолжат гонку.</p>
+              }
             </div>
           }
           </div>
