@@ -151,7 +151,7 @@ test('a slow download does not block later files when another worker becomes fre
     const manifest=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'level-1/task.json'),'utf8'));
     assert.deepEqual(manifest.files.map(file=>file.name),['level.pdf','extra-1.txt','extra-2.txt','extra-3.txt']);
   }finally{clearTimeout(timer);release();}
-}));
+},{levels:[1]}));
 test('runner executes generated solver recipes on the full inputs before submitting',async()=>fixture(async f=>{
   await f.run();
   assert.equal(f.solverJobs.length,2);
@@ -212,15 +212,24 @@ test('validates the entire answer batch before sending any answer',async()=>fixt
   await assert.rejects(f.run(),/duplicate, unknown or invalid/);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,0);
 },{invalid:true}));
-test('submits all answers without waiting for returned or saved cooldowns',async()=>fixture(async f=>{
+test('spaces submissions by one second without waiting for returned or saved cooldowns',async()=>fixture(async f=>{
   const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
   const directory=path.join(f.cwd,'.ai-router/ccc-auto',key);
   await mkdir(directory,{recursive:true});
   await writeFile(path.join(directory,'state.json'),JSON.stringify({contest:'training-example',submissions:{},nextSubmitAt:Date.now()+86400_000}));
+  const submitted=[];
+  const call=f.client.call.bind(f.client);
+  f.client.call=async(name,args)=>{
+    if(name==='submit_solution')submitted.push({level:args.level,at:performance.now()});
+    return call(name,args);
+  };
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),2000);
+  const timer=setTimeout(()=>controller.abort(),10000);
   try {assert.match(await f.run({},controller.signal),/Accepted 4 new outputs/);}finally{clearTimeout(timer);}
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,4);
+  for(let i=1;i<submitted.length;i++){
+    if(submitted[i].level===submitted[i-1].level)assert.ok(submitted[i].at-submitted[i-1].at>=990);
+  }
   assert.equal(f.events.some(e=>/cooldown/.test(e.message ?? '') || e.data?.cccTiming?.stage==='cooldown'),false);
 },{cooldown:86400}));
 test('cancellation after submission prevents the next submission',async()=>fixture(async f=>{

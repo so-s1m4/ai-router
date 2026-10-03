@@ -338,6 +338,9 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       }
     });
     const discardAnswers = (dir: string) => updateOutbox(async () => { delete outbox[queueKey(dir)]; });
+    // Keep a small default gap between platform submissions to avoid burst throttling.
+    let lastSubmissionAt = 0;
+    const submissionIntervalMs = 1_000;
     const invalidateAnswers = (dir: string) => updateOutbox(async () => {
       const queued = outbox[queueKey(dir)];
       if (queued) { queued.rejected = true; queued.answers = []; }
@@ -362,8 +365,11 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         try {
           for (let retry = 0; ; retry++) {
             signal.throwIfAborted();
+            const waitMs = submissionIntervalMs - (Date.now() - lastSubmissionAt);
+            if (lastSubmissionAt && waitMs > 0) await delay(waitMs, undefined, { signal });
             state.submissions[`${level}:${id}`] = { status: 'submitting' }; await save();
             try {
+              lastSubmissionAt = Date.now();
               result = await timed('submission', () => client.call('submit_solution', submission), { level, fileId: id });
               break;
             } catch (error) {
