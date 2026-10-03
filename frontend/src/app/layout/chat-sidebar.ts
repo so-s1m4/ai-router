@@ -20,6 +20,7 @@ LucideSettings2,
 LucideSquarePen,
 LucideTerminal,
 LucideX,
+LucideTrash2,
 } from '@lucide/angular';
 import { WorkspaceStore } from '../core/workspace.store';
 
@@ -30,6 +31,7 @@ import { WorkspaceStore } from '../core/workspace.store';
     CommonModule,
     FormsModule,
     LucideX,
+LucideTrash2,
     LucideSearch,
     LucideSquarePen,
     LucideMessageSquare,

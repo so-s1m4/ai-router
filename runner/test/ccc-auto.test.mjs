@@ -6,8 +6,12 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { prepareSolverTemplate } from '../dist/ccc-solver-template.js';
 import path from 'node:path';
-import { runCccAuto, contestReference, readAnswers, solverContext } from '../dist/ccc-auto.js';
+import { runCccAuto as runAuto, contestReference, readAnswers, solverContext } from '../dist/ccc-auto.js';
 import { recoveringCcc, toolData, CccToolError, submissionRateLimit } from '../dist/ccc-client.js';
+
+// Keep coverage of configurable head starts; speed-specific cases use the default below.
+const runCccAuto = (job, cwd, client, solve, signal, emit, options = {}) =>
+  runAuto(job, cwd, client, solve, signal, emit, { mediumHeadStartMs: 20_000, ...options });
 
 const job = { taskId:'task', jobId:'job', sessionId:'session', accountId:'account', provider:'codex', model:'ignored', mode:'task', workflow:'ccc-auto', prompt:'https://codingcontest.org/contests/training-example/game' };
 async function fixture(action, options = {}) {
@@ -751,7 +755,7 @@ test('platform feedback reaches an already generating high and is reused in its 
   assert.ok(messages.some(m=>m.id.includes('retained-code-0') && m.text.includes('isCorrect')));
 },{fastLevels:1,levels:[1],rejectFirst:true}));
 
-for (const reject of [false, true]) test(`smallest input is evaluated before larger computation (rejection=${reject})`, async () => fixture(async f => {
+for (const reject of [false, true]) test(`smallest input is dispatched first while larger computation can overlap (rejection=${reject})`, async () => fixture(async f => {
   const call = f.client.call.bind(f.client);
   f.client.call = async (name, args) => {
     if (name === 'get_artifact_download_url') return {url:`https://example.com/${args.artifact_id}`};
@@ -771,5 +775,151 @@ for (const reject of [false, true]) test(`smallest input is evaluated before lar
     return 'ready';
   };
   await runCccAuto(job, f.cwd, f.client, solve, f.controller.signal, event => f.events.push(event));
-  assert.equal(await readFile(path.join(f.cwd, 'executed'), 'utf8'), reject ? 'small\nsmall\nlarge\n' : 'small\nlarge\n');
+  const executions = (await readFile(path.join(f.cwd, 'executed'), 'utf8')).trim().split('\n');
+  assert.equal(executions[0], 'small');
+  assert.equal(executions.filter(value => value === 'small').length, reject ? 2 : 1);
+  assert.ok(executions.includes('large'));
 }, {recipe:true, levels:[1], rejectFirst:reject}));
+
+const waitForFile = async file => {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    try { return await readFile(file, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error(`Computation did not reach ${file}`);
+};
+const blocked = signal => new Promise((resolve, reject) => {
+  signal.addEventListener('abort', () => reject(signal.reason), {once:true});
+  if (signal.aborted) reject(signal.reason);
+});
+
+test('default speed starts medium beside light and waits 20s before high', async t => fixture(async f => {
+  const started = [], signals = [];
+  let release;
+  const ready = new Promise(resolve => { release = resolve; });
+  const solve = async (solverJob, signal, emit) => {
+    started.push(solverJob.reasoning); signals.push(signal);
+    if (started.length === 2) release();
+    if (solverJob.reasoning === 'high') return f.solve(solverJob, signal, emit);
+    return blocked(signal);
+  };
+  t.mock.timers.enable({apis:['setTimeout']});
+  const result = runAuto(job, f.cwd, f.client, solve, f.controller.signal, e => f.events.push(e));
+  await ready;
+  assert.deepEqual(started, ['low','medium']);
+  t.mock.timers.tick(19_999);
+  assert.deepEqual(started, ['low','medium']);
+  t.mock.timers.tick(1);
+  t.mock.timers.reset();
+  assert.match(await result, /Accepted 2 new outputs/);
+  assert.deepEqual(started, ['low','medium','high']);
+  assert.ok(signals.every(signal => signal.aborted));
+}, {fastLevels:1, levels:[1]}));
+
+test('retained high and fresh medium both start beside light without inheriting its thread', async () => fixture(async f => {
+  const key = createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const directory = path.join(f.cwd,'.ai-router/ccc-auto',key);
+  await mkdir(directory,{recursive:true});
+  await writeFile(path.join(directory,'state.json'),JSON.stringify({contest:'training-example',submissions:{},
+    winnerAgent:{accountId:'account',threadId:'high-history',reasoning:'high'}}));
+  const started = [];
+  const solve = async (solverJob, signal, emit) => {
+    started.push(solverJob.reasoning);
+    if (solverJob.reasoning === 'high') assert.equal(solverJob.previousThreadId, 'high-history');
+    else assert.equal(solverJob.previousThreadId, undefined);
+    if (solverJob.reasoning === 'medium') return f.solve(solverJob,signal,emit);
+    return blocked(signal);
+  };
+  assert.match(await runAuto(job,f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)), /Accepted 2 new outputs/);
+  assert.deepEqual(started, ['low','high','medium']);
+}, {fastLevels:1, levels:[1]}));
+
+for (const refusal of [false, true]) test(`large input computes while probe waits on platform (HTTP 429=${refusal})`, async () => fixture(async f => {
+  const marker = path.join(f.cwd,'large-finished');
+  const call = f.client.call.bind(f.client);
+  let waited = false;
+  f.client.call = async (name,args) => {
+    if (name === 'submit_solution' && !waited) {
+      waited = true;
+      assert.equal(args.file_id,'1-small');
+      assert.equal(await waitForFile(marker),'ready');
+      if (refusal) throw new CccToolError(429,0);
+    }
+    return call(name,args);
+  };
+  const solve = async (solverJob,signal,emit) => {
+    await f.solve(solverJob,signal,emit);
+    const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(path.join(path.dirname(output),'solution.cjs'),
+      `const fs=require('node:fs');const task=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));require('./batch.cjs').runBatch(()=>{if(task.inputs.some(i=>i.file_id==='2-large'))fs.writeFileSync(${JSON.stringify(marker)},'ready');return '42\\n';});`);
+    return 'ready';
+  };
+  assert.match(await runAuto(job,f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Accepted 2 new outputs/);
+  assert.equal(f.solverJobs.length,1);
+}, {recipe:true,levels:[1]}));
+
+test('submission failure lets remaining computation finish, then restart sends outbox with no model work', async () => fixture(async f => {
+  const marker = path.join(f.cwd,'large-finished');
+  const call = f.client.call.bind(f.client);
+  let lost = true;
+  f.client.call = async (name,args) => {
+    if (name === 'submit_solution' && lost) throw new Error('Lost delivery');
+    return call(name,args);
+  };
+  const solve = async (solverJob,signal,emit) => {
+    await f.solve(solverJob,signal,emit);
+    const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(path.join(path.dirname(output),'solution.cjs'),
+      `const fs=require('node:fs');const task=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));require('./batch.cjs').runBatch(async()=>{if(task.inputs.some(i=>i.file_id==='2-large')){await new Promise(r=>setTimeout(r,100));fs.writeFileSync(${JSON.stringify(marker)},'ready');}return '42\\n';});`);
+    return 'ready';
+  };
+  await assert.rejects(runAuto(job,f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Lost delivery/);
+  assert.equal(await readFile(marker,'utf8'),'ready');
+  lost = false;
+  const noSolver = async () => { throw new Error('Saved outputs must not regenerate a solver'); };
+  assert.match(await runAuto({...job,taskId:'resumed',prompt:job.prompt+'\nCCC_RETRY_UNRESOLVED'},f.cwd,f.client,noSolver,
+    new AbortController().signal,e=>f.events.push(e)), /Accepted 2 new outputs/);
+  assert.deepEqual(f.calls.filter(c=>c.name==='submit_solution').map(c=>c.args.file_id),['1-small','2-large']);
+}, {recipe:true,levels:[1]}));
+
+test('probe rejection cancels in-flight large computation and discards its outbox', async () => fixture(async f => {
+  const marker = path.join(f.cwd,'large-started'), finished = path.join(f.cwd,'large-finished');
+  const call = f.client.call.bind(f.client);
+  let first = true;
+  f.client.call = async (name,args) => {
+    if (name === 'submit_solution' && first) {
+      first = false;
+      await waitForFile(marker);
+      return {evaluation:{isCorrect:false}};
+    }
+    return call(name,args);
+  };
+  let count = 0;
+  const solve = async (solverJob,signal,emit) => {
+    await f.solve(solverJob,signal,emit);
+    if (count++ !== 0) return 'ready';
+    const output = solverJob.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(path.join(path.dirname(output),'solution.cjs'),
+      `const fs=require('node:fs');const task=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));require('./batch.cjs').runBatch(async()=>{if(task.inputs.some(i=>i.file_id==='2-large')){fs.writeFileSync(${JSON.stringify(marker)},'ready');await new Promise(r=>setTimeout(r,60000));fs.writeFileSync(${JSON.stringify(finished)},'wrong');}return '42\\n';});`);
+    return 'ready';
+  };
+  assert.match(await runAuto(job,f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Accepted 2 new outputs/);
+  await assert.rejects(readFile(finished),{code:'ENOENT'});
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const outbox=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'level-1/outbox.json'),'utf8'));
+  assert.ok(Object.values(outbox).every(entry=>!entry.directory.endsWith('-0-original') || entry.rejected && !entry.answers.length));
+}, {recipe:true,levels:[1]}));
+
+test('a lost probe response blocks queued candidates while their results are saved', async () => fixture(async f => {
+  const call = f.client.call.bind(f.client);
+  let dispatches = 0;
+  f.client.call = async (name,args) => {
+    if (name === 'submit_solution') { dispatches++; throw new Error('Lost probe'); }
+    return call(name,args);
+  };
+  await assert.rejects(runAuto(job,f.cwd,f.client,f.solve,f.controller.signal,e=>f.events.push(e)),/Lost probe/);
+  assert.equal(dispatches,1);
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const outbox=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'level-1/outbox.json'),'utf8'));
+  assert.ok(Object.values(outbox).some(entry=>entry.answers.some(answer=>answer.file_id==='1-small')));
+}, {fastLevels:1,levels:[1]}));

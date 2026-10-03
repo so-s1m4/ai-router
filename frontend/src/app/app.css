@@ -4079,3 +4079,10 @@ app-root {
 .reset-credits { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
 .reset-credits p { margin: 6px 0; overflow-wrap: anywhere; }
 .reset-credits button { margin-top: 8px; }
+
+.chat-list-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.chat-list-row > :first-child { flex: 1; min-width: 0; }
+.chat-delete-btn { display: flex; align-items: center; justify-content: center; flex: 0 0 32px; width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.chat-delete-btn:hover, .chat-delete-btn:focus-visible { color: #f87171; background: rgba(248, 113, 113, 0.1); }
+.chat-delete-btn:disabled { opacity: 0.4; cursor: wait; }
+@media (pointer: coarse) { .chat-delete-btn { flex-basis: 44px; width: 44px; height: 44px; } }

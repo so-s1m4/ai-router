@@ -8,7 +8,7 @@ test('session can be created and updated with projectId', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'ai-router-session-'));
   process.env.DATA_DIR = dir;
   try {
-    const { createSession, getSession, saveSession } = await import('./store.js');
+    const { createSession, getSession, saveSession, deleteSession, listSessions } = await import('./store.js');
     const user = 'test-user-session';
 
     const session = await createSession(user);
@@ -28,6 +28,21 @@ test('session can be created and updated with projectId', async () => {
     assert.ok(afterUpdate);
     assert.equal(afterUpdate.projectId, testProjectId);
     assert.equal(afterUpdate.title, 'Updated Title');
+
+    assert.equal(await deleteSession('another-user', session.id), false);
+    assert.ok(await getSession(user, session.id));
+    // Serialize deletion against both in-flight and late writes from the runner.
+    const pendingWrite = saveSession(user, afterUpdate);
+    const deletion = deleteSession(user, session.id);
+    const lateWrite = saveSession(user, afterUpdate);
+    await Promise.all([pendingWrite, deletion, lateWrite]);
+    assert.equal(await deletion, true);
+    assert.equal(await getSession(user, session.id), null);
+    assert.deepEqual(await listSessions(user), []);
+    assert.equal(await deleteSession(user, session.id), false);
+    await saveSession(user, afterUpdate);
+    assert.equal(await getSession(user, session.id), null);
+
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }

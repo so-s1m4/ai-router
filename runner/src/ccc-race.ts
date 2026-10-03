@@ -7,7 +7,7 @@ export async function raceLight<T>(
   signal: AbortSignal,
   onSlow: () => void,
   headStartMs = lightHeadStartMs,
-  options: { background?: (signal: AbortSignal) => Promise<T>; recoverLight?: (error: unknown, signal: AbortSignal) => Promise<T>; accept?: (value: T) => Promise<boolean>; rejectedLightBackground?: (signal: AbortSignal) => Promise<T>; lightRetries?: number; onCleanup?: (elapsedMs: number, drained: boolean) => void | Promise<void> } = {},
+  options: { immediate?: ((signal: AbortSignal) => Promise<T>)[]; background?: (signal: AbortSignal) => Promise<T>; recoverLight?: (error: unknown, signal: AbortSignal) => Promise<T>; accept?: (value: T) => Promise<boolean>; rejectedLightBackground?: (signal: AbortSignal) => Promise<T>; lightRetries?: number; onCleanup?: (elapsedMs: number, drained: boolean) => void | Promise<void> } = {},
 ): Promise<T> {
   signal.throwIfAborted();
   const controller = new AbortController();
@@ -71,6 +71,7 @@ export async function raceLight<T>(
     }
   }, true);
   if (options.background) { remaining++; start(options.background); }
+  for (const run of options.immediate ?? []) { remaining++; start(run); }
   try { return await result; }
   finally {
     clearTimeout(timer);

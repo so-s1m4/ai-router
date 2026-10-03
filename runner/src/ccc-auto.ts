@@ -134,7 +134,7 @@ export async function readAnswers(file: string, directory: string, ids: string[]
   return answers;
 }
 
-export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve: Solver, signal: AbortSignal, emit: (event: Event) => void, options: { steer?: typeof steerCodexJob } = {}): Promise<string> {
+export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve: Solver, signal: AbortSignal, emit: (event: Event) => void, options: { steer?: typeof steerCodexJob; mediumHeadStartMs?: number } = {}): Promise<string> {
   const reference = contestReference(job.originalPrompt || job.prompt);
   // Explicit recovery authorization must come from this request, never quoted chat history.
   const retryUnresolved = /\bCCC_RETRY_UNRESOLVED\b/.test((job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)!);
@@ -308,7 +308,40 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
     let submissionTail = Promise.resolve();
     const rejectedEarly = new WeakSet<Map<string, Buffer>>();
     let submissionFailed = false;
+    let submissionError: unknown;
     const submissionController = new AbortController();
+    // This outbox is independent of model threads and survives submission failures.
+    const outboxFile = path.join(folder, 'outbox.json');
+    type Queued = { directory: string; light: boolean; rejected?: boolean; answers: { file_id: string; path: string }[] };
+    let outbox: Record<string, Queued> = {};
+    try { outbox = JSON.parse(await readFile(outboxFile, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    let outboxTail = Promise.resolve();
+    const queueKey = (dir: string) => createHash('sha256').update(dir).digest('hex').slice(0, 24);
+    const updateOutbox = (action: () => Promise<void>) => {
+      const write = outboxTail.then(async () => { await action(); await atomic(outboxFile, outbox); });
+      outboxTail = write.catch(() => {});
+      return write;
+    };
+    const queueAnswers = (answers: Map<string, Buffer>, light: boolean, dir: string) => updateOutbox(async () => {
+      const key = queueKey(dir);
+      const queued = outbox[key] ??= { directory: dir, light, answers: [] };
+      if (queued.rejected) return;
+      const target = path.join(folder, 'outbox', key);
+      await mkdir(target, { recursive: true, mode: 0o700 });
+      for (const [id, content] of answers) {
+        if (!pending.includes(id)) continue;
+        const file = path.join(target, createHash('sha256').update(id).digest('hex') + '.txt');
+        await writeFile(file + '.tmp', content, { mode: 0o600 });
+        await rename(file + '.tmp', file);
+        if (!queued.answers.some(answer => answer.file_id === id)) queued.answers.push({ file_id: id, path: path.relative(folder, file) });
+      }
+    });
+    const discardAnswers = (dir: string) => updateOutbox(async () => { delete outbox[queueKey(dir)]; });
+    const invalidateAnswers = (dir: string) => updateOutbox(async () => {
+      const queued = outbox[queueKey(dir)];
+      if (queued) { queued.rejected = true; queued.answers = []; }
+    });
     const submitBatch = async (answers: Map<string, Buffer>, lightWinner: boolean, sourceDirectory: string, racing = false) => {
       const rejected: string[] = []; const evaluations: Record<string, unknown> = {};
       for (const id of [...pending]) {
@@ -355,6 +388,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         const correct = result.evaluation?.isCorrect;
         if (typeof correct !== 'boolean') throw new Error('CCC submission has no definitive evaluation; check platform progress before continuing');
         if (!correct && lightWinner) { state.fastFailed = true; state.fastFailedLevel = level; }
+        if (!correct) await invalidateAnswers(sourceDirectory);
         state.submissions[`${level}:${id}`] = { status: correct ? 'accepted' : 'rejected', evaluation: result.evaluation, deliveryJobId: result.delivery_job_id };
         await save();
         emit({ type: 'status', message: `CCC авто: level ${level}, ${id} — ${correct ? 'accepted' : 'rejected'}` });
@@ -372,14 +406,17 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       if (rejected.length && state.fastFailedLevel === level) { state.fastFeedback = feedback; await save(); }
       return pending.length === 0;
     };
-    const submitAnswers = (answers: Map<string, Buffer>, light: boolean, dir: string, racing = false, candidateSignal = signal) => {
+    const submitAnswers = (answers: Map<string, Buffer>, light: boolean, dir: string, racing = false, candidateSignal = signal, deferFailure = false) => {
       if (rejectedEarly.has(answers)) return Promise.resolve(false);
-      const submission = submissionTail.then(() => { candidateSignal.throwIfAborted(); submissionController.signal.throwIfAborted(); return submitBatch(answers, light, dir, racing); });
+      const queued = queueAnswers(answers, light, dir);
+      const submission = submissionTail.then(async () => { await queued; candidateSignal.throwIfAborted(); submissionController.signal.throwIfAborted(); if (submissionFailed) throw submissionError; return submitBatch(answers, light, dir, racing); });
       submissionTail = submission.then(() => {}, () => {});
-      return submission.catch(error => { if (!candidateSignal.aborted) { submissionFailed = true; submissionController.abort(error); } throw error; });
+      return submission.catch(error => { if (!candidateSignal.aborted) { submissionFailed = true; submissionError = error; if (!deferFailure) submissionController.abort(error); } throw error; });
     };
-    // Each candidate probes the smallest remaining input before spending CPU on the rest.
+    // Probe first, then compute the rest while the platform validates the probe.
     const executeStaged = async (dir: string, candidateSignal: AbortSignal, light = false, expectedIds = pending) => {
+      // A repaired solver can reuse its directory once the rejected execution has drained.
+      if (outbox[queueKey(dir)]?.rejected) await discardAnswers(dir);
       const recipe = await readFile(path.join(dir, 'solver.json')).catch(error => {
         if (error.code === 'ENOENT') return undefined;
         throw error;
@@ -387,31 +424,53 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       const output = path.join(dir, 'answers.json');
       if (!recipe) return timed('answer_validation', () => readAnswers(output, dir, expectedIds), { level });
       const answers = new Map<string, Buffer>();
+      const computationController = new AbortController();
+      const computationSignal = AbortSignal.any([candidateSignal, computationController.signal]);
       const runInputs = async (selected: typeof inputs, name: string) => {
         if (!selected.length) return;
         const task = path.join(dir, `${name}-task.json`), result = path.join(dir, `${name}-answers.json`);
         await atomic(task, { contest, level, files, inputs: selected });
-        await timed('execution', () => runRecipe(dir, task, result, candidateSignal), { level, candidate: path.basename(dir), batch: name });
+        await timed('execution', () => runRecipe(dir, task, result, computationSignal), { level, candidate: path.basename(dir), batch: name });
         candidateSignal.throwIfAborted();
         const outputs = await timed('answer_validation', () => readAnswers(result, dir, selected.map(input => input.file_id)), { level });
         for (const [id, content] of outputs) answers.set(id, content);
+        await queueAnswers(outputs, light, dir);
       };
       const smallest = inputs.find(input => pending.includes(input.file_id));
       if (smallest) {
         await runInputs([smallest], 'probe');
         candidateSignal.throwIfAborted();
-        // Read state inside the submission queue, since another candidate may have passed it.
-        await submissionTail;
-        await submitAnswers(answers, light, dir, true, candidateSignal);
-        if (state.submissions[`${level}:${smallest.file_id}`]?.status === 'rejected') {
-          rejectedEarly.add(answers);
-          return answers;
+        // Freeze the probe batch so outputs computed during validation are not sent early.
+        const probe = submitAnswers(new Map(answers), light, dir, true, candidateSignal, true).then(() => {
+          if (state.submissions[`${level}:${smallest.file_id}`]?.status === 'rejected') {
+            rejectedEarly.add(answers);
+            computationController.abort(new Error('CCC probe rejected'));
+          }
+        });
+        const remaining = runInputs(inputs.filter(input => pending.includes(input.file_id) && !answers.has(input.file_id)), 'remaining');
+        // On a transport failure, allow already running computation to finish and save its outputs.
+        const results = await Promise.allSettled([probe, remaining]);
+        if (rejectedEarly.has(answers)) { await invalidateAnswers(dir); return answers; }
+        for (const result of results) if (result.status === 'rejected') {
+          if (submissionFailed) submissionController.abort(result.reason);
+          throw result.reason;
         }
       }
       candidateSignal.throwIfAborted();
-      await runInputs(inputs.filter(input => pending.includes(input.file_id) && !answers.has(input.file_id)), 'remaining');
       return answers;
     };
+    // Fresh progress has already removed accepted files and guarded uncertain deliveries.
+    for (const queued of Object.values(outbox)) {
+      if (queued.rejected) continue;
+      const remaining = queued.answers.filter(answer => pending.includes(answer.file_id));
+      if (!remaining.length) { await discardAnswers(queued.directory); continue; }
+      const manifest = path.join(folder, 'outbox-resume.json');
+      await atomic(manifest, { answers: remaining });
+      const answers = await readAnswers(manifest, folder, remaining.map(answer => answer.file_id));
+      emit({ type: 'status', message: `CCC авто: restoring ${answers.size} saved outputs for level ${level}` });
+      successfulDirectory = queued.directory;
+      await submitAnswers(answers, queued.light, queued.directory, true);
+    }
     for (let attempt = 0; attempt < 3 && pending.length; attempt++) {
       signal.throwIfAborted();
       const originalDir = path.join(folder, `run-${runId}-${attempt}-original`);
@@ -503,8 +562,9 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           };
           const retained = winnerAgent;
           const background = retained ? directCandidate(retained.reasoning, 'retained', retained.threadId) : directCandidate('medium', 'background');
-          const needsBackground = Boolean(retained) || (state.fastFailed && state.fastFailedLevel === level) || attempt > 0;
-          const delayedReasonings = ['medium', 'high'].filter(reasoning => reasoning !== retained?.reasoning);
+          const immediateMedium = (options.mediumHeadStartMs ?? 0) === 0;
+          const needsBackground = immediateMedium || Boolean(retained) || (state.fastFailed && state.fastFailedLevel === level) || attempt > 0;
+          const delayedReasonings = (immediateMedium ? ['high'] : ['medium', 'high']).filter(reasoning => reasoning !== retained?.reasoning);
           if (retained) emit({ type: 'status', message: `CCC авто: level ${level} — continuing previous winner ${retained.reasoning} alongside light in its existing thread` });
           if (needsBackground) emit({ type: 'status', message: `CCC авто: level ${level} — starting background candidate alongside light` });
           let lightGeneration = attempt;
@@ -539,9 +599,10 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
             }
           };
           const winner = await raceLight(runLight, delayedReasonings.map(reasoning => directCandidate(reasoning)), AbortSignal.any([signal, submissionController.signal]),
-            () => emit({ type: 'status', message: `CCC авто: level ${level} — adding 6.1 Sol ${delayedReasonings.join(' and ')} / Fast after 20s` }), undefined, {
+            () => emit({ type: 'status', message: `CCC авто: level ${level} — adding 6.1 Sol ${delayedReasonings.join(' and ')} / Fast after ${(options.mediumHeadStartMs || 20_000) / 1000}s` }), options.mediumHeadStartMs || undefined, {
               onCleanup: (elapsedMs, drained) => reportTiming('cancellation', elapsedMs, { level, drained }),
               background: needsBackground ? background : undefined,
+              immediate: immediateMedium && retained && retained.reasoning !== 'medium' ? [directCandidate('medium')] : undefined,
               rejectedLightBackground: background,
               lightRetries: 2,
               accept: async candidate => {
@@ -555,7 +616,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
                 feedback = { fastPreparationError: String(error).slice(-8000), sourceDirectory: originalDir };
                 state.fastFeedback = feedback;
                 await save();
-                emit({ type: 'status', message: `CCC авто: level ${level} — light preparation failed; starting background candidate, keeping delayed medium/high` });
+                emit({ type: 'status', message: `CCC авто: level ${level} — light preparation failed; starting background candidate, keeping delayed ${delayedReasonings.join('/')}` });
                 return background(candidateSignal);
               },
             });

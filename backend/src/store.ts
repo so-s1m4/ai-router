@@ -79,8 +79,43 @@ export async function createSession(userId: string,projectId?:string): Promise<C
   const session: ChatSession = {id:randomUUID(),title:'New chat',createdAt:now,updatedAt:now,messages:[],...(projectId?{projectId}: {})};
   await saveSession(userId,session); return session;
 }
-export async function getSession(userId: string, id: string): Promise<ChatSession | null> { try { return normalizeSessionTitle(JSON.parse(await readFile(sessionFile(userId,id),'utf8')) as ChatSession); } catch { return null; } }
-export async function saveSession(userId: string, session: ChatSession) { const file=sessionFile(userId,session.id); await mkdir(path.dirname(file),{recursive:true,mode:0o700}); await writeFile(file+'.tmp',JSON.stringify(session,null,2),{mode:0o600}); await rename(file+'.tmp',file); }
+const sessionQueues = new Map<string, Promise<void>>();
+function mutateSession<T>(userId: string, id: string, operation: () => Promise<T>): Promise<T> {
+  const key = sessionFile(userId, id);
+  const task = (sessionQueues.get(key) || Promise.resolve()).then(operation);
+  const settled = task.then(() => undefined, () => undefined);
+  sessionQueues.set(key, settled);
+  void settled.then(() => { if (sessionQueues.get(key) === settled) sessionQueues.delete(key); });
+  return task;
+}
+async function readSession(userId: string, id: string): Promise<(ChatSession & { deleted?: boolean }) | null> {
+  try { return JSON.parse(await readFile(sessionFile(userId, id), 'utf8')); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+}
+export async function getSession(userId: string, id: string): Promise<ChatSession | null> {
+  try { const session = await readSession(userId, id); return session && !session.deleted ? normalizeSessionTitle(session) : null; }
+  catch { return null; }
+}
+export function saveSession(userId: string, session: ChatSession) {
+  return mutateSession(userId, session.id, async () => {
+    // A late runner response must never recreate a deleted chat, including after restart.
+    if ((await readSession(userId, session.id))?.deleted) return;
+    const file = sessionFile(userId, session.id);
+    await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+    await writeFile(file + '.tmp', JSON.stringify(session, null, 2), { mode: 0o600 });
+    await rename(file + '.tmp', file);
+  });
+}
+export function deleteSession(userId: string, id: string): Promise<boolean> {
+  return mutateSession(userId, id, async () => {
+    const session = await readSession(userId, id);
+    if (!session || session.deleted) return false;
+    const file = sessionFile(userId, id);
+    await writeFile(file + '.tmp', JSON.stringify({ id, deleted: true }), { mode: 0o600 });
+    await rename(file + '.tmp', file);
+    return true;
+  });
+}
 const blacklistFile = (userId: string) => path.join(userDir(userId), 'model-blacklist.json');
 export async function getUserModelBlacklist(userId: string): Promise<string[]> {
   await prepareUser(userId);

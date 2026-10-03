@@ -139,7 +139,8 @@
         <div class="section-label"><span>Recent chats</span></div>
         <div class="section-list">
           @for (s of vm.filteredRecentSessions(); track s.id) {
-            <button
+            <div class="chat-list-row">
+<button
               class="sidebar-item"
               [class.active]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'"
               (click)="vm.chatService.openSession(s.id)"
@@ -150,6 +151,12 @@
                 <span class="item-running-spinner"></span>
               }
             </button>
+<button class="chat-delete-btn" (click)="vm.chatService.deleteSession(s.id)"
+  [disabled]="vm.chatService.deletingSessions().has(s.id)"
+  [attr.aria-label]="'Delete chat: ' + s.title" title="Delete chat">
+  <svg lucideTrash2 [size]="15"></svg>
+</button>
+</div>
           }
         </div>
       </div>
@@ -184,7 +191,8 @@
               @if (vm.isProjectExpanded(p)) {
                 <div class="tree-sub-list">
                   @for (c of vm.chatsForProject(p).slice(0, 4); track c.id) {
-                    <button
+                    <div class="chat-list-row">
+<button
                       class="tree-sub-item truncate"
                       [class.active]="vm.sessionService.current()?.id === c.id"
                       (click)="vm.chatService.openSession(c.id)"
@@ -192,6 +200,12 @@
                     >
                       {{ c.title }}
                     </button>
+<button class="chat-delete-btn" (click)="vm.chatService.deleteSession(c.id)"
+  [disabled]="vm.chatService.deletingSessions().has(c.id)"
+  [attr.aria-label]="'Delete chat: ' + c.title" title="Delete chat">
+  <svg lucideTrash2 [size]="15"></svg>
+</button>
+</div>
                   }
                   @if (vm.chatsForProject(p).length > 4) {
                     <button class="tree-sub-item tree-sub-more" (click)="vm.selectProject(p.id)">

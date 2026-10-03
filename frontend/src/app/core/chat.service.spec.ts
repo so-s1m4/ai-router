@@ -4,6 +4,7 @@ import { ApiService } from './api.service';
 import { SessionsService } from './sessions.service';
 import { UsageService } from './usage.service';
 import { QueueTask } from './models';
+import { NavigationService } from './navigation.service';
 
 const interrupted: QueueTask = {
   id: 'old-task', input: { sessionId: 'chat', prompt: 'Old request', model: 'default' },
@@ -49,6 +50,45 @@ describe('Chat task controls', () => {
     expect(chat.error()).toBe('Server unavailable');
     expect(chat.running()).toBeTrue();
     expect(chat.canceling()).toBeFalse();
+  });
+
+  it('deletes the current chat and clears the composer and run state', async () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    spyOn(TestBed.inject(NavigationService), 'navigateChat');
+    const request = spyOn(TestBed.inject(ApiService), 'request').and.resolveTo({ ok: true });
+    spyOn(usage, 'refreshTasks').and.resolveTo();
+    sessions.sessions.set([sessions.current()!, { ...sessions.current()!, id: 'other' }]);
+    chat.draft = 'Unsent message';
+    chat.running.set(true);
+    await chat.deleteSession('chat');
+    expect(request).toHaveBeenCalledOnceWith('/sessions/chat', { method: 'DELETE' });
+    expect(sessions.sessions().map(s => s.id)).toEqual(['other']);
+    expect(sessions.current()).toBeNull();
+    expect(chat.running()).toBeFalse();
+    expect(chat.draft).toBe('');
+  });
+
+  it('ignores a failed reload after the current chat is removed', async () => {
+    let reject!: (reason: Error) => void;
+    spyOn(TestBed.inject(ApiService), 'request').and.returnValue(new Promise((_, fail) => reject = fail));
+    const pending = chat.reloadCurrent();
+    sessions.current.set(null);
+    reject(new Error('Chat not found'));
+    await pending;
+    expect(sessions.current()).toBeNull();
+    expect(chat.error()).toBe('');
+  });
+
+  it('keeps the chat when deletion is canceled or fails', async () => {
+    const confirm = spyOn(window, 'confirm').and.returnValue(false);
+    const request = spyOn(TestBed.inject(ApiService), 'request').and.rejectWith(new Error('Delete failed'));
+    await chat.deleteSession('chat');
+    expect(request).not.toHaveBeenCalled();
+    confirm.and.returnValue(true);
+    await chat.deleteSession('chat');
+    expect(sessions.current()?.id).toBe('chat');
+    expect(chat.error()).toBe('Delete failed');
+    expect(chat.deletingSessions().size).toBe(0);
   });
 
   it('hides saved progress after a later user message, including after reopening the chat', () => {

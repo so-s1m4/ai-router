@@ -84,10 +84,17 @@
                 Project chats · {{ vm.chatsFor(project.id).length }}
               </summary>
               @for (s of vm.chatsFor(project.id); track s.id) {
-                <button class="project-chat-item" (click)="vm.chatService.openSession(s.id)">
+                <div class="chat-list-row">
+<button class="project-chat-item" (click)="vm.chatService.openSession(s.id)">
                   <svg lucideMessageSquare [size]="14"></svg>
                   <span class="truncate">{{ s.title }}</span>
                 </button>
+<button class="chat-delete-btn" (click)="vm.chatService.deleteSession(s.id)"
+  [disabled]="vm.chatService.deletingSessions().has(s.id)"
+  [attr.aria-label]="'Delete chat: ' + s.title" title="Delete chat">
+  <svg lucideTrash2 [size]="15"></svg>
+</button>
+</div>
               }
             </details>
           </div>

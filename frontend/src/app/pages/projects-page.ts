@@ -7,6 +7,7 @@ LucideMessageSquare,
 LucidePlus,
 LucideServer,
 LucideX,
+LucideTrash2,
 } from '@lucide/angular';
 import { WorkspaceStore } from '../core/workspace.store';
 
@@ -17,6 +18,7 @@ import { WorkspaceStore } from '../core/workspace.store';
     CommonModule,
     LucideInfo,
     LucideX,
+LucideTrash2,
     LucideFolder,
     LucidePlus,
     LucideServer,

@@ -131,10 +131,38 @@ export class ChatService {
     this.error.set('');
     this.chatViewService.ensureChatScrollAttached(true);
   }
+  deletingSessions = signal(new Set<string>());
+  private readonly deletedSessions = new Set<string>();
+  private removeSession(id: string) {
+    this.deletedSessions.add(id);
+    this.sessionService.sessions.update(rows => rows.filter(s => s.id !== id));
+    if (this.sessionService.current()?.id === id) {
+      this.draft = '';
+      this.newSession();
+    }
+  }
+  async deleteSession(id: string) {
+    if (this.deletingSessions().has(id)) return;
+    const title = this.sessionService.sessions().find(s => s.id === id)?.title || 'this chat';
+    if (!window.confirm(`Delete "${title}"? Active and queued tasks will stop. This cannot be undone.`)) return;
+    this.deletingSessions.update(ids => new Set([...ids, id]));
+    this.error.set('');
+    try {
+      await this.http.request('/sessions/' + id, { method: 'DELETE' });
+      this.removeSession(id);
+      this.notice.set('Chat deleted');
+      void this.usageService.refreshTasks();
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.deletingSessions.update(ids => { const next = new Set(ids); next.delete(id); return next; });
+    }
+  }
   async openSession(id: string) {
     this.layoutService.mobileMenu.set(false);
     try {
       const s = await this.http.request<ChatSession>('/sessions/' + id);
+      if (this.deletedSessions.has(id)) return;
       this.sessionService.current.set(s);
       this.taskFilesService.taskFiles.set([]);
       this.taskFilesService.selectedTaskFiles.set(new Set());
@@ -161,6 +189,7 @@ export class ChatService {
       const id = this.sessionService.current()?.id;
       if (id) this.syncRun(id);
     });
+    this.socket.on('session:deleted', (id: string) => this.removeSession(id));
     this.socket.on('queue:changed', () => void this.usageService.refreshTasks());
     this.socket.on('disconnect', () => {
       if (this.running()) this.notice.set('Connection lost. Restoring the task status...');
@@ -314,8 +343,15 @@ export class ChatService {
   async reloadCurrent() {
     const id = this.sessionService.current()?.id;
     if (!id) return;
-    const s = await this.http.request<ChatSession>('/sessions/' + id);
-    if (this.sessionService.current()?.id !== id) return;
+    let s: ChatSession;
+    try {
+      s = await this.http.request<ChatSession>('/sessions/' + id);
+    } catch (e) {
+      if (this.sessionService.current()?.id === id && !this.deletedSessions.has(id))
+        this.error.set((e as Error).message);
+      return;
+    }
+    if (this.sessionService.current()?.id !== id || this.deletedSessions.has(id)) return;
     this.sessionService.current.set(s);
     this.sessionService.sessions.update((list) => {
       const next = list.map((x) => (x.id === s.id ? s : x));

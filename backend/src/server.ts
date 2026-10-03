@@ -14,7 +14,7 @@ import { createServer } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
 import { Server } from 'socket.io';
 import { z } from 'zod';
-import { addAccount, addImportedCodexAccount, assignAccount, createProject, createSession, dataRoot, deleteAccount, getProject, getSession, getUserModelBlacklist, listAccounts, listProjects, listSessions, prepareUser, saveSession, setAccountPriority, setUserModelBlacklist, updateSharedProject } from './store.js';
+import { addAccount, addImportedCodexAccount, assignAccount, createProject, createSession, dataRoot, deleteAccount, deleteSession, getProject, getSession, getUserModelBlacklist, listAccounts, listProjects, listSessions, prepareUser, saveSession, setAccountPriority, setUserModelBlacklist, updateSharedProject } from './store.js';
 import { orderAccountsByPriority } from './account-priority.js';
 import { changeUserPassword, deleteUser, ensureAdmin, findUserById, findUserByName, listUsers, registerUser, verifyPassword } from './auth.js';
 import { createPairing, enroll, listRunners, ownsRunner, revokeRunner, runnerSocket, setConnected, verifyRunner, managerSocket, setManagerConnected, createManagerPairing, enrollManager, verifyManager } from './runners.js';
@@ -231,6 +231,18 @@ app.put('/api/projects/:id/members',requireAuth,async(req,res)=>{
 app.post('/api/projects/:id/files',requireAuth,express.raw({type:'application/octet-stream',limit:'20mb'}),async(req,res)=>{const userId=req.session.userId!,project=await getProject(userId,req.params.id);if(!project)return res.status(404).json({error:'Project not found'});if(!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({error:'File is empty'});let name=req.get('X-File-Name')||'file';try{name=decodeURIComponent(name);}catch{}if(!name||name.startsWith('.')||name.length>180||name==='.'||name==='..'||/[\\/\0]/.test(name))return res.status(400).json({error:'Invalid file name'});const release=project.shared?lockProject(project.id):()=>{};if(!release)return res.status(409).json({error:'Wait for the current project task to finish'});try{if(project.shared){const fresh=await getProject(userId,project.id);if(!fresh)throw new Error('Project access was removed');Object.assign(project,fresh);}if(project.shared&&!await projectRunnerValid(project))throw new Error('Project runner access was revoked');await markProjectDirty(userId,project);const file=await uploadProjectFile(project.runnerId,project.id,name,req.body);await saveProjectSnapshot(userId,project);res.status(201).json(file);}catch(error){res.status(502).json({error:error instanceof Error?error.message:'Failed to upload file'});}finally{release();}});
 app.get('/api/sessions',requireAuth,async(req,res)=>res.json(await listSessions(req.session.userId!)));
 app.post('/api/sessions',requireAuth,async(req,res)=>{const p=z.object({projectId:z.string().uuid().optional()}).safeParse(req.body||{});if(!p.success)return res.status(400).json({error:'Wrong project'});if(p.data.projectId&&!await getProject(req.session.userId!,p.data.projectId))return res.status(404).json({error:'Project not found'});res.status(201).json(await createSession(req.session.userId!,p.data.projectId));});
+app.delete('/api/sessions/:id',requireAuth,async(req,res)=>{
+ const userId=req.session.userId!,id=req.params.id;
+ if(!z.string().uuid().safeParse(id).success)return res.status(400).json({error:'Invalid chat identifier'});
+ try{
+  if(!await deleteSession(userId,id))return res.status(404).json({error:'Chat not found'});
+  for(const run of active.values())if(run.userId===userId&&run.sessionId===id)run.controller.abort();
+  for(const task of taskQueue.list(userId).filter(t=>t.input.sessionId===id&&['queued','running'].includes(t.state)))await taskQueue.update(task.id,{state:'canceled',message:'Chat deleted'});
+  recentRuns.delete(runKey(userId,id));
+  queueChanged(userId);io.to('user:'+userId).emit('session:deleted',id);
+  res.json({ok:true});
+ }catch(error){res.status(500).json({error:error instanceof Error?error.message:'Unable to delete chat'});}
+});
 app.get('/api/sessions/:id',requireAuth,async(req,res)=>{const s=await getSession(req.session.userId!,req.params.id);res.status(s?200:404).json(s||{error:'Chat not found'});});
 async function sessionFileScope(userId:string,id:string){const chat=await getSession(userId,id);if(!chat)return null;const project=chat.projectId?await getProject(userId,chat.projectId):null;if(chat.projectId&&!project)return null;let runnerId=project?.runnerId||chat.runnerId;if(!runnerId){const runners=(await listRunners(userId)).filter(r=>!r.revokedAt);if(runners.length===1)runnerId=runners[0].id;}if(!runnerId)return null;if(project?.shared){if(!await projectRunnerValid(project))return null;return {runnerId,scope:{sessionId:chat.id,projectId:project.id}};}if(!await ownsRunner(userId,runnerId)){if(chat.projectId||!chat.sharedAccessId)return null;const grant=(await listGrants(userId)).find(g=>g.id===chat.sharedAccessId&&g.recipientId===userId);if(!grant)return null;const account=(await listAccounts(grant.ownerId)).find(a=>a.runnerId===runnerId);if(!account||!await ownsRunner(grant.ownerId,runnerId))return null;}return {runnerId,scope:{sessionId:chat.id,...(chat.projectId?{projectId:chat.projectId}:{})}};}
 
@@ -410,6 +422,7 @@ async function executeRun(userId:string, taskId:string, raw:unknown, ack:(r:{ok:
   if(!availableChoices.length)return ack({ok:false,waiting:true,error:'Waiting for provider quota to recover'});
   choices=availableChoices.filter(a=>!reservedRunners.has(a.runnerId!));
   if(!choices.length)return ack({ok:false,waiting:true,error:'Waiting for a busy runner'});
+  if(!await getSession(userId,chat.id))return ack?.({ok:false,error:'Chat not found'});
   const runnerIds=[...new Set(choices.map(a=>a.runnerId!))];
   const releaseProject=project?.shared?lockProject(project.id):()=>{};if(!releaseProject)return ack?.({ok:false,waiting:true,error:'Waiting for project synchronization or another task'});
   if(isAutoOrService&&eligible.length)cursors.set(userId,(cursor+1)%Number.MAX_SAFE_INTEGER);
