@@ -69,17 +69,17 @@
               m.id === 'default' ? 'Default connection model (subject to change)' : m.label
             }}</label
           >
+        } @empty {
+          <p>No enabled models available. Enable a model in Providers first.</p>
         }
       </fieldset>
       <div class="sharing-actions">
         <button
           class="btn btn-primary"
           (click)="vm.sharingService.saveGrant()"
+          [title]="vm.sharingService.grantValidationError()"
           [disabled]="
-            vm.sharingService.grantBusy() ||
-            !vm.sharingService.grantModels.length ||
-            vm.sharingService.grantBudget < 1 ||
-            !vm.sharingService.grantUsername.trim()
+            vm.sharingService.grantBusy() || !!vm.sharingService.grantValidationError()
           "
         >
           {{

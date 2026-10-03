@@ -101,5 +101,16 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   await api('/access-grants/'+grantId,'PATCH',{state:'revoked'});assert.equal((await terminal).type,'error');
   assert.equal((await request(friendCookie,'/accounts')).body.length,0);assert.equal((await send('allowed',grantId)).ok,false);
   assert.equal((await api('/access-grants'))[0].usedTokens,360);
+  // A full provider catalogue can contain more than 200 models.
+  const catalogue=Array.from({length:250},(_,i)=>({id:'catalogue-'+i,label:'Catalogue '+i}));
+  runner.emit('account:status',{accountId:backup.id,provider:'codex',models:catalogue});
+  await waitFor(async()=> (await api('/accounts')).some(a=>a.models.some(m=>m.id==='catalogue-249')));
+  const largeGrant=await api('/access-grants','POST',{username:'friend',budget:1000000,period:'monthly',models:catalogue.map(m=>m.id)});
+  assert.equal((await api('/access-grants')).find(g=>g.id===largeGrant.id).models.length,250);
+  await api('/access-grants/'+largeGrant.id,'PATCH',{models:catalogue.map(m=>m.id)});
+  for(const [change,message] of [[{username:'x'},/username/],[{budget:1.5},/whole number/],[{models:[]},/at least one model/]]){
+    const invalid=await request(ownerCookie,'/access-grants','POST',{username:'friend',budget:100,period:'once',models:['allowed'],...change});
+    assert.equal(invalid.status,400);assert.match(invalid.body.error,message);
+  }
  } finally {friend?.disconnect();runner?.disconnect();backend.kill('SIGTERM');await new Promise(resolve=>backend.once('exit',resolve));await rm(root,{recursive:true,force:true});}
 });

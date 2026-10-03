@@ -148,14 +148,14 @@ app.put('/api/ccc-auto/settings',requireAuth,async(req,res)=>{
  await saveCccSettings(req.session.userId!,parsed.data);res.json(parsed.data);
 });
 
-const grantSettings=z.object({budget:z.number().int().positive().max(1_000_000_000_000),models:z.array(z.string().min(1).max(100)).min(1).max(200)});
+const grantSettings=z.object({budget:z.number().int('Token budget must be a whole number').positive('Token budget must be positive').max(1_000_000_000_000,'Token budget must not exceed 1,000,000,000,000'),models:z.array(z.string().min(1).max(100)).min(1,'Select at least one model')});
 app.get('/api/access-grants',requireAuth,async(req,res)=>{
  const userId=req.session.userId!;
  res.json((await listGrants(userId)).map(({ownerId,recipientId,...g})=>({...g,direction:ownerId===userId?'outgoing':'incoming'})));
 });
 app.post('/api/access-grants',requireAuth,async(req,res)=>{
- const p=grantSettings.extend({username:z.string().trim().min(3).max(40),period:z.enum(['once','monthly'])}).strict().safeParse(req.body);
- if(!p.success)return res.status(400).json({error:'Indicate a friend, budget and at least one model'});
+ const p=grantSettings.extend({username:z.string().trim().min(3,'Friend username must contain at least 3 characters').max(40,'Friend username must not exceed 40 characters'),period:z.enum(['once','monthly'])}).strict().safeParse(req.body);
+ if(!p.success)return res.status(400).json({error:p.error.issues.map(issue=>issue.message).join('; ')});
  const userId=req.session.userId!,recipient=await findUserByName(p.data.username),owner=await findUserById(userId);
  if(!recipient||recipient.id===userId)return res.status(400).json({error:'Enter the login of another registered user'});
  const accounts=await listAccounts(userId);
