@@ -31,7 +31,7 @@ async function batch<T, R>(items: T[], action: (item: T, index: number) => Promi
 }
 type Submission = { status: 'submitting' | 'accepted' | 'rejected' | 'not-sent'; evaluation?: unknown; deliveryJobId?: number };
 type SolverThread = { accountId: string; threadId: string };
-type State = { contest: string; submissions: Record<string, Submission>; fastFailed?: boolean; fastFailedLevel?: number; fastFeedback?: unknown; solverThread?: SolverThread; lightThread?: SolverThread; candidateThreads?: Record<string, SolverThread>; winnerAgent?: SolverThread & { reasoning: string } };
+type State = { contest: string; submissions: Record<string, Submission>; solverThreadModes?: Record<string, 'code' | 'agent'>; fastFailed?: boolean; fastFailedLevel?: number; fastFeedback?: unknown; solverThread?: SolverThread; lightThread?: SolverThread; candidateThreads?: Record<string, SolverThread>; winnerAgent?: SolverThread & { reasoning: string } };
 export type Solver = (job: Job, signal: AbortSignal, emit: (event: Event) => void) => Promise<string>;
 
 // Give the model the statement and small input samples without a discovery turn.
@@ -224,7 +224,14 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
   async function askSolver(solverPrompt: string, solverTaskId: string, solverSignal: AbortSignal, reuseThread = false, codeOnly = false,
     options: { candidate?: CccCandidate; reasoning?: string; previousThreadId?: string; onCheckpoint?: (threadId: string) => void } = {}) {
     const candidate = options.candidate ?? levelCandidate;
-    const previousThreadId = (candidate?.provider ?? job.provider) !== 'codex' || settings?.reuseThreads === false ? undefined : options.previousThreadId ?? (reuseThread ? solverThreadId : undefined);
+    let previousThreadId = (candidate?.provider ?? job.provider) !== 'codex' || settings?.reuseThreads === false ? undefined : options.previousThreadId ?? (reuseThread ? solverThreadId : undefined);
+    const threadMode = codeOnly ? 'code' : 'agent';
+    if (previousThreadId) {
+      const savedMode = state.solverThreadModes?.[previousThreadId];
+      // Code threads permanently disable tools and carry JSON-only instructions.
+      // Legacy code candidates have no mode metadata: never resume them as agents.
+      if ((savedMode && savedMode !== threadMode) || (!savedMode && !codeOnly && candidate?.mode === 'code')) previousThreadId = undefined;
+    }
     let latestUsage: Record<string, number> = {};
     const usageKey = Symbol(solverTaskId);
     activeUsage.set(usageKey, latestUsage);
@@ -246,7 +253,12 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         }
         if (event.type === 'checkpoint') {
           if (solverSignal.aborted) return;
-          if (typeof event.data?.threadId === 'string') { checkpoint = event.data.threadId; options.onCheckpoint?.(checkpoint); }
+          if (typeof event.data?.threadId === 'string') {
+            checkpoint = event.data.threadId;
+            state.solverThreadModes ??= {};
+            state.solverThreadModes[checkpoint] = threadMode;
+            options.onCheckpoint?.(checkpoint);
+          }
           return;
         }
         if (event.type === 'delta') return;
@@ -257,7 +269,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           }
           latestUsage.totalTokens ??= (latestUsage.inputTokens || 0) + (latestUsage.outputTokens || 0);
           emitUsage();
-        } else emit(event.type === 'status' && event.data?.steeringAvailable ? { ...event, data: { ...event.data, steeringAvailable: false } } : event);
+        } else if (!(event.type === 'status' && event.data?.steeringAvailable)) emit(event);
       }), { solverTaskId, reusedThread: Boolean(previousThreadId), promptChars: solverPrompt.length });
       return codeOnly ? response.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '') : response;
     } finally {

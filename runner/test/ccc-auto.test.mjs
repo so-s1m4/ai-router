@@ -1002,6 +1002,52 @@ test('configured code fallback retries missing artifacts with feedback',async()=
   assert.equal(codeCalls,2);assert.equal(agentCalls,2);
 },{levels:[1]}));
 
+test('code fallback and repair never resume a thread with incompatible tool permissions',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
+  settings.levels[0].candidates=[settings.levels[0].candidates[0]];
+  let codeCalls=0,agentCalls=0;
+  const solve=async(j,s,e)=>{
+    assert.equal(j.previousThreadId,undefined);
+    e({type:'checkpoint',data:{threadId:j.solverCodeOnly ? `code-${++codeCalls}` : `agent-${++agentCalls}`}});
+    e({type:'status',message:'Can send refinement at runtime',data:{steeringAvailable:true}});
+    if(j.solverCodeOnly)return JSON.stringify({source:''});
+    if(agentCalls===1)return 'Solver ready.';
+    const output=j.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(output,JSON.stringify({answers:[{file_id:'1-small',solution:'42\n'},{file_id:'2-large',solution:'42\n'}]}));
+    return 'Solver ready.';
+  };
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Accepted 2 new outputs/);
+  assert.equal(codeCalls,2);assert.equal(agentCalls,2);
+  assert.ok(!f.events.some(e=>e.message==='Can send refinement at runtime'));
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const state=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'state.json'),'utf8'));
+  assert.equal(state.solverThreadModes['code-1'],'code');
+  assert.equal(state.solverThreadModes['agent-2'],'agent');
+},{levels:[1]}));
+
+test('legacy saved code threads are not reused for agent fallback after restart',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+  const candidate={...settings.levels[0].candidates[0],accountId:job.accountId};
+  settings.levels[0].candidates=[candidate];
+  const identity=`${candidate.id}:${candidate.provider}:${candidate.accountId}:${candidate.model}:${candidate.reasoning}:${candidate.mode}`;
+  const key=createHash('sha256').update('session:training-example').digest('hex').slice(0,24);
+  const folder=path.join(f.cwd,'.ai-router/ccc-auto',key);
+  await mkdir(folder,{recursive:true});
+  await writeFile(path.join(folder,'state.json'),JSON.stringify({contest:'training-example',submissions:{},candidateThreads:{[identity]:{accountId:job.accountId,threadId:'legacy-code'}}}));
+  const solve=async(j)=>{
+    if(j.solverCodeOnly){assert.equal(j.previousThreadId,'legacy-code');return JSON.stringify({source:''});}
+    assert.equal(j.previousThreadId,undefined);
+    const output=j.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(output,JSON.stringify({answers:[{file_id:'1-small',solution:'42\n'},{file_id:'2-large',solution:'42\n'}]}));
+    return 'Solver ready.';
+  };
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
+},{levels:[1]}));
+
 test('configured candidate with no artifacts fails clearly while another continues',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
   const settings=defaultCccAutoSettings();
