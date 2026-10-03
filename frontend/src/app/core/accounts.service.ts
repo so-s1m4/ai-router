@@ -35,11 +35,12 @@ export class AccountsService {
     this.error.set('');
     this.addingAccount.set(true);
     try {
-      const isApi = this.accountProvider === 'openai-api';
+      const isOpenAI = this.accountProvider === 'openai-api';
+      const isApi = isOpenAI || this.accountProvider === 'openrouter';
       await this.http.request('/accounts', {
         method: 'POST',
         body: JSON.stringify({
-          provider: isApi ? 'codex' : this.accountProvider,
+          provider: isOpenAI ? 'codex' : this.accountProvider,
           name: this.accountName,
           runnerId: this.selectedRunner,
           ...(isApi ? { authType: 'api_key' } : {}),
@@ -74,7 +75,7 @@ export class AccountsService {
       this.apiKeyDrafts[a.id] = '';
       await this.refreshAccounts();
       this.notice.set(
-        'The API key has been saved. Models will appear in the Codex selection after the status update.',
+        'The API key has been saved. Models will appear after the status update.',
       );
     } catch (e) {
       this.error.set((e as Error).message);

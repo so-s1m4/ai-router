@@ -932,3 +932,32 @@ test('a lost probe response blocks queued candidates while their results are sav
   const outbox=JSON.parse(await readFile(path.join(f.cwd,'.ai-router/ccc-auto',key,'level-1/outbox.json'),'utf8'));
   assert.ok(Object.values(outbox).some(entry=>entry.answers.some(answer=>answer.file_id==='1-small')));
 }, {fastLevels:1,levels:[1]}));
+
+test('configured CCC rules select model/account/provider by level and report their usage separately',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.extraInstructions='Use exact integer arithmetic';
+  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/fast',fast:false}];
+  settings.levels[1].candidates=[{...settings.levels[1].candidates[0],accountId:'codex-account',model:'custom-codex',reasoning:'high'}];
+  const seen=[];
+  const solve=async(j,s,e)=>{seen.push(j);e({type:'usage',data:{totalTokens:15,inputTokens:10,outputTokens:5}});return JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:'exact'});};
+  const result=await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e));
+  assert.match(result,/Accepted 4 new outputs/);
+  assert.deepEqual(seen.map(j=>[j.provider,j.accountId,j.model,j.reasoning,j.fast]),[['openrouter','openrouter-account','test/fast','low',false],['codex','codex-account','custom-codex','high',true]]);
+  assert.ok(seen.every(j=>j.prompt.includes('Use exact integer arithmetic')));
+  const usage=f.events.filter(e=>e.type==='usage').at(-1).data;
+  assert.equal(usage.totalTokens,30);assert.deepEqual(usage.cccUsage.map(g=>[g.provider,g.model,g.usage.totalTokens]),[['openrouter','test/fast',15],['codex','custom-codex',15]]);
+}));
+test('configured candidates recover from rejection within solution attempt limit',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.solutionAttempts=2;settings.levels[0].candidates=[settings.levels[0].candidates[0]];
+  await f.run({cccAuto:settings});assert.equal(f.solverJobs.length,2);
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,3);assert.ok(f.calls.filter(c=>c.name==='submit_solution').every(c=>c.args.level===1));
+},{rejectFirst:true}));
+test('configured CCC preserves outbox and resumes without another model call',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.levels[0].candidates=[settings.levels[0].candidates[0]];
+  const call=f.client.call.bind(f.client);let refuse=true;
+  f.client.call=async(name,args)=>{if(name==='submit_solution'&&refuse)throw new CccToolError(429);return call(name,args);};
+  settings.rateLimitRetries=0;
+  await assert.rejects(f.run({cccAuto:settings}));const count=f.solverJobs.length;refuse=false;
+  await f.run({cccAuto:settings});assert.equal(f.solverJobs.length,count);assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,2);
+}));

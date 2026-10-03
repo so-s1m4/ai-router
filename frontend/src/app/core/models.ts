@@ -1,5 +1,5 @@
-export type ProviderId = 'codex' | 'antigravity' | 'chatgpt';
-export type ServiceId = 'auto' | 'gemini' | 'codex' | 'chatgpt';
+export type ProviderId = 'codex' | 'antigravity' | 'chatgpt' | 'openrouter';
+export type ServiceId = 'auto' | 'gemini' | 'codex' | 'chatgpt' | 'openrouter';
 export type ReasoningEffort = { id: string; label: string };
 export type Model = {
   id: string;

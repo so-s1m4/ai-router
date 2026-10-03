@@ -138,3 +138,19 @@ test('a loser ignoring cancellation cannot hold the next level indefinitely', as
   assert.equal(cleanup.drained, false);
   assert.ok(Date.now() - started < 1000);
 });
+
+test('scheduled candidates use individual delays and keep racing after one provider fails',async()=>{
+  const {raceScheduled}=await import('../dist/ccc-race.js');
+  const start=Date.now(), starts=[], errors=[];
+  const result=await raceScheduled([
+    {delayMs:0,run:async()=>{starts.push(['light',Date.now()-start]);throw Object.assign(new Error('HTTP 429'),{code:'rate_limit'});}},
+    {delayMs:25,run:async()=>{starts.push(['medium',Date.now()-start]);return 'medium';}},
+    {delayMs:500,run:async()=>{starts.push(['high',Date.now()-start]);return 'high';}},
+  ],new AbortController().signal,async value=>value==='medium',(index,error)=>errors.push(index));
+  assert.equal(result,'medium');assert.deepEqual(starts.map(s=>s[0]),['light','medium']);assert.ok(starts[1][1]>=20);assert.deepEqual(errors,[0]);
+});
+test('scheduled race cancels delayed starts on user cancellation',async()=>{
+  const {raceScheduled}=await import('../dist/ccc-race.js');const controller=new AbortController();let called=false;
+  const result=raceScheduled([{delayMs:1000,run:async()=>{called=true;return 1;}}],controller.signal,async()=>true);
+  controller.abort(new Error('Stop'));await assert.rejects(result,/Stop/);assert.equal(called,false);
+});

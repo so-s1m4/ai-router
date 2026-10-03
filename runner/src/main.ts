@@ -1,3 +1,5 @@
+import { cccAutoSchema } from './ccc-settings.js';
+import { saveOpenRouterKey } from './openrouter.js';
 import { personalMcpSchema } from './personal-mcp.js';
 import { CliUpdater } from './cli-updater.js';
 import { readApiKey, saveApiKey } from './openai-key.js';
@@ -17,7 +19,7 @@ const url=process.env.ROUTER_SERVER_URL?.replace(/\/$/,'');if(!url)throw new Err
 const root=path.resolve(process.env.RUNNER_DATA_DIR||'/runner-data'),file=path.join(root,'device.json');
 interface Device {id:string;secret:string;name:string}
 async function device():Promise<Device>{try{return JSON.parse(await readFile(file,'utf8')) as Device;}catch{}const code=process.env.ROUTER_PAIRING_CODE;if(!code)throw new Error('Set ROUTER_PAIRING_CODE once to enroll this runner');const response=await fetch(url+'/api/runner/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});if(!response.ok)throw new Error('Pairing failed: '+response.status);const d=await response.json() as Device;await mkdir(root,{recursive:true,mode:0o700});await writeFile(file,JSON.stringify(d),{mode:0o600});return d;}
-const jobSchema=z.object({personalMcp:z.array(personalMcpSchema).max(20).optional(),sharedExecution:z.boolean().optional(),jobId:z.string().uuid(),taskId:z.string().uuid(),continuationOf:z.string().uuid().optional(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),workflow:z.enum(['standard','ccc-auto']).default('standard'),mode:z.enum(['chat','task']).optional().default('task')});
+const jobSchema=z.object({cccAuto:cccAutoSchema.optional(),personalMcp:z.array(personalMcpSchema).max(20).optional(),sharedExecution:z.boolean().optional(),jobId:z.string().uuid(),taskId:z.string().uuid(),continuationOf:z.string().uuid().optional(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt','openrouter']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),workflow:z.enum(['standard','ccc-auto']).default('standard'),mode:z.enum(['chat','task']).optional().default('task')});
 async function start(){
  const active=new Map<string,AbortController>();
  const updater=new CliUpdater({root,busy:()=>active.size>0,promoted:provider=>{if(provider==='codex')retireCodexAppServers();}});
@@ -36,6 +38,7 @@ async function start(){
   const parsed=jobSchema.safeParse(raw);
   if(!parsed.success)return ack?.({ok:false,error:'Invalid job'});
   const job=parsed.data as Job;
+  if(job.cccAuto?.levels.some(r=>r.candidates.some(c=>c.enabled&&(!c.accountId||accounts.get(c.accountId)?.provider!==c.provider))))return ack?.({ok:false,error:'CCC candidate connection is not assigned to this runner'});
   if(active.has(job.jobId))return ack?.({ok:false,error:'Duplicate job'});
   if(active.size)return ack?.({ok:false,error:'The runner is still stopping the previous task'});
   try{await restoreCheckpoint(job,workspaceFor(job));}catch(error){return ack?.({ok:false,error:error instanceof Error?error.message:'Unable to restore checkpoint'});}
@@ -81,7 +84,7 @@ async function start(){
  });
  socket.on('job:cancel',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid()}).safeParse(raw);if(p.success)active.get(p.data.jobId)?.abort();});
  const accounts=new Map<string,{provider:ProviderId;authType?:'api_key'}>();
- const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{if(accounts.get(accountId)?.authType==='api_key'&&!await readApiKey(home))throw new Error('Connect OpenAI API key');const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Status not received'});}};
+ const refresh=async(accountId:string,provider:ProviderId)=>{const controller=new AbortController();const home=path.join(root,'accounts',accountId,'home');try{if(provider==='codex'&&accounts.get(accountId)?.authType==='api_key'&&!await readApiKey(home))throw new Error('Connect OpenAI API key');const status=await accountStatus(provider,home,controller.signal);if(socket.connected)socket.emit('account:status',{accountId,provider,models:status.models,limits:status.limits});if(provider==='codex'&&process.env.CODEX_APP_SERVER_MODE!=='false')void prewarmCodexAppServer(home).catch(error=>console.error('Codex prewarm failed:',error instanceof Error?error.message:error));}catch(error){if(socket.connected)socket.emit('account:status',{accountId,provider,models:[],error:error instanceof Error?error.message:'Status not received'});}};
  socket.on('account:reset',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   const parsed=z.object({accountId:z.string().uuid(),idempotencyKey:z.string().uuid()}).strict().safeParse(raw);
   if(!parsed.success)return ack?.({ok:false,error:'Invalid reset request'});
@@ -93,7 +96,14 @@ async function start(){
   }catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Reset failed'});}
  });
  const refreshAll=()=>{for(const [accountId,account] of accounts)void refresh(accountId,account.provider);};
- socket.on('accounts:list',async(raw:unknown)=>{const list=z.array(z.object({id:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt']),authType:z.literal('api_key').optional()})).safeParse(raw);if(!list.success)return;accounts.clear();for(const account of list.data)accounts.set(account.id,{provider:account.provider,authType:account.authType});const accountsDir=path.join(root,'accounts');try{for(const entry of await readdir(accountsDir,{withFileTypes:true})){if(!/^[a-f0-9-]{36}$/.test(entry.name)||accounts.has(entry.name))continue;await rm(path.join(accountsDir,entry.name),{recursive:true,force:true});}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')console.error('Account cleanup failed:',error);}refreshAll();});
+ socket.on('accounts:list',async(raw:unknown)=>{const list=z.array(z.object({id:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt','openrouter']),authType:z.literal('api_key').optional()})).safeParse(raw);if(!list.success)return;accounts.clear();for(const account of list.data)accounts.set(account.id,{provider:account.provider,authType:account.authType});const accountsDir=path.join(root,'accounts');try{for(const entry of await readdir(accountsDir,{withFileTypes:true})){if(!/^[a-f0-9-]{36}$/.test(entry.name)||accounts.has(entry.name))continue;await rm(path.join(accountsDir,entry.name),{recursive:true,force:true});}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')console.error('Account cleanup failed:',error);}refreshAll();});
+ socket.on('account:openrouter-key',async(raw:unknown,ack?:(r:unknown)=>void)=>{
+  const parsed=z.object({accountId:z.string().uuid(),apiKey:z.string().min(20).max(512)}).strict().safeParse(raw);
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid key data'});
+  if(accounts.get(parsed.data.accountId)?.provider!=='openrouter')return ack?.({ok:false,error:'OpenRouter connection is not assigned to this runner'});
+  try{await saveOpenRouterKey(path.join(root,'accounts',parsed.data.accountId,'home'),parsed.data.apiKey);ack?.({ok:true});void refresh(parsed.data.accountId,'openrouter');}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'Failed to save key'});}
+ });
  socket.on('account:openai-key',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   const parsed=z.object({accountId:z.string().uuid(),apiKey:z.string().min(20).max(512)}).strict().safeParse(raw);
   if(!parsed.success)return ack?.({ok:false,error:'Invalid key data'});

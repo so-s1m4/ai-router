@@ -21,7 +21,7 @@
         <span class="account-name" [title]="a.name">{{ a.name }}</span>
         <div class="account-detail-chips">
           <span class="account-provider-chip">{{
-            a.authType === 'api_key' ? 'OpenAI API' : vm.providerLabel(a.provider)
+            a.authType === 'api_key' ? (a.provider === 'openrouter' ? 'OpenRouter API' : 'OpenAI API') : vm.providerLabel(a.provider)
           }}</span>
           @if (a.shared) {
             <span class="account-shared-chip">Shared</span>

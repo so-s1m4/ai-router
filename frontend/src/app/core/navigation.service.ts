@@ -9,6 +9,7 @@ export const PAGE_PATHS = {
   projects: 'projects',
   sites: 'sites',
   providers: 'models',
+  cccAuto: 'ccc-auto',
   connections: 'accounts',
   users: 'users',
   runners: 'runners',

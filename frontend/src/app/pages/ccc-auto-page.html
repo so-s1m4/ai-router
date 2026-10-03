@@ -1,0 +1,56 @@
+<section class="ccc-settings">
+  <header class="settings-head">
+    <div><span class="section-tag">AUTOMATION CONTROL</span><h1>CCC-Auto</h1><p>Выберите, кто решает каждый уровень и когда подключается к гонке. Первый ответ, принятый платформой, побеждает.</p></div>
+    <div class="actions"><button class="btn" (click)="reset()" [disabled]="loading || saving">Стандартные настройки</button><button class="btn btn-primary" (click)="save()" [disabled]="loading || saving">{{ saving ? 'Сохранение…' : 'Сохранить' }}</button></div>
+  </header>
+  @if (error) {<div class="banner banner-error" role="alert">{{ error }}</div>}
+  @if (notice) {<div class="banner banner-notice" role="status">{{ notice }}</div>}
+  @if (loading) {<p role="status">Загрузка настроек…</p>} @else {
+    <div class="summary-strip"><span><strong>{{ settings.levels.length }}</strong> диапазонов уровней</span><span><strong>{{ settings.submissionIntervalSeconds }} c</strong> между отправками</span><span><strong>{{ settings.solutionAttempts }}</strong> попытки решения</span><span>Codex + OpenRouter</span></div>
+    <section class="card settings-card"><h2>Уровни и участники</h2><p class="muted">Старт считается от начала попытки решения уровня. Участники с задержкой 0 запускаются одновременно. Для CCC нужен runner с настроенным CCC MCP; все выбранные подключения должны быть на этом runner.</p>
+      @for (rule of settings.levels; track $index; let i=$index) {
+        <article class="level-rule">
+          <div class="level-head"><div><span class="section-tag">LEVEL {{ rule.from }}{{ rule.to === null ? '+' : rule.to !== rule.from ? '–' + rule.to : '' }}</span><h3>Уровень {{ rule.from }}{{ rule.to === null ? ' и выше' : rule.to !== rule.from ? '–' + rule.to : '' }}</h3></div>
+            <div class="actions">@if (rule.to !== null) {<label>До уровня <input class="custom-input range-input" type="number" [(ngModel)]="rule.to" (ngModelChange)="normalizeRanges()" [min]="rule.from" max="99" [attr.aria-label]="'Последний уровень диапазона ' + rule.from" /></label>}
+              <button class="btn" (click)="copyCandidates(i)">Применить ко всем</button><button class="btn" (click)="addCandidate(i)" [disabled]="rule.candidates.length >= 8">+ Участник</button></div>
+          </div>
+          <div class="candidate-list">
+          @for (candidate of rule.candidates; track candidate.id; let ci=$index) {
+            <div class="candidate" [class.disabled]="!candidate.enabled">
+              <div class="candidate-heading"><label class="toggle"><input type="checkbox" [(ngModel)]="candidate.enabled" /><strong>{{ candidate.id }}</strong></label><span class="start-badge">{{ candidate.delaySeconds === 0 ? 'Сразу' : '+' + candidate.delaySeconds + ' c' }}</span><button class="btn" (click)="removeCandidate(i,candidate.id)" [disabled]="rule.candidates.length === 1" [attr.aria-label]="'Удалить участника ' + candidate.id">Удалить</button></div>
+              <div class="candidate-fields">
+                <label>Провайдер<select class="custom-select" [(ngModel)]="candidate.provider" (ngModelChange)="providerChanged(candidate)"><option value="codex">Codex / OpenAI API</option><option value="openrouter">OpenRouter API</option></select></label>
+                <label>Подключение<select class="custom-select" [(ngModel)]="candidate.accountId"><option [ngValue]="undefined">Авто на выбранном runner</option>@for (a of candidateAccounts(candidate); track a.id) {<option [value]="a.id">{{ a.name }}</option>}</select></label>
+                <label class="model-field">Модель<input class="custom-input" [(ngModel)]="candidate.model" [attr.list]="'ccc-models-' + i + '-' + ci" placeholder="provider/model" /><datalist [id]="'ccc-models-' + i + '-' + ci">@for (model of models(candidate); track model.id) {<option [value]="model.id">{{ model.label }}</option>}</datalist></label>
+                <label>Reasoning<select class="custom-select" [(ngModel)]="candidate.reasoning">@for (effort of reasonings; track effort) {<option [value]="effort">{{ effort }}</option>}</select></label>
+                <label>Старт через, секунд<input class="custom-input" type="number" [(ngModel)]="candidate.delaySeconds" min="0" max="3600" step="0.1" /></label>
+                <label>Способ решения<select class="custom-select" [(ngModel)]="candidate.mode"><option value="code">Прямая генерация C++</option><option value="agent">Агент с инструментами</option></select></label>
+                <label class="toggle fast"><input type="checkbox" [(ngModel)]="candidate.fast" [disabled]="candidate.provider !== 'codex'" />Codex Fast</label>
+              </div>
+            </div>
+          }
+          </div>
+        </article>
+      }
+      <div class="actions"><button class="btn" (click)="splitLast()">+ Отдельный следующий уровень</button><button class="btn" (click)="removeLast()" [disabled]="settings.levels.length <= 1">Объединить последний диапазон</button></div>
+    </section>
+    <div class="settings-columns">
+      <section class="card settings-card"><h2>Отправка и HTTP 429</h2><p class="muted">Готовые ответы сохраняются на диске. Более длинный Retry-After платформы имеет приоритет.</p><div class="field-grid">
+        <label>Между отправками, секунд<input class="custom-input" type="number" [(ngModel)]="settings.submissionIntervalSeconds" min="0" max="300" step="0.1" /></label>
+        <label>Повторов после 429<input class="custom-input" type="number" [(ngModel)]="settings.rateLimitRetries" min="0" max="20" /></label>
+        <label>Минимальная пауза после 429, секунд<input class="custom-input" type="number" [(ngModel)]="settings.rateLimitDelaySeconds" min="1" max="600" step="0.1" /></label>
+      </div></section>
+      <section class="card settings-card"><h2>Повторное решение и ускорение</h2><div class="field-grid">
+        <label>Попыток решения уровня<input class="custom-input" type="number" [(ngModel)]="settings.solutionAttempts" min="1" max="10" /></label>
+        <label>Исправлений подготовки кандидата<input class="custom-input" type="number" [(ngModel)]="settings.preparationRetries" min="0" max="5" /></label>
+        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.reuseThreads" />Продолжать сохранённые потоки Codex</label>
+        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.optimizationEnabled" />Готовить ускоренное решение во время расчёта</label>
+        <label>Ускорение через, секунд<input class="custom-input" type="number" [(ngModel)]="settings.optimizationDelaySeconds" [disabled]="!settings.optimizationEnabled" min="0" max="3600" step="0.1" /></label>
+      </div></section>
+      <section class="card settings-card"><h2>Границы запуска</h2><p class="muted">Пройденные входы пропускаются автоматически.</p><div class="field-grid"><label>Первый уровень<input class="custom-input" type="number" [(ngModel)]="settings.startLevel" min="1" max="100" /></label><label>Последний уровень<input class="custom-input" type="number" [(ngModel)]="settings.endLevel" min="1" max="100" placeholder="Все уровни" /></label></div><button class="btn" (click)="settings.endLevel=null">До последнего уровня</button></section>
+      <section class="card settings-card"><h2>Инструкции решающим моделям</h2><label>Дополнительные требования<textarea class="custom-input" rows="5" [(ngModel)]="settings.extraInstructions" maxlength="4000" placeholder="Например: предпочитать точные алгоритмы, учитывать ограничения памяти…"></textarea></label><p class="muted">Добавляются в контекст каждого участника.</p></section>
+    </div>
+    <details class="card settings-card"><summary>Импорт / экспорт конфигурации JSON</summary><p class="muted">Скопируйте настройки для резервной копии или переноса. API-ключи в конфигурацию не входят.</p><textarea class="custom-input json-editor" [(ngModel)]="jsonDraft" rows="12" aria-label="Конфигурация JSON"></textarea><div class="actions"><button class="btn" (click)="exportJson()">Получить JSON</button><button class="btn" (click)="importJson()" [disabled]="!jsonDraft.trim()">Загрузить JSON в форму</button></div></details>
+    <footer class="settings-footer"><p class="muted">Изменения применяются к новым запускам. Текущая задача продолжит работу с настройками, полученными при старте.</p><button class="btn btn-primary" (click)="save()" [disabled]="saving">{{ saving ? 'Сохранение…' : 'Сохранить настройки' }}</button></footer>
+  }
+</section>

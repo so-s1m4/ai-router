@@ -28,7 +28,7 @@
 
   <div class="topbar-center">
     <span class="mobile-page-title">{{
-      vm.page() === 'operations'
+      vm.page() === 'cccAuto' ? 'CCC-Auto' : vm.page() === 'operations'
         ? 'Usage'
         : vm.page() === 'chat'
           ? vm.sessionService.current()?.title || 'New task'

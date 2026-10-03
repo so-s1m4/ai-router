@@ -16,6 +16,17 @@
     {id: 'shared', name: 'Shared Codex', provider: 'codex', shared: true, mode: 'runner', auth: 'ready', detail: 'Shared by teammate', models: [], limit: {...limit(), source: 'provider', primary: usage(55, 300, 2)}},
     {id: 'unassigned', name: 'New Gemini connection', provider: 'antigravity', mode: 'unassigned', auth: 'unknown', detail: 'No runner assigned', priority: 1, models: [], limit: limit()},
   ];
+  accounts.push({id: 'openrouter-api', name: 'OpenRouter API', provider: 'openrouter', authType: 'api_key', runnerId: 'demo-runner', mode: 'runner', auth: 'ready', detail: 'Demo connection', priority: 1, models: [{id: 'openrouter/auto', name: 'Auto'}, {id: 'openai/gpt-4.1', name: 'GPT-4.1'}, {id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4'}], limit: limit()});
+  for (const account of accounts.filter(a => a.provider === 'codex')) account.models = [{id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol'}];
+  let cccSettings = {
+    version: 1, submissionIntervalSeconds: 1, rateLimitRetries: 5, rateLimitDelaySeconds: 1,
+    solutionAttempts: 3, preparationRetries: 2, optimizationEnabled: true, optimizationDelaySeconds: 10,
+    reuseThreads: true, startLevel: 1, endLevel: null, extraInstructions: '',
+    levels: [1, 2, 3, 4, 5].map(from => ({from, to: from === 5 ? null : from,
+      candidates: ['low', 'medium', 'high'].map((reasoning, i) => ({id: ['light', 'medium', 'high'][i],
+        enabled: true, provider: 'codex', model: 'gpt-6.1-sol', reasoning,
+        delaySeconds: i === 2 ? 20 : 0, mode: 'code', fast: true}))})),
+  };
   const runners = [{id: 'demo-runner', name: 'Development runner', online: true, managementOnline: true}];
   const originalFetch = window.fetch.bind(window);
   const response = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
@@ -26,6 +37,11 @@
     const method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body) : {};
     if (['/me', '/login', '/register'].includes(path)) return response({username: 'UI Demo', isOwner: false});
+    if (path === '/ccc-auto/settings') {
+      if (method === 'PUT') cccSettings = body;
+      return response(cccSettings);
+    }
+    if (path === '/ccc-auto/settings/validate') return response(body);
     if (path === '/accounts') {
       if (method === 'POST') accounts.push({...body, id: crypto.randomUUID(), mode: body.runnerId ? 'runner' : 'unassigned', auth: 'ready', detail: 'Demo connection', models: [], limit: limit()});
       return response(accounts);
@@ -52,9 +68,9 @@
       return response({ok: true});
     }
     if (method === 'GET' && (['/projects', '/sessions', '/access-grants'].includes(path) || /\/previews$/.test(path))) return response([]);
-    return response({error: 'This demo supports Accounts UI only.'}, 400);
+    return response({error: 'This action is unavailable in the UI demo.'}, 400);
   };
-  if (location.pathname === '/') history.replaceState(null, '', '/accounts');
+  if (location.pathname === '/') history.replaceState(null, '', '/ccc-auto');
   document.addEventListener('DOMContentLoaded', () => {
     const label = document.createElement('div');
     label.textContent = 'UI demo · sample data · reload to reset';

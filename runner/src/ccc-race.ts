@@ -88,3 +88,19 @@ export async function raceLight<T>(
     await options.onCleanup?.(Date.now() - started, drained);
   }
 }
+
+export async function raceScheduled<T>(
+  candidates: {delayMs:number;run:(signal:AbortSignal)=>Promise<T>}[],
+  signal:AbortSignal,
+  accept:(value:T)=>Promise<boolean>,
+  onError:(index:number,error:unknown)=>void = () => {},
+):Promise<T> {
+  if(!candidates.length)throw new Error('CCC-Auto has no enabled candidates');
+  const {setTimeout:delay}=await import('node:timers/promises');
+  const runs=candidates.map((candidate,index)=>async (s:AbortSignal)=>{
+    if(candidate.delayMs>0)await delay(candidate.delayMs,undefined,{signal:s});
+    try{return await candidate.run(s);}
+    catch(error){if(s.aborted)throw error;onError(index,error);throw new Error(error instanceof Error?error.message:String(error));}
+  });
+  return raceLight(runs[0],[],signal,()=>{},0,{immediate:runs.slice(1),accept});
+}

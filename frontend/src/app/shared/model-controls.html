@@ -12,7 +12,7 @@
 </div>
 
 @if (vm.modelService.workflow() === 'ccc-auto') {
-  <span class="pill-model-badge" title="Отправьте ссылку на игру CCC: получение файлов, решение, отправка и проверка выполняются автоматически.">6.1 Sol · medium · Fast</span>
+  <span class="pill-model-badge" title="Отправьте ссылку на игру CCC: получение файлов, решение, отправка и проверка выполняются автоматически."><button type="button" class="btn" (click)="vm.showPage('cccAuto')">Настроить CCC-Auto</button></span>
 } @else {
 <!-- SERVICE / PROVIDER PILL -->
 
@@ -24,6 +24,7 @@
     aria-label="Provider"
   >
     <option value="auto">Auto</option>
+    <option value="openrouter">OpenRouter{{ vm.modelService.hasAccountsFor('openrouter') ? '' : ' (!)' }}</option>
     <option value="gemini">
       Gemini{{ vm.modelService.hasAccountsFor('gemini') ? '' : ' (!)' }}
     </option>

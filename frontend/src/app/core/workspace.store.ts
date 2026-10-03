@@ -380,6 +380,7 @@ export class WorkspaceStore {
       | 'chat'
       | 'projects'
       | 'sites'
+      | 'cccAuto'
       | 'providers'
       | 'connections'
       | 'runners'
@@ -422,7 +423,7 @@ export class WorkspaceStore {
     return this.accountService.accounts().find((a) => a.id === id)?.name || '';
   }
   providerLabel(id?: ProviderId | string) {
-    return id === 'codex'
+    return id === 'openrouter' ? 'OpenRouter' : id === 'codex'
       ? 'Codex'
       : id === 'antigravity' || id === 'gemini'
         ? 'Gemini'

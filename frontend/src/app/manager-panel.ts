@@ -17,7 +17,7 @@ type Runner = { id: string; name: string; managementOnline: boolean };
 type Account = {
   id: string;
   name: string;
-  provider: 'codex' | 'antigravity' | 'chatgpt';
+  provider: 'codex' | 'antigravity' | 'chatgpt' | 'openrouter';
   runnerId?: string;
 };
 type Key = { id: string; label: string; publicKey: string; fingerprint: string };

@@ -1,4 +1,4 @@
-export type ProviderId = 'codex' | 'antigravity' | 'chatgpt';
+export type ProviderId = 'codex' | 'antigravity' | 'chatgpt' | 'openrouter';
 export type RunMode = 'chat' | 'task';
 export type ReasoningEffort = { id: string; label: string };
 export type Model = { id: string; label: string; reasoning?: ReasoningEffort[]; defaultReasoning?: string };
@@ -36,6 +36,7 @@ function mergeModelCatalog(defaults: Model[], custom: Model[]): Model[] {
 export const modelCatalog: Record<ProviderId, Model[]> = {
   codex: mergeModelCatalog(DEFAULT_CODEX_MODELS, parseCustomModels(process.env.CODEX_MODELS)),
   antigravity: mergeModelCatalog(DEFAULT_GEMINI_MODELS, parseCustomModels(process.env.AGY_MODELS)),
+  openrouter: [],
   chatgpt: DEFAULT_CHATGPT_MODELS
 };
 

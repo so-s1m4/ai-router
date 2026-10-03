@@ -468,5 +468,117 @@
         }
       </div>
     </div>
+    <!-- CHATGPT WEB PROVIDER -->
+    <div class="card provider-card">
+      <div class="provider-box-header">
+        <div class="provider-box-title-group">
+          <div class="provider-badge-icon provider-openrouter">
+            <svg lucideGlobe2 [size]="22"></svg>
+          </div>
+          <div>
+            <div class="provider-title-row">
+              <h3>OpenRouter API</h3>
+              <span
+                class="provider-count-pill"
+                [class.has-disabled]="
+                  vm.modelService.allOpenRouterModels().length > vm.modelService.openRouterEnabledCount()
+                "
+              >
+                {{ vm.modelService.openRouterEnabledCount() }} of
+                {{ vm.modelService.allOpenRouterModels().length }} active
+              </span>
+            </div>
+            <p class="provider-desc">
+              Models through your OpenRouter API connection
+            </p>
+          </div>
+        </div>
+
+        <div class="provider-header-actions">
+          <button
+            type="button"
+            class="btn btn-outline btn-xs"
+            (click)="vm.modelService.enableAllForProvider('openrouter')"
+            [disabled]="
+              vm.modelService.openRouterEnabledCount() === vm.modelService.allOpenRouterModels().length
+            "
+            title="Enable all OpenRouter models"
+          >
+            Enable All
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline btn-xs"
+            (click)="vm.modelService.disableAllForProvider('openrouter')"
+            [disabled]="vm.modelService.openRouterEnabledCount() === 0"
+            title="Disable all OpenRouter models"
+          >
+            Disable all
+          </button>
+        </div>
+      </div>
+
+      <div class="models-list">
+        @for (m of vm.modelService.filteredOpenRouterModels(); track m.id) {
+          <div
+            class="model-row"
+            [class.model-disabled]="!vm.modelService.isModelEnabled(m.id)"
+            (click)="vm.modelService.toggleModel(m.id)"
+          >
+            <div class="model-info">
+              <div class="model-name-line">
+                <span class="model-label">{{ m.label }}</span>
+                <code class="model-id-tag">{{ m.id }}</code>
+                @if (m.reasoning?.length) {
+                  <span
+                    class="feature-tag feature-tag-reasoning"
+                    title="Supports levels of reasoning"
+                  >
+                    Reasoning ({{ m.reasoning?.length }})
+                  </span>
+                }
+              </div>
+              <div class="model-status-hint">
+                @if (vm.modelService.isModelEnabled(m.id)) {
+                  <span class="status-dot status-dot-active"></span>
+                  <span class="status-text-active">Active in chat</span>
+                } @else {
+                  <span class="status-dot status-dot-disabled"></span>
+                  <span class="status-text-disabled">Blacklisted (hidden)</span>
+                }
+              </div>
+            </div>
+
+            <div class="model-action" (click)="$event.stopPropagation()">
+              <button
+                type="button"
+                class="toggle-switch"
+                [class.checked]="vm.modelService.isModelEnabled(m.id)"
+                (click)="vm.modelService.toggleModel(m.id)"
+                [attr.aria-pressed]="vm.modelService.isModelEnabled(m.id)"
+                [title]="
+                  vm.modelService.isModelEnabled(m.id)
+                    ? 'Click to disable model'
+                    : 'Click to enable model'
+                "
+              >
+                <span class="toggle-track">
+                  <span class="toggle-thumb"></span>
+                </span>
+                <span class="toggle-label">{{
+                  vm.modelService.isModelEnabled(m.id) ? 'ON' : 'OFF'
+                }}</span>
+              </button>
+            </div>
+          </div>
+        }
+        @if (!vm.modelService.filteredOpenRouterModels().length) {
+          <div class="models-empty-notice">
+            <svg lucideInfo [size]="16"></svg>
+            <span>No OpenRouter models matching the filter</span>
+          </div>
+        }
+      </div>
+    </div>
   </div>
 </div>
