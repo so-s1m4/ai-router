@@ -1,4 +1,4 @@
-export type CccCandidate = {id:string;enabled:boolean;provider:'codex'|'openrouter';accountId?:string;model:string;reasoning:'default'|'none'|'minimal'|'low'|'medium'|'high'|'xhigh'|'max';delaySeconds:number;mode:'code'|'agent';fast:boolean;openRouterRouting?:{only:string[];allowFallbacks:boolean}};
+export type CccCandidate = {id:string;enabled:boolean;provider:'codex'|'openrouter'|'antigravity';accountId?:string;model:string;reasoning:'default'|'none'|'minimal'|'low'|'medium'|'high'|'xhigh'|'max';delaySeconds:number;mode:'code'|'agent';fast:boolean;openRouterRouting?:{only:string[];allowFallbacks:boolean}};
 export type CccAutoSettings = {version:1;submissionIntervalSeconds:number;rateLimitRetries:number;rateLimitDelaySeconds:number;solutionAttempts:number;preparationRetries:number;optimizationEnabled:boolean;optimizationDelaySeconds:number;reuseThreads:boolean;startLevel:number;endLevel:number|null;extraInstructions:string;levels:{from:number;to:number|null;candidates:CccCandidate[]}[]};
 export function defaultCccAutoSettings(): CccAutoSettings {
   return {version:1, submissionIntervalSeconds:1, rateLimitRetries:5, rateLimitDelaySeconds:1,

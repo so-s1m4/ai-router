@@ -1,3 +1,4 @@
+import { boundedText } from './ccc-context.js';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -40,14 +41,17 @@ async function runCommand(command:string,cwd:string,signal:AbortSignal):Promise<
   const env:NodeJS.ProcessEnv={PATH:process.env.PATH,LANG:'C.UTF-8',HOME:cwd,TMPDIR:'/tmp'};
   return new Promise((resolve,reject)=>{
     const child=spawn('/bin/bash',['-c',command],{cwd,env,detached:true,stdio:['ignore','pipe','pipe']});
-    let output='';const append=(chunk:Buffer)=>{output=(output+chunk.toString()).slice(-24000);};
+    let head='',tail='',size=0;
+    const append=(chunk:string)=>{size+=chunk.length;head=(head+chunk).slice(0,12000);tail=(tail+chunk).slice(-12000);};
+    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
     child.stdout.on('data',append);child.stderr.on('data',append);
     const stop=()=>{if(child.pid)try{process.kill(-child.pid,'SIGKILL');}catch{}};
-    const timer=setTimeout(stop,120000);
+    let timedOut=false;
+    const timer=setTimeout(()=>{timedOut=true;stop();},120000);
     signal.addEventListener('abort',stop,{once:true});if(signal.aborted)stop();
     const cleanup=()=>{clearTimeout(timer);signal.removeEventListener('abort',stop);};
     child.on('error',error=>{cleanup();reject(error);});
-    child.on('close',code=>{cleanup();if(signal.aborted)reject(signal.reason);else resolve(`Exit code: ${code}\n${output}`);});
+    child.on('close',code=>{cleanup();if(signal.aborted)reject(signal.reason);else {const output=size<=12000?head:size<=24000?head+tail.slice(-(size-12000)):boundedText(head+'\n[command output omitted]\n'+tail,24000);resolve(`Exit code: ${code}${timedOut?' (command timed out after 120s)':''}\n${output}`);}});
   });
 }
 export function openRouterBody(job:Job,messages:unknown[]) {
@@ -80,7 +84,8 @@ export async function executeOpenRouter(job:Job,home:string,cwd:string,signal:Ab
     if(!message)throw new RunnerError('OpenRouter returned no response','failed');
     if(!message.tool_calls?.length){if(typeof message.content!=='string'||!message.content.trim())throw new RunnerError('OpenRouter returned an empty answer','failed');if(data.choices[0].finish_reason==='length')throw new RunnerError('OpenRouter answer was truncated','failed');const text=job.solverCodeOnly?message.content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''):message.content;emit({type:'delta',text});return text;}
     if(job.solverCodeOnly||job.mode!=='task')throw new RunnerError('Unexpected OpenRouter tool call','failed');
-    messages.push(message);
+    messages.push({role:'assistant',content:message.content ?? null,tool_calls:message.tool_calls,
+      ...(message.reasoning_details?{reasoning_details:message.reasoning_details}:{})});
     for(const call of message.tool_calls){
       taskSignal.throwIfAborted();let result:string;
       try{

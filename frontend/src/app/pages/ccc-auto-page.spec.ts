@@ -23,6 +23,17 @@ describe('CCC-Auto settings',()=>{
     const call=api.calls.all().find(c=>c.args[1]?.method==='PUT')!;
     const saved=JSON.parse(call.args[1]!.body as string);expect(saved.levels[0].candidates[0].model).toBe('openrouter/auto');expect(saved.levels[0].candidates[0].delaySeconds).toBe(12);expect(saved.levels[0].candidates[0].fast).toBeFalse();expect(saved.levels[0].candidates[0].openRouterRouting).toEqual({only:['google-ai-studio/flex'],allowFallbacks:false});
   });
+  it('offers Gemini subscription CLI with account models and disables Codex Fast',()=>{
+    const fixture=TestBed.createComponent(CccAutoPageComponent);
+    const component=fixture.componentInstance;
+    const candidate=component.settings.levels[0].candidates[0];
+    candidate.provider='antigravity';candidate.openRouterRouting={only:['google-ai-studio/flex'],allowFallbacks:false};
+    component.providerChanged(candidate);
+    expect(candidate.model).toBe('default');expect(candidate.reasoning).toBe('default');expect(candidate.fast).toBeFalse();expect(candidate.openRouterRouting).toBeUndefined();
+    expect(component.candidateReasonings(candidate)).toEqual(['default']);
+    component.loading=false;fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('option[value="antigravity"]').textContent).toContain('подписка');
+  });
   it('keeps the current form when imported JSON is rejected',async()=>{
     spyOn(TestBed.inject(ApiService),'request').and.rejectWith(new Error('Invalid ranges'));
     const component=TestBed.createComponent(CccAutoPageComponent).componentInstance;

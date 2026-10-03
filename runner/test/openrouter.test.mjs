@@ -57,3 +57,25 @@ test('OpenRouter routing preserves legacy defaults and supports automatic or res
   assert.deepEqual(openRouterBody({...job,openRouterRouting:{only:[],allowFallbacks:false}},[]).provider,{allow_fallbacks:false});
   assert.deepEqual(openRouterBody({...job,openRouterRouting:{only:['google-ai-studio/flex','google-vertex'],allowFallbacks:true}},[]).provider,{only:['google-ai-studio/flex','google-vertex'],allow_fallbacks:true});
 });
+
+test('large tool output retains beginning, end and reasoning tool history', async () => {
+  const dir=await mkdtemp(path.join(os.tmpdir(),'openrouter-output-'));
+  const original=globalThis.fetch;let calls=0;
+  const reasoning=[{type:'reasoning.text',text:'Preserve tool reasoning'}];
+  globalThis.fetch=async(url,options)=>{
+    if(url.endsWith('/key'))return Response.json({data:{}});
+    const body=JSON.parse(options.body);
+    if(++calls===1)return Response.json({choices:[{message:{role:'assistant',content:null,reasoning_details:reasoning,tool_calls:[{id:'out',type:'function',function:{name:'run_command',arguments:JSON.stringify({command:`node -e "process.stdout.write('START'+'x'.repeat(40000)+'END')"`})}}]}}]});
+    const result=body.messages.at(-1).content;
+    assert.match(result,/Exit code: 0\nSTART/);
+    assert.match(result,/truncated/);
+    assert.ok(result.endsWith('END'));
+    assert.ok(result.length<24100);
+    assert.deepEqual(body.messages.at(-2).reasoning_details,reasoning);
+    return Response.json({choices:[{message:{content:'Done'},finish_reason:'stop'}]});
+  };
+  try{
+    await saveOpenRouterKey(dir,'sk-or-test-12345678901234567890');
+    assert.equal(await executeOpenRouter({...job,mode:'task'},dir,dir,new AbortController().signal,()=>{}),'Done');
+  }finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
+});

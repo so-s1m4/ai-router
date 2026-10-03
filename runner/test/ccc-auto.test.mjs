@@ -962,3 +962,98 @@ test('configured CCC preserves outbox and resumes without another model call',as
   await assert.rejects(f.run({cccAuto:settings}));const count=f.solverJobs.length;refuse=false;
   await f.run({cccAuto:settings});assert.equal(f.solverJobs.length,count);assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,2);
 }));
+
+test('configured agent retries a text-only reply and receives missing-artifact feedback',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
+  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],mode:'agent',reasoning:'medium'}];
+  const seen=[];
+  const solve=async(j,s,e)=>{
+    seen.push(j);
+    if(seen.length===1)return 'Solver ready.';
+    assert.match(j.prompt,/Preparation feedback:.*preparation incomplete/);
+    return f.solve(j,s,e);
+  };
+  const result=await runAuto({...job,mode:'chat',cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e));
+  assert.match(result,/Accepted 2 new outputs/);
+  assert.equal(seen.length,2);
+  assert.ok(seen.every(j=>j.mode==='task'));
+  assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,2);
+  assert.ok(f.events.some(e=>e.message?.includes('preparation incomplete; retrying (1/1)')));
+},{levels:[1]}));
+
+test('configured code fallback retries missing artifacts with feedback',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
+  settings.levels[0].candidates=[settings.levels[0].candidates[0]];
+  let codeCalls=0,agentCalls=0;
+  const solve=async(j,s,e)=>{
+    if(j.solverCodeOnly){codeCalls++;return JSON.stringify({source:''});}
+    agentCalls++;
+    if(agentCalls===1)return 'Solver ready.';
+    assert.match(j.prompt,/Preparation feedback:.*preparation incomplete/);
+    const output=j.prompt.match(/directly write (\S+) with JSON/)[1];
+    await writeFile(output,JSON.stringify({answers:[{file_id:'1-small',solution:'42\n'},{file_id:'2-large',solution:'42\n'}]}));
+    return 'Solver ready.';
+  };
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Accepted 2 new outputs/);
+  assert.equal(codeCalls,2);assert.equal(agentCalls,2);
+},{levels:[1]}));
+
+test('configured candidate with no artifacts fails clearly while another continues',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
+  settings.levels[0].candidates=[
+    {...settings.levels[0].candidates[0],id:'missing',mode:'agent',reasoning:'medium'},
+    {...settings.levels[0].candidates[1],id:'working',mode:'agent',reasoning:'medium',delaySeconds:0.1},
+  ];
+  let failedCalls=0;
+  const solve=async(j,s,e)=>{if(j.jobId.includes('-missing-')){failedCalls++;return 'Solver ready.';}return f.solve(j,s,e);};
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Accepted 2 new outputs/);
+  assert.equal(failedCalls,2);
+  const failure=f.events.find(e=>e.message?.includes('missing failed:'));
+  assert.match(failure.message,/preparation incomplete/);assert.doesNotMatch(failure.message,/ENOENT/);
+},{levels:[1]}));
+
+test('configured code repair receives its failed source without relying on provider threads',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;settings.reuseThreads=false;
+  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/model'}];
+  const broken='#include <iostream>\nint main(){std::cout << missing_value << std::endl;}';
+  let calls=0;
+  const solve=async(j)=>{
+    assert.equal(j.previousThreadId,undefined);
+    if(++calls===1)return JSON.stringify({source:broken,outputMode:'exact'});
+    const context=JSON.parse(j.prompt.split('Task context: ')[1]);
+    assert.equal(context.source,broken);
+    assert.match(context.preparationError,/compilation failed/);
+    assert.ok(context.inputs.every(input=>input.bytes>0));
+    return JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:'exact'});
+  };
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
+  assert.equal(calls,2);
+},{levels:[1]}));
+
+test('CCC Antigravity subscription candidates receive isolated code and agent jobs',async()=>{
+  const {defaultCccAutoSettings,cccAutoSchema}=await import('../dist/ccc-settings.js');
+  for(const mode of ['code','agent'])await fixture(async f=>{
+    const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+    settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'antigravity',accountId:'123e4567-e89b-42d3-a456-426614174000',model:'gemini-test',reasoning:'default',mode,fast:false}];
+    assert.equal(cccAutoSchema.safeParse(settings).success,true);
+    const solve=async(j,s,e)=>{
+      assert.equal(j.provider,'antigravity');assert.equal(j.model,'gemini-test');assert.equal(j.reasoning,'default');assert.equal(j.fast,false);
+      assert.deepEqual(j.personalMcp,[]);assert.equal(j.previousThreadId,undefined);assert.equal(j.mode,'task');
+      if(mode==='code')return '```json\n'+JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:'exact'})+'\n```';
+      const output=j.prompt.match(/directly write (\S+) with JSON/)[1];
+      await writeFile(output,JSON.stringify({answers:[{file_id:'1-small',solution:'42\n'},{file_id:'2-large',solution:'42\n'}]}));
+      return 'Solver ready.';
+    };
+    // Give each mode independent platform progress and saved state.
+    const scopedJob={...job,sessionId:mode,provider:'antigravity',cccAuto:settings,personalMcp:[{name:'codex-only'}]};
+    assert.match(await runAuto(scopedJob,f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
+  },{levels:[1]});
+});

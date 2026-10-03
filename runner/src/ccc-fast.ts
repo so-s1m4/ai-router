@@ -1,3 +1,4 @@
+import { codeContext } from './ccc-context.js';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -17,7 +18,7 @@ export function fastLevelLimit(): number {
 }
 
 export function codePrompt(level: number, context: unknown): string {
-  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete C++17 source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. The runner compiles and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${JSON.stringify(context)}`;
+  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete C++17 source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. Keep the source compact; omit commentary and boilerplate. A sameAs field refers to identical source already supplied in this context. The runner compiles and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${codeContext(context)}`;
 }
 
 async function compileUncached(directory: string, signal: AbortSignal) {

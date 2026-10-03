@@ -43,3 +43,11 @@ test('CCC routing validates endpoint slugs and remains compatible with legacy se
     assert.equal(cccAutoSchema.safeParse({...settings,levels:[{from:1,to:null,candidates:[{...candidate,openRouterRouting:routing}]}]}).success,false);
   }
 });
+
+test('CCC accepts subscription Antigravity candidates in code and agent modes',()=>{
+  for(const mode of ['code','agent'] as const){
+    const settings=defaultCccAutoSettings();
+    settings.levels[0].candidates[0]={...settings.levels[0].candidates[0],provider:'antigravity',model:'default',reasoning:'default',mode,fast:false};
+    assert.equal(cccAutoSchema.parse(JSON.parse(JSON.stringify(settings))).levels[0].candidates[0].provider,'antigravity');
+  }
+});

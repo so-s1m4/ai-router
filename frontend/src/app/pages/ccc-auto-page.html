@@ -6,7 +6,7 @@
   @if (error) {<div class="banner banner-error" role="alert">{{ error }}</div>}
   @if (notice) {<div class="banner banner-notice" role="status">{{ notice }}</div>}
   @if (loading) {<p role="status">Загрузка настроек…</p>} @else {
-    <div class="summary-strip"><span><strong>{{ settings.levels.length }}</strong> диапазонов уровней</span><span><strong>{{ settings.submissionIntervalSeconds }} c</strong> между отправками</span><span><strong>{{ settings.solutionAttempts }}</strong> попытки решения</span><span>Codex + OpenRouter</span></div>
+    <div class="summary-strip"><span><strong>{{ settings.levels.length }}</strong> диапазонов уровней</span><span><strong>{{ settings.submissionIntervalSeconds }} c</strong> между отправками</span><span><strong>{{ settings.solutionAttempts }}</strong> попытки решения</span><span>Codex + OpenRouter + Gemini</span></div>
     <section class="card settings-card"><h2>Уровни и участники</h2><p class="muted">Старт считается от начала попытки решения уровня. Участники с задержкой 0 запускаются одновременно. Для CCC нужен runner с настроенным CCC MCP; все выбранные подключения должны быть на этом runner.</p>
       @for (rule of settings.levels; track $index; let i=$index) {
         <article class="level-rule">
@@ -19,10 +19,10 @@
             <div class="candidate" [class.disabled]="!candidate.enabled">
               <div class="candidate-heading"><label class="toggle"><input type="checkbox" [(ngModel)]="candidate.enabled" /><strong>{{ candidate.id }}</strong></label><span class="start-badge">{{ candidate.delaySeconds === 0 ? 'Сразу' : '+' + candidate.delaySeconds + ' c' }}</span><button class="btn" (click)="removeCandidate(i,candidate.id)" [disabled]="rule.candidates.length === 1" [attr.aria-label]="'Удалить участника ' + candidate.id">Удалить</button></div>
               <div class="candidate-fields">
-                <label>Провайдер<select class="custom-select" [(ngModel)]="candidate.provider" (ngModelChange)="providerChanged(candidate)"><option value="codex">Codex / OpenAI API</option><option value="openrouter">OpenRouter API</option></select></label>
+                <label>Провайдер<select class="custom-select" [(ngModel)]="candidate.provider" (ngModelChange)="providerChanged(candidate)"><option value="codex">Codex / OpenAI API</option><option value="openrouter">OpenRouter API</option><option value="antigravity">Antigravity CLI / Gemini (подписка)</option></select></label>
                 <label>Подключение<select class="custom-select" [(ngModel)]="candidate.accountId"><option [ngValue]="undefined">Авто на выбранном runner</option>@for (a of candidateAccounts(candidate); track a.id) {<option [value]="a.id">{{ a.name }}</option>}</select></label>
                 <label class="model-field">Модель<input class="custom-input" [(ngModel)]="candidate.model" [attr.list]="'ccc-models-' + i + '-' + ci" placeholder="provider/model" /><datalist [id]="'ccc-models-' + i + '-' + ci">@for (model of models(candidate); track model.id) {<option [value]="model.id">{{ model.label }}</option>}</datalist></label>
-                <label>Reasoning<select class="custom-select" [(ngModel)]="candidate.reasoning">@for (effort of reasonings; track effort) {<option [value]="effort">{{ effort }}</option>}</select></label>
+                <label>Reasoning<select class="custom-select" [(ngModel)]="candidate.reasoning">@for (effort of candidateReasonings(candidate); track effort) {<option [value]="effort">{{ effort }}</option>}</select></label>
                 <label>Старт через, секунд<input class="custom-input" type="number" [(ngModel)]="candidate.delaySeconds" min="0" max="3600" step="0.1" /></label>
                 <label>Способ решения<select class="custom-select" [(ngModel)]="candidate.mode"><option value="code">Прямая генерация C++</option><option value="agent">Агент с инструментами</option></select></label>
                 <label class="toggle fast"><input type="checkbox" [(ngModel)]="candidate.fast" [disabled]="candidate.provider !== 'codex'" />Codex Fast</label>

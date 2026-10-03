@@ -24,7 +24,8 @@ export class CccAutoPageComponent implements OnInit {
   }
   candidateAccounts(c:CccCandidate){return this.accounts.accounts().filter(a=>!a.shared&&a.provider===c.provider);}
   models(c:CccCandidate){return [...new Map(this.candidateAccounts(c).filter(a=>!c.accountId||a.id===c.accountId).flatMap(a=>a.models).filter(m=>m.id!=='default').map(m=>[m.id,m])).values()];}
-  providerChanged(c:CccCandidate){c.accountId=undefined;c.model=c.provider==='codex'?'gpt-6.1-sol':'openrouter/auto';if(c.provider==='openrouter')c.fast=false;}
+  providerChanged(c:CccCandidate){c.accountId=undefined;c.model=c.provider==='codex'?'gpt-6.1-sol':c.provider==='openrouter'?'openrouter/auto':this.models(c).find(m=>m.id.startsWith('gemini-'))?.id ?? 'default';if(c.provider!=='codex'){c.fast=false;c.reasoning='default';}delete c.openRouterRouting;}
+  candidateReasonings(c:CccCandidate){if(c.provider!=='antigravity')return this.reasonings;const model=this.models(c).find(m=>m.id===c.model);return ['default',...(model?.reasoning?.map(r=>r.id) ?? (c.model.startsWith('gemini-')?['low','medium','high','max']:[]))];}
   routingProviders(c:CccCandidate){return c.openRouterRouting?.only.join(', ') ?? '';}
   setRoutingProviders(c:CccCandidate,value:string){c.openRouterRouting={only:[...new Set(value.split(/[,\s]+/).filter(Boolean))],allowFallbacks:c.openRouterRouting?.allowFallbacks ?? true};}
   setRoutingFallbacks(c:CccCandidate,value:boolean){c.openRouterRouting={only:c.openRouterRouting?.only ?? [],allowFallbacks:value};}
