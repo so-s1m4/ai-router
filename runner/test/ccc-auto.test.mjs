@@ -954,6 +954,51 @@ test('configured candidates recover from rejection within solution attempt limit
   await f.run({cccAuto:settings});assert.equal(f.solverJobs.length,2);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,3);assert.ok(f.calls.filter(c=>c.name==='submit_solution').every(c=>c.args.level===1));
 },{rejectFirst:true}));
+test('configured runtime failure reports the assertion and supplies failed source on the next attempt',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+  settings.solutionAttempts=2;settings.preparationRetries=0;settings.reuseThreads=false;
+  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/model'}];
+  const broken='#include <cassert>\nint main(){assert(false && "route exceeds time limit");}';
+  let calls=0;
+  const solve=async(j)=>{
+    if(++calls===1)return JSON.stringify({source:broken,outputMode:'constructive'});
+    assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,0);
+    const context=JSON.parse(j.prompt.split('Task context: ')[1]);
+    assert.equal(context.source,broken);
+    assert.match(context.preparationError,/route exceeds time limit/);
+    assert.match(context.preparationError,/SIGABRT/);
+    return JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:'exact'});
+  };
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,e=>f.events.push(e)),/Accepted 2 new outputs/);
+  assert.equal(calls,2);
+  assert.match(f.events.find(e=>e.message?.includes('light failed:')).message,/route exceeds time limit/);
+},{levels:[1]}));
+
+test('configured agent receives runtime failure and source without a reusable thread',async()=>fixture(async f=>{
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
+  const settings=defaultCccAutoSettings();
+  settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+  settings.solutionAttempts=2;settings.preparationRetries=0;settings.reuseThreads=false;
+  settings.levels[0].candidates=[{...settings.levels[0].candidates[0],mode:'agent',reasoning:'medium'}];
+  let calls=0;
+  const solve=async(j,s,e)=>{
+    if(++calls===1){
+      const dir=path.dirname(j.prompt.match(/directly write (\S+) with JSON/)[1]);
+      await writeFile(path.join(dir,'solution.cpp'),'failed source');
+      await writeFile(path.join(dir,'solver.json'),JSON.stringify({runtime:'node',script:'solution.cjs'}));
+      await writeFile(path.join(dir,'solution.cjs'),'throw new Error("route exceeds time limit");');
+      return 'Solver ready.';
+    }
+    assert.match(j.prompt,/Previous candidate failure:.*route exceeds time limit/);
+    assert.match(j.prompt,/Previous candidate failure:.*failed source/);
+    return f.solve(j,s,e);
+  };
+  assert.match(await runAuto({...job,cccAuto:settings},f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
+  assert.equal(calls,2);
+},{levels:[1]}));
+
 test('configured CCC preserves outbox and resumes without another model call',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.levels[0].candidates=[settings.levels[0].candidates[0]];
   const call=f.client.call.bind(f.client);let refuse=true;

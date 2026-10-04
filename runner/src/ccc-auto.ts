@@ -1,4 +1,4 @@
-import { compactFeedback } from './ccc-context.js';
+import { boundedText, compactFeedback } from './ccc-context.js';
 import type { CccCandidate } from './ccc-settings.js';
 import { codePrompt, fastLevelLimit, prepareFastCode } from './ccc-fast.js';
 import { steerCodexJob } from './app-server.js';
@@ -542,6 +542,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       successfulDirectory = queued.directory;
       await submitAnswers(answers, queued.light, queued.directory, true);
     }
+    const candidateFailures = new Map<string, { error: string; directory: string }>();
     for (let attempt = 0; attempt < (settings?.solutionAttempts ?? 3) && pending.length; attempt++) {
       signal.throwIfAborted();
       const originalDir = path.join(folder, `run-${runId}-${attempt}-original`);
@@ -609,15 +610,18 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           const saved = state.candidateThreads?.[identity];
           let threadId = settings.reuseThreads && saved && saved.accountId === candidate.accountId ? saved.threadId : undefined;
           const checkpoint = (value:string) => {threadId=value;state.candidateThreads ??= {};state.candidateThreads[identity]={accountId:candidate.accountId!,threadId:value};};
-          const agentPrompt = prompt.replaceAll(originalDir,candidateDir);
-          let preparationError: unknown;
+          const previousFailure = candidateFailures.get(candidate.id);
+          const failedSource = previousFailure ? await solverSource(previousFailure.directory) : undefined;
+          const agentPrompt = prompt.replaceAll(originalDir,candidateDir) + (previousFailure
+            ? `\nPrevious candidate failure: ${JSON.stringify({ error: previousFailure.error, sourceDirectory: previousFailure.directory, source: failedSource })}. Correct the failed solver before executing it again.` : '');
+          let preparationError: unknown = previousFailure?.error;
           for(let revision=0;revision<=settings.preparationRetries;revision++) {
             candidateSignal.throwIfAborted();
             try {
               if(candidate.mode === 'code') {
                 const response = await askSolver(codePrompt(level,{...context,evaluationFeedback:feedback ?? null,previousLevel:previousLevelContext,
-                  source: revision > 0 ? await solverSource(candidateDir) : undefined,
-                  preparationError:preparationError ? String(preparationError).slice(-8000) : null, extraInstructions:settings.extraInstructions,
+                  source: revision > 0 ? await solverSource(candidateDir) : failedSource,
+                  preparationError:preparationError ? boundedText(String(preparationError),8000) : null, extraInstructions:settings.extraInstructions,
                   userRequest:(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}),
                   `${job.taskId}-ccc-${level}-${attempt}-${candidate.id}-code-${revision}`,candidateSignal,false,true,
                   {candidate,previousThreadId:threadId,onCheckpoint:checkpoint});
@@ -640,7 +644,11 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           return {...result,candidate};
         }})),AbortSignal.any([signal,submissionController.signal]),async candidate => {
           return submitAnswers(candidate.answers,candidate.candidate.reasoning === 'low',candidate.directory,true);
-        },(index,error)=>emit({type:'status',message:`CCC авто: ${enabled[index].id} failed: ${String(error).slice(-400)}; remaining candidates continue`}));
+        },(index,error)=>{
+          const id = enabled[index].id;
+          candidateFailures.set(id, { error: boundedText(String(error),8000), directory: path.join(folder, `run-${runId}-${attempt}-configured-${id}`) });
+          emit({type:'status',message:`CCC авто: ${id} failed: ${boundedText(String(error),600)}; remaining candidates continue`});
+        });
         fastAnswers=winner.answers;successfulDirectory=winner.directory;lightWinner=winner.candidate.reasoning==='low';
         candidateLabel=`${winner.candidate.model} / ${winner.candidate.reasoning}`;
         } catch(error) {
