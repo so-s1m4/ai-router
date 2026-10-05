@@ -23,3 +23,20 @@ test('personal MCP overrides are scoped to the task and disable owner MCP for sh
     assert.equal((await personalMcpOverrides(home, {solverOnly:true,personalMcp:[server]}))['mcp_servers.personal_friend'].enabled, false);
   } finally { await rm(home, {recursive:true,force:true}); }
 });
+
+test('a personal server disables the same runner server even on an owned account', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'personal-mcp-priority-'));
+  try {
+    await mkdir(path.join(home, '.codex'));
+    const file = path.join(home, '.codex/config.toml');
+    const original = '[mcp_servers.ccc]\nurl="https://owner.example/mcp"\n[mcp_servers.browser]\ncommand="browser-mcp"\n';
+    await writeFile(file, original);
+    const personal = {name:'ccc',url:'https://friend.example/mcp',headers:{Authorization:'Bearer friend-secret'}};
+    const overrides = await personalMcpOverrides(home, {personalMcp:[personal]});
+    assert.equal(overrides['mcp_servers.ccc.enabled'], false);
+    assert.equal(overrides['mcp_servers.browser.enabled'], undefined);
+    assert.deepEqual(overrides['mcp_servers.personal_ccc'], {url:personal.url,http_headers:personal.headers,enabled:true});
+    assert.deepEqual(await personalMcpOverrides(home, {}), {});
+    assert.equal(await readFile(file, 'utf8'), original);
+  } finally { await rm(home, {recursive:true,force:true}); }
+});

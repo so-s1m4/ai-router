@@ -1,4 +1,5 @@
 import { cccAutoSchema } from './ccc-settings.js';
+import { CccConnectionError } from './ccc-client.js';
 import { saveOpenRouterKey } from './openrouter.js';
 import { personalMcpSchema } from './personal-mcp.js';
 import { CliUpdater } from './cli-updater.js';
@@ -66,7 +67,7 @@ async function start(){
    if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Task checkpoint updated',data:{taskId:job.taskId,status:'completed'}});
    if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:true,text});
   }catch(e){
-   const code=e instanceof RunnerError?e.code:'failed';
+   const code=e instanceof RunnerError||e instanceof CccConnectionError?e.code:'failed';
    checkpoint.update({status:code==='rate_limit'?'handoff_pending':'failed',partialText:partial,error:e instanceof Error?e.message:'Error',handoffReason:code==='rate_limit'?'quota':undefined,lastEvent:'error'},true);
    try{await checkpoint.flush();}catch(error){console.error('Checkpoint write failed:',error);}
    if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint saved for continuation',data:{taskId:job.taskId,status:code==='rate_limit'?'handoff_pending':'failed'}});

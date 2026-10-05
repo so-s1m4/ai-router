@@ -93,6 +93,15 @@ process.stdin.on('data', chunk => {
     await execute({...solver,taskId:'owner-again',solverOnly:false},new AbortController().signal,()=>{});
     assert.equal((await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1).config,undefined);
     assert.equal((await readFile(path.join(home,'.codex/config.toml'),'utf8')).includes('friend-secret'),false);
+    const personalCcc = [{name:'ccc',url:'https://personal.example/mcp',headers:{Authorization:'Bearer personal-secret'}}];
+    const personalEvents = [];
+    await execute({...solver,taskId:'personal-ccc',solverOnly:false,personalMcp:personalCcc},new AbortController().signal,event=>personalEvents.push(event));
+    const personalCccThread = (await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
+    assert.equal(personalCccThread.config['mcp_servers.ccc.enabled'],false);
+    assert.equal(personalCccThread.config['mcp_servers.browser.enabled'],undefined);
+    assert.deepEqual(personalCccThread.config['mcp_servers.personal_ccc'],{url:personalCcc[0].url,http_headers:personalCcc[0].headers,enabled:true});
+    assert.ok(personalEvents.some(event=>event.message==='Personal MCP: ccc → personal_ccc'));
+    assert.ok(!JSON.stringify(personalEvents).includes('personal-secret'));
     await execute({...solver,taskId:'code',solverCodeOnly:true,reasoning:'low'},new AbortController().signal,()=>{});
     const codeThread = (await readFile(path.join(root,'threads'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
     assert.equal(codeThread.config['features.shell_tool'],false);

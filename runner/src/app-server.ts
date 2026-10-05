@@ -131,6 +131,7 @@ class AppServerConnection {
 
   private async runCurrent(job: Job, cwd: string, signal: AbortSignal, emit: (event: Event) => void, existingThreadId?: string): Promise<{ text: string; threadId: string }> {
     const mcpConfig = await personalMcpOverrides(this.home, job);
+    if (!job.solverOnly && job.personalMcp?.length) emit({type:'status', message:'Personal MCP: ' + job.personalMcp.map(server => `${server.name} → personal_${server.name}`).join(', ')});
     let solverConfig: Record<string, unknown> | undefined = Object.keys(mcpConfig).length ? mcpConfig : undefined;
     if (job.solverCodeOnly) solverConfig = { ...solverConfig,
       'features.shell_tool': false, 'features.unified_exec': false,

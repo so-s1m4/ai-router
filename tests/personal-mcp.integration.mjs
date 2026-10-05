@@ -80,6 +80,24 @@ test('personal MCP is private and is dispatched with shared tokens', {timeout:30
     assert.equal((await finished).type,'completed');
     assert.equal(received.sharedExecution,true);
     assert.deepEqual(received.personalMcp,[personal]);
+    // A different provider account cannot repair the task's CCC MCP settings.
+    await api(owner,'/accounts','POST',{provider:'codex',name:'Second owner account',runnerId:device.id});
+    const failingSession = (await api(friend,'/sessions','POST',{})).body;
+    runner.removeAllListeners('job:start');
+    let attempts = 0;
+    runner.on('job:start',(job,ack) => {
+      attempts++; ack({ok:true});
+      runner.emit('job:result',{jobId:job.jobId,ok:false,error:'CCC personal MCP: HTTP 401',code:'ccc_mcp'});
+    });
+    const failed = new Promise((resolve,reject) => {
+      const timer = setTimeout(()=>reject(new Error('No MCP failure event')),5000);
+      browser.on('ai:event',event => {if(event.sessionId===failingSession.id && event.type==='error'){clearTimeout(timer);resolve(event);}});
+    });
+    assert.equal((await browser.timeout(5000).emitWithAck('run',{sessionId:failingSession.id,prompt:'Use my CCC MCP',model:'default',service:'codex'})).ok,true);
+    const failure = await failed;
+    assert.equal(attempts,1);
+    assert.match(failure.message,/HTTP 401/);
+    assert.equal(failure.message.split('HTTP 401').length,2);
     assert.equal((await api(owner,'/personal-mcp/mine','DELETE')).status,200);
     assert.equal((await api(friend,'/personal-mcp')).body.length,1);
     assert.equal((await api(friend,'/personal-mcp/mine','DELETE')).status,200);

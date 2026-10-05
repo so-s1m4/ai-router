@@ -12,6 +12,15 @@ export interface CccClient {
   close(): Promise<void>;
 }
 
+export class CccConnectionError extends Error {
+  readonly code = 'ccc_mcp';
+}
+
+export function cccConnectionFailure(error: unknown, personal: boolean): CccConnectionError {
+  const source = personal ? 'your personal MCP settings' : 'the MCP settings on this runner';
+  return new CccConnectionError(`Unable to connect to CCC MCP (${personal ? 'personal' : 'runner default'}): ${retryReason(error)}; check ${source}`, { cause: error });
+}
+
 export class CccToolError extends Error {
   constructor(public status?: number, public retryAfterMs?: number) {
     super(`CCC MCP operation failed${status ? ` (HTTP ${status})` : ''}; check access or server status`);
@@ -47,7 +56,7 @@ export function cccServer(config: any, personalMcp: PersonalMcp[] = []) {
   const name = process.env.CCC_AUTO_MCP_NAME || 'ccc';
   const personal = personalMcp.find(server => server.name === name);
   const server = personal || config.mcpServers?.[name];
-  if (!server || server.enabled === false || server.disabled === true) throw new Error(`Configure the ${name} MCP server on this runner or in your personal MCP settings to use CCC авто`);
+  if (!server || server.enabled === false || server.disabled === true) throw new CccConnectionError(`Configure the ${name} MCP server on this runner or in your personal MCP settings to use CCC авто`);
   return server;
 }
 
@@ -94,7 +103,8 @@ async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[]): Pro
   } catch (error) {
     signal.removeEventListener('abort', stop); await client.close().catch(() => {});
     if (signal.aborted) throw error;
-    throw new Error(error instanceof Error && /Configure|missing/.test(error.message) ? error.message : 'Unable to connect to CCC MCP; check its settings on this runner', { cause: error });
+    if (error instanceof Error && /Configure|missing/.test(error.message)) throw new CccConnectionError(error.message, { cause: error });
+    throw cccConnectionFailure(error, personalMcp.includes(server));
   }
 }
 
@@ -147,6 +157,9 @@ function retryReason(error: unknown): string {
   const status = Number(value?.status ?? value?.statusCode ?? value?.code);
   if (status >= 400 && status <= 599) return `HTTP ${status}`;
   if (value?.cause) return retryReason(value.cause);
+  if (['ENOTFOUND', 'EAI_AGAIN'].includes(value?.code)) return 'server DNS lookup failed';
+  if (value?.code === 'ECONNREFUSED') return 'server refused the connection';
+  if (['CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(value?.code)) return 'TLS certificate verification failed';
   if (/timeout|timed out/i.test(value?.message || '')) return 'request timed out';
   return 'connection interrupted';
 }

@@ -1,6 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cccServer, recoveringCcc, toolData, CccToolError } from '../dist/ccc-client.js';
+import { cccServer, recoveringCcc, toolData, CccToolError, CccConnectionError, cccConnectionFailure } from '../dist/ccc-client.js';
+
+test('connection errors identify MCP scope and status without exposing credentials', () => {
+  const cause = Object.assign(new Error('https://secret.example/?token=private'), {code:401});
+  for (const personal of [true, false]) {
+    const error = cccConnectionFailure(new Error('wrapped', {cause}), personal);
+    assert.equal(error.code, 'ccc_mcp');
+    assert.match(error.message, /HTTP 401/);
+    assert.ok(error.message.includes(personal ? 'personal' : 'runner default'));
+    assert.ok(!error.message.includes('private'));
+    assert.ok(!error.message.includes('secret.example'));
+  }
+  assert.match(cccConnectionFailure(Object.assign(new Error('private'), {code:'ENOTFOUND'}), true).message, /DNS/);
+  assert.throws(() => cccServer({}), CccConnectionError);
+});
+
+test('connection authentication failure is terminal and keeps its routing code', async () => {
+  let connects = 0;
+  const failure = cccConnectionFailure(Object.assign(new Error('private'), {code:403}), true);
+  const client = recoveringCcc(async () => { connects++; throw failure; }, new AbortController().signal,
+    () => assert.fail('must not reconnect'), [0]);
+  await assert.rejects(client.call('game_info', {}), error => error === failure && error.code === 'ccc_mcp');
+  assert.equal(connects, 1);
+  await client.close();
+});
 
 test('CCC uses the requesting user MCP credentials without changing the runner defaults', () => {
   const name = process.env.CCC_AUTO_MCP_NAME || 'ccc';
