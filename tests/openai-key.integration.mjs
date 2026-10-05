@@ -51,12 +51,16 @@ test('API key connections enforce ownership and never persist or return credenti
   assert.equal((await api('/accounts/'+routerAccount.body.id+'/api-key','PUT',{apiKey:routerKey})).status,200);
   assert.deepEqual(routerReceived,{accountId:routerAccount.body.id,apiKey:routerKey});
   assert.ok(!(await readFile(path.join(root,'users','owner','accounts.json'),'utf8')).includes(routerKey));
+  socket.emit('account:status',{accountId:id,provider:'codex',models:[{id:'gpt-6.1-sol',label:'GPT-6.1 Sol'}]});
+  socket.emit('account:status',{accountId:routerAccount.body.id,provider:'openrouter',models:[{id:'test/model',label:'Test model'}]});
+  await waitFor(async()=> {
+    const accounts=(await api('/accounts')).body;
+    return accounts.find(a=>a.id===id)?.models.some(m=>m.id==='gpt-6.1-sol')&&accounts.find(a=>a.id===routerAccount.body.id)?.models.some(m=>m.id==='test/model');
+  });
   const initialSettings=await api('/ccc-auto/settings');assert.equal(initialSettings.status,200);assert.equal(initialSettings.body.submissionIntervalSeconds,1);
   const settings=initialSettings.body;settings.submissionIntervalSeconds=2;settings.levels[0].candidates[0].provider='openrouter';settings.levels[0].candidates[0].accountId=routerAccount.body.id;settings.levels[0].candidates[0].model='test/model';
   assert.equal((await api('/ccc-auto/settings','PUT',settings)).status,200);
   assert.deepEqual((await api('/ccc-auto/settings')).body,settings);
-  socket.emit('account:status',{accountId:routerAccount.body.id,provider:'openrouter',models:[{id:'test/model',label:'Test model'}]});
-  await waitFor(async()=> (await api('/accounts')).body.find(a=>a.id===routerAccount.body.id)?.models.some(m=>m.id==='test/model'));
   const raceSettings=structuredClone(settings);for(const rule of raceSettings.levels)rule.candidates=[{...rule.candidates[0],provider:'openrouter',accountId:routerAccount.body.id,model:'test/model',fast:false}];
   assert.equal((await api('/ccc-auto/settings','PUT',raceSettings)).status,200);
   const session=await api('/sessions','POST',{});
