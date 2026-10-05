@@ -34,6 +34,13 @@ describe('CCC-Auto settings',()=>{
     component.loading=false;fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('option[value="antigravity"]').textContent).toContain('подписка');
   });
+  it('offers shared connections and only their allowed models',()=>{
+    const component=TestBed.createComponent(CccAutoPageComponent).componentInstance;
+    component.accounts.accounts.set([{id:'grant:openrouter',provider:'openrouter',shared:true,models:[{id:'allowed',label:'Allowed'}]} as any]);
+    const candidate=component.settings.levels[0].candidates[0];candidate.provider='openrouter';candidate.accountId='grant:openrouter';
+    expect(component.candidateAccounts(candidate).map(a=>a.id)).toEqual(['grant:openrouter']);
+    expect(component.models(candidate).map(m=>m.id)).toEqual(['allowed']);
+  });
   it('keeps the current form when imported JSON is rejected',async()=>{
     spyOn(TestBed.inject(ApiService),'request').and.rejectWith(new Error('Invalid ranges'));
     const component=TestBed.createComponent(CccAutoPageComponent).componentInstance;

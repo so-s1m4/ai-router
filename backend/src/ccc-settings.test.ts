@@ -51,3 +51,14 @@ test('CCC accepts subscription Antigravity candidates in code and agent modes',(
     assert.equal(cccAutoSchema.parse(JSON.parse(JSON.stringify(settings))).levels[0].candidates[0].provider,'antigravity');
   }
 });
+
+
+test('CCC accepts public shared connection IDs and rejects unsupported suffixes',()=>{
+  const settings=defaultCccAutoSettings(),candidate=settings.levels[0].candidates[0];
+  for(const provider of ['codex','openrouter','antigravity']){
+    candidate.accountId=`12345678-1234-1234-1234-123456789abc:${provider}`;
+    assert.equal(cccAutoSchema.safeParse(settings).success,true);
+  }
+  candidate.accountId='12345678-1234-1234-1234-123456789abc:chatgpt';
+  assert.equal(cccAutoSchema.safeParse(settings).success,false);
+});

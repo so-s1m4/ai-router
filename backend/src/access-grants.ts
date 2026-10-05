@@ -71,7 +71,7 @@ export function chargeGrant(id: string, model: string, tokens: number) {
     const grant = grantSnapshot(rows[index]);
     grant.usedTokens += tokens; grant.lifetimeTokens += tokens;
     grant.usageByModel[model] = (grant.usageByModel[model] || 0) + tokens;
-    rows[index] = grant; await save(rows);
+    rows[index] = grant; await save(rows); return grant;
   });
 }
 export async function flushGrantCharges() { await queue; }

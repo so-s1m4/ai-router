@@ -22,7 +22,7 @@ export class CccAutoPageComponent implements OnInit {
     catch(error){this.error=(error as Error).message;}
     finally{this.loading=false;}
   }
-  candidateAccounts(c:CccCandidate){return this.accounts.accounts().filter(a=>!a.shared&&a.provider===c.provider);}
+  candidateAccounts(c:CccCandidate){return this.accounts.accounts().filter(a=>a.provider===c.provider);}
   models(c:CccCandidate){return [...new Map(this.candidateAccounts(c).filter(a=>!c.accountId||a.id===c.accountId).flatMap(a=>a.models).filter(m=>m.id!=='default').map(m=>[m.id,m])).values()];}
   providerChanged(c:CccCandidate){c.accountId=undefined;c.model=c.provider==='codex'?'gpt-6.1-sol':c.provider==='openrouter'?'openrouter/auto':this.models(c).find(m=>m.id.startsWith('gemini-'))?.id ?? 'default';if(c.provider!=='codex'){c.fast=false;c.reasoning='default';}delete c.openRouterRouting;}
   candidateReasonings(c:CccCandidate){if(c.provider!=='antigravity')return this.reasonings;const model=this.models(c).find(m=>m.id===c.model);return ['default',...(model?.reasoning?.map(r=>r.id) ?? (c.model.startsWith('gemini-')?['low','medium','high','max']:[]))];}

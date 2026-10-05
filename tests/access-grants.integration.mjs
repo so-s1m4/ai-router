@@ -108,6 +108,50 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   const largeGrant=await api('/access-grants','POST',{username:'friend',budget:1000000,period:'monthly',models:catalogue.map(m=>m.id)});
   assert.equal((await api('/access-grants')).find(g=>g.id===largeGrant.id).models.length,250);
   await api('/access-grants/'+largeGrant.id,'PATCH',{models:catalogue.map(m=>m.id)});
+  // CCC Auto resolves shared pool IDs to private accounts and charges every candidate.
+  await request(friendCookie,'/access-grants/'+largeGrant.id,'PATCH',{state:'active'});
+  const openrouter=await api('/accounts','POST',{provider:'openrouter',name:'Private OpenRouter',runnerId:device.id,authType:'api_key'});
+  runner.emit('account:status',{accountId:openrouter.id,provider:'openrouter',models:[{id:'catalogue-1',label:'Catalogue 1'}]});
+  await waitFor(async()=> (await request(friendCookie,'/accounts')).body.some(a=>a.provider==='openrouter'));
+  const ccc=(await request(friendCookie,'/ccc-auto/settings')).body;
+  ccc.levels=[{from:1,to:null,candidates:[
+    {...ccc.levels[0].candidates[0],id:'codex',accountId:largeGrant.id+':codex',model:'catalogue-0'},
+    {...ccc.levels[0].candidates[0],id:'openrouter',provider:'openrouter',accountId:largeGrant.id+':openrouter',model:'catalogue-1',fast:false},
+  ]}];
+  assert.equal((await request(friendCookie,'/ccc-auto/settings','PUT',ccc)).status,200);
+  const denied=structuredClone(ccc);denied.levels[0].candidates[0].model='forbidden';
+  assert.equal((await request(friendCookie,'/ccc-auto/settings','PUT',denied)).status,400);
+  const privateId=structuredClone(ccc);privateId.levels[0].candidates[0].accountId=backup.id;
+  assert.equal((await request(friendCookie,'/ccc-auto/settings','PUT',privateId)).status,400);
+  let cccJob;
+  runner.removeAllListeners('job:start');
+  runner.on('job:start',(job,ack)=>{ack({ok:true});cccJob=job;});
+  const sendCcc=()=>friend.timeout(5000).emitWithAck('run',{sessionId:session.id,prompt:'Solve CCC',workflow:'ccc-auto',model:'default',mode:'task'});
+  const report=(codex,router)=>runner.emit('job:event',{jobId:cccJob.jobId,type:'usage',data:{totalTokens:codex+router,cccUsage:[
+    {accountId:backup.id,provider:'codex',model:'catalogue-0',usage:{totalTokens:codex}},
+    {accountId:openrouter.id,provider:'openrouter',model:'catalogue-1',usage:{totalTokens:router}},
+    {accountId:account.id,provider:'codex',model:'forbidden',usage:{totalTokens:999}},
+  ]}});
+  terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
+  assert.equal(cccJob.sharedExecution,true);
+  assert.deepEqual(cccJob.cccAuto.levels[0].candidates.map(c=>c.accountId),[backup.id,openrouter.id]);
+  const sharedUsage=[];const onUsage=e=>{if(e.type==='usage'&&e.data?.cccUsage)sharedUsage.push(e.data.cccUsage);};friend.on('ai:event',onUsage);
+  report(20,30);report(20,30);report(40,30);
+  runner.emit('job:result',{jobId:cccJob.jobId,ok:true,text:'CCC solved'});
+  assert.equal((await terminal).type,'completed');friend.off('ai:event',onUsage);
+  assert.deepEqual(sharedUsage.at(-1).map(row=>row.accountId),[largeGrant.id+':codex',largeGrant.id+':openrouter']);
+  let cccSpent=(await request(friendCookie,'/access-grants')).body.find(g=>g.id===largeGrant.id);
+  assert.equal(cccSpent.usedTokens,70);assert.equal(cccSpent.usageByModel['catalogue-0'],40);assert.equal(cccSpent.usageByModel['catalogue-1'],30);
+  await api('/access-grants/'+largeGrant.id,'PATCH',{budget:90});cccJob=undefined;
+  terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
+  report(10,20);assert.equal((await terminal).type,'error');
+  cccSpent=(await request(friendCookie,'/access-grants')).body.find(g=>g.id===largeGrant.id);
+  assert.equal(cccSpent.usedTokens,100);
+  // Exhaustion rejects dispatch; increasing the budget releases the previous lease.
+  assert.equal((await sendCcc()).ok,false);
+  await api('/access-grants/'+largeGrant.id,'PATCH',{budget:1000});cccJob=undefined;
+  terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
+  await api('/access-grants/'+largeGrant.id,'PATCH',{state:'revoked'});assert.equal((await terminal).type,'error');
   for(const [change,message] of [[{username:'x'},/username/],[{budget:1.5},/whole number/],[{models:[]},/at least one model/]]){
     const invalid=await request(ownerCookie,'/access-grants','POST',{username:'friend',budget:100,period:'once',models:['allowed'],...change});
     assert.equal(invalid.status,400);assert.match(invalid.body.error,message);
