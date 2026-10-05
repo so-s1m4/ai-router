@@ -113,6 +113,8 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   const openrouter=await api('/accounts','POST',{provider:'openrouter',name:'Private OpenRouter',runnerId:device.id,authType:'api_key'});
   runner.emit('account:status',{accountId:openrouter.id,provider:'openrouter',models:[{id:'catalogue-1',label:'Catalogue 1'}]});
   await waitFor(async()=> (await request(friendCookie,'/accounts')).body.some(a=>a.provider==='openrouter'));
+  const personalCcc={name:'ccc',url:'https://friend.example/mcp',headers:{'X-CCC-Session':'friend-session'}};
+  assert.equal((await request(friendCookie,'/personal-mcp/ccc','PUT',personalCcc)).status,200);
   const ccc=(await request(friendCookie,'/ccc-auto/settings')).body;
   ccc.levels=[{from:1,to:null,candidates:[
     {...ccc.levels[0].candidates[0],id:'codex',accountId:largeGrant.id+':codex',model:'catalogue-0'},
@@ -134,6 +136,7 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   ]}});
   terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
   assert.equal(cccJob.sharedExecution,true);
+  assert.deepEqual(cccJob.personalMcp,[personalCcc]);
   assert.deepEqual(cccJob.cccAuto.levels[0].candidates.map(c=>c.accountId),[backup.id,openrouter.id]);
   const sharedUsage=[];const onUsage=e=>{if(e.type==='usage'&&e.data?.cccUsage)sharedUsage.push(e.data.cccUsage);};friend.on('ai:event',onUsage);
   report(20,30);report(20,30);report(40,30);

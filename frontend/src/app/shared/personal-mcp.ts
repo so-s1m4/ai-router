@@ -11,8 +11,9 @@ type Server = { name: string; url: string; headerNames: string[] };
     <section class="card form-card">
       <div class="form-card-head">
         <h3>Personal MCP</h3>
-        <p>Connect your HTTPS MCP servers to Codex, including when using shared tokens. Settings apply to new tasks. Other users cannot manage these settings.</p>
+        <p>Connect your HTTPS MCP servers to Codex and CCC Auto, including when using shared tokens. Settings apply to new tasks. Other users cannot manage these settings.</p>
       </div>
+      <p>For CCC Auto, add a server named ccc with your HTTPS MCP URL and your own session headers. Your personal ccc server takes priority over the runner default.</p>
       @if (error()) { <p role="alert">{{ error() }}</p> }
       @if (notice()) { <p role="status">{{ notice() }}</p> }
       @for (server of servers(); track server.name) {
@@ -79,7 +80,7 @@ export class PersonalMcpComponent implements OnInit {
     this.busy.set(true); this.error.set(''); this.notice.set('');
     try {
       this.servers.set(await this.api.request<Server[]>(path, {method, body:body === undefined ? undefined : JSON.stringify(body)}));
-      this.reset(); this.notice.set('Personal MCP settings saved. Start a new Codex task to apply them.');
+      this.reset(); this.notice.set('Personal MCP settings saved. Start a new task to apply them.');
     } catch (error) { this.error.set((error as Error).message); }
     finally { this.busy.set(false); }
   }

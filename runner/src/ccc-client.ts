@@ -5,6 +5,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { PersonalMcp } from './personal-mcp.js';
 
 export interface CccClient {
   call(name: string, args: Record<string, unknown>): Promise<any>;
@@ -27,7 +28,10 @@ export function toolData(result: any): any {
   let value = result.structuredContent;
   if (!value) {
     const text = result.content?.find((item: any) => item.type === 'text')?.text;
-    try { value = JSON.parse(text); } catch { throw new Error('CCC MCP returned an invalid response'); }
+    try { value = JSON.parse(text); } catch {
+      if (result.isError) throw new CccToolError();
+      throw new Error('CCC MCP returned an invalid response');
+    }
   }
   if (result.isError || value.ok === false) {
     // Do not include server messages: they may contain authenticated URLs.
@@ -39,12 +43,18 @@ export function toolData(result: any): any {
   return value.data ?? value;
 }
 
-async function connectOnce(signal: AbortSignal): Promise<CccClient> {
+export function cccServer(config: any, personalMcp: PersonalMcp[] = []) {
+  const name = process.env.CCC_AUTO_MCP_NAME || 'ccc';
+  const personal = personalMcp.find(server => server.name === name);
+  const server = personal || config.mcpServers?.[name];
+  if (!server || server.enabled === false || server.disabled === true) throw new Error(`Configure the ${name} MCP server on this runner or in your personal MCP settings to use CCC авто`);
+  return server;
+}
+
+async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[]): Promise<CccClient> {
   const root = process.env.RUNNER_DATA_DIR || '/runner-data';
   const config = JSON.parse(await readFile(path.join(root, 'global-mcp/.gemini/config/mcp_config.json'), 'utf8').catch(() => '{"mcpServers":{}}'));
-  const name = process.env.CCC_AUTO_MCP_NAME || 'ccc';
-  const server = config.mcpServers?.[name];
-  if (!server || server.enabled === false || server.disabled === true) throw new Error(`Configure the ${name} MCP server on this runner to use CCC авто`);
+  const server = cccServer(config, personalMcp);
   const client = new Client({ name: 'ai-router-ccc-auto', version: '1.0.0' });
   const headers = server.headers || {};
   const url = server.serverUrl || server.url;
@@ -92,13 +102,18 @@ async function connectOnce(signal: AbortSignal): Promise<CccClient> {
 const recoverableTools = new Set(['game_info', 'prepare_level', 'get_level_input', 'get_artifact_download_url', 'list_archive', 'archive_member']);
 function permanentFailure(error: unknown): boolean {
   const value = error as any;
-  return [400, 401, 403].includes(Number(value?.code ?? value?.status))
+  // A tool rejection is not a broken connection. Reconnecting cannot fix
+  // missing contest context or a denied session; retry only explicit transient statuses.
+  if (error instanceof CccToolError) return error.status !== 408 && error.status !== 429 && !(error.status && error.status >= 500);
+  const status = Number(value?.status ?? value?.statusCode ?? value?.code);
+  return (status >= 400 && status < 500 && status !== 408 && status !== 429)
+    || [-32600, -32601, -32602].includes(Number(value?.code))
     || /Configure|missing|invalid response/.test(value?.message || '')
     || (value?.cause && permanentFailure(value.cause));
 }
 export function recoveringCcc(
   connect: () => Promise<CccClient>, signal: AbortSignal,
-  onRetry: (attempt: number) => void = () => {}, retryDelays = [1000, 2000, 5000, 10000, 20000],
+  onRetry: (attempt: number, operation: string, reason: string) => void = () => {}, retryDelays = [1000, 2000, 5000, 10000, 20000],
 ): CccClient {
   let connection: Promise<CccClient> | undefined;
   let closed = false;
@@ -115,7 +130,7 @@ export function recoveringCcc(
             connection = undefined;
             await current.then(client => client.close()).catch(() => {});
           }
-          onRetry(attempt + 1);
+          onRetry(attempt + 1, name, retryReason(error));
           await delay(retryDelays[attempt], undefined, { signal });
         }
       }
@@ -127,6 +142,14 @@ export function recoveringCcc(
     },
   };
 }
-export async function connectCcc(signal: AbortSignal, onRetry?: (attempt: number) => void): Promise<CccClient> {
-  return recoveringCcc(() => connectOnce(signal), signal, onRetry);
+function retryReason(error: unknown): string {
+  const value = error as any;
+  const status = Number(value?.status ?? value?.statusCode ?? value?.code);
+  if (status >= 400 && status <= 599) return `HTTP ${status}`;
+  if (value?.cause) return retryReason(value.cause);
+  if (/timeout|timed out/i.test(value?.message || '')) return 'request timed out';
+  return 'connection interrupted';
+}
+export async function connectCcc(signal: AbortSignal, onRetry?: (attempt: number, operation: string, reason: string) => void, personalMcp: PersonalMcp[] = []): Promise<CccClient> {
+  return recoveringCcc(() => connectOnce(signal, personalMcp), signal, onRetry);
 }
