@@ -37,7 +37,7 @@ async function connect(url, options) {
   return socket;
 }
 
-test('queue serializes runner work, supports priorities, cancellation and usage summary', { timeout: 30000 }, async () => {
+test('queue serializes work within a chat, supports priorities, cancellation and usage summary', { timeout: 30000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'router-token-usage-'));
   const port = await freePort(), previewPort = await freePort();
   const base = `http://127.0.0.1:${port}`;
@@ -122,13 +122,23 @@ test('queue serializes runner work, supports priorities, cancellation and usage 
     const deniedResume=await fetch(base+'/api/tasks/'+interrupted.runId+'/resume',{method:'POST',headers:{cookie:friendCookie}});assert.equal(deniedResume.status,404);
     const privateUsage=await fetch(base+'/api/usage-summary',{headers:{cookie:friendCookie}});
     assert.equal((await privateUsage.json()).totalTokens,0);
+    const parallelChat=await api('/sessions','POST',{});
+    const mainRun=await submit('Keep first chat running');
+    await waitFor(()=>jobs.length===6);
+    const parallelRun=await browser.timeout(5000).emitWithAck('run',{sessionId:parallelChat.id,prompt:'Run second chat concurrently',accountId:first.id,model:'default'});
+    await waitFor(()=>jobs.length===7);
+    assert.equal((await api('/tasks')).find(t=>t.id===mainRun.runId).state,'running');
+    assert.equal((await api('/tasks')).find(t=>t.id===parallelRun.runId).state,'running');
+    await api('/tasks/'+mainRun.runId,'DELETE');
+    runner.emit('job:result',{jobId:jobs[6].jobId,ok:true,text:'Parallel chat completed'});
+    await waitFor(async()=> (await api('/tasks')).find(t=>t.id===parallelRun.runId).state==='completed');
     runner.disconnect();
     await waitFor(async()=> (await api('/accounts'))[0].mode==='offline');
     const offline=await submit('Wait for reconnection');
     assert.equal(offline.ok,true);
     await waitFor(async()=> (await api('/tasks')).find(t=>t.id===offline.runId).message==='Waiting for runner connection');
     await api('/tasks/'+offline.runId,'DELETE');
-    assert.equal(jobs.length,5,'canceled job never ran');
+    assert.equal(jobs.length,7,'canceled job never ran');
   } finally {
     browser?.disconnect(); runner?.disconnect();
     const exited = new Promise(resolve => backend.once('exit', resolve));

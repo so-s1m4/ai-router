@@ -92,7 +92,7 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   await api('/access-grants/'+grantId,'PATCH',{budget:500});hold=true;
   terminal=finished(session.id);assert.equal((await send('allowed',grantId)).ok,true);await waitFor(()=>jobCount===4);
   const second=(await request(friendCookie,'/sessions','POST',{})).body;
-  const concurrent=await send('allowed',grantId,second.id);assert.equal(concurrent.ok,true);assert.equal(concurrent.queued,true);assert.equal((await request(friendCookie,'/tasks/'+concurrent.runId,'DELETE')).status,200);assert.equal(jobCount,4);
+  const concurrent=await send('allowed',grantId,second.id);assert.equal(concurrent.ok,true);assert.equal(concurrent.queued,true);await waitFor(()=>jobCount===5);const canceledSecond=finished(second.id);assert.equal((await request(friendCookie,'/tasks/'+concurrent.runId,'DELETE')).status,200);assert.equal((await canceledSecond).type,'error');assert.equal((await request(friendCookie,'/tasks')).body.find(t=>t.input.sessionId===session.id&&t.state==='running')?.state,'running');
   // File access is restricted to recipient-owned sessions, not owner runner workspaces.
   runner.on('file:list',(payload,ack)=>{assert.equal(payload.sessionId,session.id);assert.equal(payload.projectId,undefined);ack({ok:true,files:[{name:'outputs/result.txt',size:5,modified:new Date().toISOString()}]});});
   assert.equal((await request(friendCookie,'/sessions/'+session.id+'/files')).body.files[0].name,'outputs/result.txt');
@@ -126,7 +126,7 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   let cccJob;
   runner.removeAllListeners('job:start');
   runner.on('job:start',(job,ack)=>{ack({ok:true});cccJob=job;});
-  const sendCcc=()=>friend.timeout(5000).emitWithAck('run',{sessionId:session.id,prompt:'Solve CCC',workflow:'ccc-auto',model:'default',mode:'task'});
+  const sendCcc=(sessionId=session.id)=>friend.timeout(5000).emitWithAck('run',{sessionId,prompt:'Solve CCC',workflow:'ccc-auto',model:'default',mode:'task'});
   const report=(codex,router)=>runner.emit('job:event',{jobId:cccJob.jobId,type:'usage',data:{totalTokens:codex+router,cccUsage:[
     {accountId:backup.id,provider:'codex',model:'catalogue-0',usage:{totalTokens:codex}},
     {accountId:openrouter.id,provider:'openrouter',model:'catalogue-1',usage:{totalTokens:router}},
@@ -144,7 +144,8 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   assert.equal(cccSpent.usedTokens,70);assert.equal(cccSpent.usageByModel['catalogue-0'],40);assert.equal(cccSpent.usageByModel['catalogue-1'],30);
   await api('/access-grants/'+largeGrant.id,'PATCH',{budget:90});cccJob=undefined;
   terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
-  report(10,20);assert.equal((await terminal).type,'error');
+  const firstCcc=cccJob;cccJob=undefined;const secondTerminal=finished(second.id);assert.equal((await sendCcc(second.id)).ok,true);await waitFor(()=>cccJob);cccJob=firstCcc;
+  report(10,20);assert.equal((await terminal).type,'error');assert.equal((await secondTerminal).type,'error');
   cccSpent=(await request(friendCookie,'/access-grants')).body.find(g=>g.id===largeGrant.id);
   assert.equal(cccSpent.usedTokens,100);
   // Exhaustion rejects dispatch; increasing the budget releases the previous lease.

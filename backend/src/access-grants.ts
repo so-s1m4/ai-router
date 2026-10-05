@@ -12,7 +12,9 @@ export interface AccessGrant {
 }
 const file = path.join(dataRoot, 'access-grants.json');
 let queue: Promise<unknown> = Promise.resolve();
-const leases = new Set<string>();
+const leases = new Map<string, number>();
+const chargeListeners = new Set<(grant: AccessGrant) => void>();
+export function onGrantCharged(listener: (grant: AccessGrant) => void) { chargeListeners.add(listener); return () => { chargeListeners.delete(listener); }; }
 function serial<T>(operation: () => Promise<T>): Promise<T> {
   const task = queue.then(operation); queue = task.catch(() => undefined); return task;
 }
@@ -58,11 +60,11 @@ export function acquireGrant(userId: string, id: string, model: string): Promise
     const found = (await read()).find(g => g.id === id && g.recipientId === userId);
     if (!found) return null;
     const grant = grantSnapshot(found);
-    if (grant.state !== 'active' || grant.usedTokens >= grant.budget || !grant.models.includes(model) || leases.has(id)) return null;
-    leases.add(id); return grant;
+    if (grant.state !== 'active' || grant.usedTokens >= grant.budget || !grant.models.includes(model)) return null;
+    leases.set(id, (leases.get(id) ?? 0) + 1); return grant;
   });
 }
-export function releaseGrant(id: string) { leases.delete(id); }
+export function releaseGrant(id: string) { const count = leases.get(id) ?? 0; if (count <= 1) leases.delete(id); else leases.set(id, count - 1); }
 export function chargeGrant(id: string, model: string, tokens: number) {
   return serial(async () => {
     if (!Number.isSafeInteger(tokens) || tokens <= 0) return;
@@ -71,7 +73,9 @@ export function chargeGrant(id: string, model: string, tokens: number) {
     const grant = grantSnapshot(rows[index]);
     grant.usedTokens += tokens; grant.lifetimeTokens += tokens;
     grant.usageByModel[model] = (grant.usageByModel[model] || 0) + tokens;
-    rows[index] = grant; await save(rows); return grant;
+    rows[index] = grant; await save(rows);
+    for (const listener of chargeListeners) listener(grant);
+    return grant;
   });
 }
 export async function flushGrantCharges() { await queue; }

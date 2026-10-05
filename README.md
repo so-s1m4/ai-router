@@ -211,7 +211,7 @@ If the most recent runner is offline, work can continue from its last successful
 
 ### Usage overview
 
-The **Usage** section groups reported token consumption by project and model and shows provider account limits and available resets. Task queue controls are no longer shown. Chat requests still wait for a free runner internally; clarification and checkpoint continuation remain available in chat.
+The **Usage** section groups reported token consumption by project and model and shows provider account limits and available resets. Task queue controls are no longer shown. Different chats run concurrently on the same runner in every mode, including CCC Auto, and may use the same owned or shared connection. Requests within one chat remain sequential. Canceling a chat stops only its job; shared allowance usage is charged together, and exhausting that budget stops every run using it. Tasks on a synchronized shared project remain sequential while its workspace is in use. Clarification and checkpoint continuation remain available in chat.
 
 Queue state is stored in `DATA_DIR/task-queue.json`. After a backend restart, waiting tasks remain queued; previously running tasks are marked interrupted for review so commands are not automatically repeated. The usage overview groups provider-reported tokens by project and model, including reported consumption from unsuccessful attempts and account handoffs. Snapshots are recorded in `DATA_DIR/usage-ledger.json`; older successful requests are included from chat history. Requests without usage reports are excluded, and older model information is shown as unknown. Provider quotas and reset times remain live runner reports, while shared budgets use the existing persistent access-grant accounting.
 

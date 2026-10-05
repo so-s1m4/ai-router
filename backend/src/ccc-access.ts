@@ -27,7 +27,7 @@ export class CccGrantUsage {
     let grant = this.grants.get(account.grant.id);
     if (!grant) {
       grant = await acquireGrant(this.userId, account.grant.id, model) ?? undefined;
-      if (!grant) throw new Error('CCC-Auto: shared access busy, revoked or budget exhausted');
+      if (!grant) throw new Error('CCC-Auto: shared access revoked or budget exhausted');
       this.grants.set(grant.id, grant);
     }
     if (!grant.models.includes(model)) throw new Error('CCC-Auto: shared model denied');

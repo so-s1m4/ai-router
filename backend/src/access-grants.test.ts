@@ -17,8 +17,9 @@ test('grant budgets, permissions, monthly reset, concurrent leases and durable c
     await updateGrant('friend',grant.id,{state:'active'});
     assert.equal(await acquireGrant('friend',grant.id,'default'),null);
     const leases=await Promise.all([acquireGrant('friend',grant.id,'allowed'),acquireGrant('friend',grant.id,'allowed')]);
-    assert.equal(leases.filter(Boolean).length,1);
+    assert.equal(leases.filter(Boolean).length,2);
     await Promise.all([chargeGrant(grant.id,'allowed',80),chargeGrant(grant.id,'allowed',40)]);
+    releaseGrant(grant.id);
     releaseGrant(grant.id);
     assert.equal(await acquireGrant('friend',grant.id,'allowed'),null);
     const saved=(await listGrants('owner'))[0];

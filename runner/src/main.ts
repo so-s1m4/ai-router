@@ -22,6 +22,7 @@ async function device():Promise<Device>{try{return JSON.parse(await readFile(fil
 const jobSchema=z.object({cccAuto:cccAutoSchema.optional(),personalMcp:z.array(personalMcpSchema).max(20).optional(),sharedExecution:z.boolean().optional(),jobId:z.string().uuid(),taskId:z.string().uuid(),continuationOf:z.string().uuid().optional(),accountId:z.string().uuid(),provider:z.enum(['codex','antigravity','chatgpt','openrouter']),sessionId:z.string().uuid(),projectId:z.string().uuid().optional(),prompt:z.string().min(1).max(40000),model:z.string().max(100),reasoning:z.string().max(32).optional(),fast:z.boolean().optional(),workflow:z.enum(['standard','ccc-auto']).default('standard'),mode:z.enum(['chat','task']).optional().default('task')});
 async function start(){
  const active=new Map<string,AbortController>();
+ const busySessions=new Set<string>();
  const updater=new CliUpdater({root,busy:()=>active.size>0,promoted:provider=>{if(provider==='codex')retireCodexAppServers();}});
  await updater.start();
  const d=await device();const socket=io(url+'/runner',{path:'/socket.io',transports:['websocket'],auth:{runnerId:d.id,secret:d.secret},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000});
@@ -40,14 +41,14 @@ async function start(){
   const job=parsed.data as Job;
   if(job.cccAuto?.levels.some(r=>r.candidates.some(c=>c.enabled&&(!c.accountId||accounts.get(c.accountId)?.provider!==c.provider))))return ack?.({ok:false,error:'CCC candidate connection is not assigned to this runner'});
   if(active.has(job.jobId))return ack?.({ok:false,error:'Duplicate job'});
-  if(active.size)return ack?.({ok:false,error:'The runner is still stopping the previous task'});
-  try{await restoreCheckpoint(job,workspaceFor(job));}catch(error){return ack?.({ok:false,error:error instanceof Error?error.message:'Unable to restore checkpoint'});}
-  if(active.size)return ack?.({ok:false,error:'The runner is still stopping the previous task'});
+  if(busySessions.has(job.sessionId))return ack?.({ok:false,error:'This chat is still running or stopping its previous task'});
   const controller=new AbortController();
-  const checkpoint=new CheckpointWriter(workspaceFor(job),job.taskId,{taskId:job.taskId,jobId:job.jobId,accountId:job.accountId,provider:job.provider,sessionId:job.sessionId,projectId:job.projectId,model:job.model,reasoning:job.reasoning,prompt:job.originalPrompt||job.prompt,priorContext:job.handoffContext});
-  let partial='';
+  busySessions.add(job.sessionId);
   active.set(job.jobId,controller);
   if(job.projectId)jobProjects.set(job.jobId,job.projectId);
+  try{await restoreCheckpoint(job,workspaceFor(job));controller.signal.throwIfAborted();}catch(error){active.delete(job.jobId);busySessions.delete(job.sessionId);jobProjects.delete(job.jobId);return ack?.({ok:false,error:error instanceof Error?error.message:'Unable to restore checkpoint'});}
+  const checkpoint=new CheckpointWriter(workspaceFor(job),job.taskId,{taskId:job.taskId,jobId:job.jobId,accountId:job.accountId,provider:job.provider,sessionId:job.sessionId,projectId:job.projectId,model:job.model,reasoning:job.reasoning,prompt:job.originalPrompt||job.prompt,priorContext:job.handoffContext});
+  let partial='';
   steeringCheckpoints.set(job.jobId,{writer:checkpoint,prompt:job.originalPrompt||job.prompt});
   ack?.({ok:true});
   try{
@@ -70,7 +71,7 @@ async function start(){
    try{await checkpoint.flush();}catch(error){console.error('Checkpoint write failed:',error);}
    if(socket.connected)socket.emit('job:event',{jobId:job.jobId,type:'checkpoint',message:'Checkpoint saved for continuation',data:{taskId:job.taskId,status:code==='rate_limit'?'handoff_pending':'failed'}});
    if(socket.connected)socket.emit('job:result',{jobId:job.jobId,ok:false,error:e instanceof Error?e.message:'Error',code});
-  }finally{jobProjects.delete(job.jobId);active.delete(job.jobId);steeringCheckpoints.delete(job.jobId);void updater.check();}
+  }finally{jobProjects.delete(job.jobId);active.delete(job.jobId);busySessions.delete(job.sessionId);steeringCheckpoints.delete(job.jobId);void updater.check();}
  });
  socket.on('job:steer',async(raw:unknown,ack?:(r:unknown)=>void)=>{
   const parsed=z.object({jobId:z.string().uuid(),text:z.string().trim().min(1).max(16000)}).strict().safeParse(raw);
