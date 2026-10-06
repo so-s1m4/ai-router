@@ -1,20 +1,58 @@
-name: Build and deploy
+name: Check and deploy
 
 on:
+  pull_request:
   workflow_dispatch:
   push:
     branches: [main]
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
-  group: ai-router-production
+  group: ai-router-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
   cancel-in-progress: false
 
 jobs:
-  verify:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [backend, frontend, runner]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: npm ci
+        working-directory: ${{ matrix.package }}
+      - run: npm run build
+        working-directory: ${{ matrix.package }}
+      - if: matrix.package == 'frontend'
+        run: npm test -- --watch=false --browsers=ChromeHeadless
+        working-directory: frontend
+      - if: matrix.package != 'frontend'
+        run: npm test
+        working-directory: ${{ matrix.package }}
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production stack
+        env:
+          ADMIN_PASSWORD: ci-only
+          SESSION_SECRET: ci-only
+        run: docker compose -f compose.prod.yaml config --quiet
+      - name: Validate runner stacks
+        env:
+          ROUTER_SERVER_URL: https://router.example.com
+        run: |
+          docker compose -f runner/compose.yaml config --quiet
+          docker compose -f runner/compose.yaml -f runner/compose.build.yaml config --quiet
+  integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +64,13 @@ jobs:
       - run: npm run build --prefix backend
       - run: npm run build --prefix runner
       - run: node --test tests/*.integration.mjs
+
   images:
-    needs: verify
+    needs: [build, compose, integration]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
