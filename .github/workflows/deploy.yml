@@ -34,8 +34,22 @@ jobs:
         run: npm test -- --watch=false --browsers=ChromeHeadless
         working-directory: frontend
       - if: matrix.package != 'frontend'
-        run: npm test
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/package-tests.log"
         working-directory: ${{ matrix.package }}
+      - name: Report test failures
+        if: failure() && matrix.package != 'frontend'
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          report = Path(os.environ['RUNNER_TEMP']) / 'package-tests.log'
+          if report.exists():
+              lines = report.read_text().splitlines()
+              for i, line in enumerate(lines):
+                  if line.startswith('not ok'):
+                      detail = '\n'.join(lines[max(0, i - 1):i + 40])
+                      detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f'::error::{detail}')
 
   compose:
     runs-on: ubuntu-latest
