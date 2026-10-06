@@ -281,3 +281,7 @@ Progress and submission evaluations persist under `.ai-router/ccc-auto/` in the 
 CCC Auto uses a personal MCP server named `ccc` (or `CCC_AUTO_MCP_NAME`) when configured by the requesting user, including shared connections and OpenRouter workflows. Otherwise it uses the runner default. Personal credentials remain scoped to that task. MCP read retries show the operation and a safe failure category; authentication, invalid parameters, and tool rejections without an explicit transient status stop instead of reconnecting.
 
 In ordinary Codex chats, a personal MCP server is exposed as `personal_<name>` and disables the runner server with the same name, even on owned connections. Task status shows the personal server names; CCC Auto status shows whether it selected personal MCP or the runner default. Start a new task after editing personal MCP settings.
+
+### Cerebras API
+
+В подключениях выберите **Cerebras API - Key**, укажите runner и сохраните API-ключ в настройках подключения. Runner загружает доступные модели через `https://api.cerebras.ai/v1/models` и хранит ключ отдельно для аккаунта в `.cerebras/auth.json` с правами `0600`. Cerebras доступен в чате, задачах с инструментами и CCC-Auto (режимы code и agent). Уровни reasoning показываются для поддерживаемых моделей; запросы используют `reasoning_effort`, `temperature: 0.2`, `top_p: 1` и `stream: false`.

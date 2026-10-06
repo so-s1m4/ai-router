@@ -21,3 +21,10 @@ test('existing requests preserve model/provider selections and reject unknown wo
   assert.equal(input.fast, false);
   assert.equal(sendSchema.safeParse({ ...base, workflow: 'unknown' }).success, false);
 });
+
+test('Cerebras service and shared account IDs are accepted',()=>{
+  const input=sendSchema.parse({...base,service:'cerebras',model:'gpt-oss-120b',reasoning:'medium'});
+  assert.equal(input.service,'cerebras');
+  assert.equal(input.reasoning,'medium');
+  assert.equal(sendSchema.parse({...base,accountId:base.sessionId+':cerebras'}).accountId,base.sessionId+':cerebras');
+});

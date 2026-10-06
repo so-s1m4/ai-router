@@ -24,6 +24,7 @@
     aria-label="Provider"
   >
     <option value="auto">Auto</option>
+    <option value="cerebras">Cerebras{{ vm.modelService.hasAccountsFor('cerebras') ? '' : ' (!)' }}</option>
     <option value="openrouter">OpenRouter{{ vm.modelService.hasAccountsFor('openrouter') ? '' : ' (!)' }}</option>
     <option value="gemini">
       Gemini{{ vm.modelService.hasAccountsFor('gemini') ? '' : ' (!)' }}

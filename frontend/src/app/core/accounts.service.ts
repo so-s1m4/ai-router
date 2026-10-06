@@ -36,7 +36,7 @@ export class AccountsService {
     this.addingAccount.set(true);
     try {
       const isOpenAI = this.accountProvider === 'openai-api';
-      const isApi = isOpenAI || this.accountProvider === 'openrouter';
+      const isApi = isOpenAI || ['openrouter','cerebras'].includes(this.accountProvider);
       await this.http.request('/accounts', {
         method: 'POST',
         body: JSON.stringify({

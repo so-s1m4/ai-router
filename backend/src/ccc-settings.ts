@@ -9,8 +9,8 @@ export type OpenRouterRouting = z.infer<typeof openRouterRoutingSchema>;
 export const cccCandidateSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/),
   enabled: z.boolean(),
-  provider: z.enum(['codex', 'openrouter', 'antigravity']),
-  accountId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?::(?:codex|openrouter|antigravity))?$/i).optional(),
+  provider: z.enum(['codex', 'openrouter', 'antigravity', 'cerebras']),
+  accountId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?::(?:codex|openrouter|antigravity|cerebras))?$/i).optional(),
   model: z.string().trim().min(1).max(100),
   reasoning: z.enum(['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
   delaySeconds: z.number().min(0).max(3600),

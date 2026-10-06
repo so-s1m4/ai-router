@@ -62,3 +62,11 @@ test('CCC accepts public shared connection IDs and rejects unsupported suffixes'
   candidate.accountId='12345678-1234-1234-1234-123456789abc:chatgpt';
   assert.equal(cccAutoSchema.safeParse(settings).success,false);
 });
+
+test('CCC accepts Cerebras candidates in code and agent modes with shared accounts',()=>{
+  for(const mode of ['code','agent'] as const){
+    const settings=defaultCccAutoSettings();
+    settings.levels[0].candidates[0]={...settings.levels[0].candidates[0],provider:'cerebras',accountId:'12345678-1234-1234-1234-123456789abc:cerebras',model:'gpt-oss-120b',reasoning:'medium',mode,fast:false};
+    assert.equal(cccAutoSchema.parse(settings).levels[0].candidates[0].provider,'cerebras');
+  }
+});

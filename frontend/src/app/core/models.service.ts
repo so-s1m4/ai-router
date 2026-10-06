@@ -35,6 +35,7 @@ export class ModelsService {
   modelBlacklist = signal<string[]>([]);
   currentServiceLabel = computed(() => {
     const s = this.selectedService();
+    if (s === 'cerebras') return 'Cerebras';
     if (s === 'openrouter') return 'OpenRouter';
     if (s === 'gemini') return 'Gemini';
     if (s === 'codex') return 'Codex';
@@ -46,6 +47,7 @@ export class ModelsService {
     if (modelId === 'auto') return 'Auto model';
     if (modelId === 'default') {
       const s = this.selectedService();
+      if (s === 'cerebras') return 'Cerebras';
       if (s === 'openrouter') return 'OpenRouter';
       if (s === 'chatgpt') return 'ChatGPT';
       if (s === 'gemini') return 'Gemini';
@@ -56,9 +58,9 @@ export class ModelsService {
       this.models().find((item) => item.id === modelId) ||
       this.allGeminiModels().find((item) => item.id === modelId) ||
       this.allCodexModels().find((item) => item.id === modelId) ||
-      this.allChatGPTModels().find((item) => item.id === modelId) || this.allOpenRouterModels().find(item=>item.id===modelId);
+      this.allChatGPTModels().find((item) => item.id === modelId) || this.allOpenRouterModels().find(item=>item.id===modelId) || this.allCerebrasModels().find(item=>item.id===modelId);
     if (!m) return modelId;
-    return m.label.replace(/\s*·\s*(Gemini|Codex|ChatGPT)$/, '');
+    return m.label.replace(/\s*·\s*(Gemini|Codex|ChatGPT|OpenRouter|Cerebras)$/, '');
   });
   currentReasoningBadgeLabel = computed(() => {
     const r = this.selectedReasoning();
@@ -68,7 +70,7 @@ export class ModelsService {
         this.models().find((m) => m.id === modelId) ||
         this.allGeminiModels().find((m) => m.id === modelId) ||
         this.allCodexModels().find((m) => m.id === modelId) ||
-        this.allChatGPTModels().find((m) => m.id === modelId) || this.allOpenRouterModels().find(m=>m.id===modelId);
+        this.allChatGPTModels().find((m) => m.id === modelId) || this.allOpenRouterModels().find(m=>m.id===modelId) || this.allCerebrasModels().find(m=>m.id===modelId);
       if (currentModel?.defaultReasoning) {
         const opt = currentModel.reasoning?.find(
           (o: ReasoningEffort) => o.id === currentModel.defaultReasoning,
@@ -105,6 +107,12 @@ export class ModelsService {
 
     const service = this.selectedService();
 
+    if (service === 'cerebras') {
+      const map = new Map<string,Model>();
+      map.set('default',{id:'default',label:'Cerebras default'});
+      for(const a of scoped.filter(a=>a.provider==='cerebras'))for(const m of a.models || [])if(m.id!=='default')map.set(m.id,m);
+      return [autoModel,...map.values()].filter(m=>m.id==='auto'||m.id==='default'||!blacklist.has(m.id));
+    }
     if (service === 'openrouter') {
       const map = new Map<string,Model>();
       map.set('default',{id:'default',label:'OpenRouter auto'});
@@ -172,6 +180,7 @@ export class ModelsService {
           map.set(m.id, { ...m, label: `${m.label} · ChatGPT` });
     }
     for(const a of scoped.filter(a=>a.provider==='openrouter'))for(const m of a.models || [])if(m.id!=='default')map.set(m.id,{...m,label:m.label+' · OpenRouter'});
+    for(const a of scoped.filter(a=>a.provider==='cerebras'))for(const m of a.models || [])if(m.id!=='default')map.set(m.id,{...m,label:m.label+' · Cerebras'});
     return [autoModel, ...map.values()].filter(
       (m) => m.id === 'auto' || m.id === 'default' || !blacklist.has(m.id),
     );
@@ -210,6 +219,12 @@ export class ModelsService {
     const q=this.providerModelSearch().toLowerCase().trim(), filter=this.providerModelFilter(), enabled=!this.modelBlacklist().includes(m.id);
     return (!q||m.label.toLowerCase().includes(q)||m.id.toLowerCase().includes(q))&&(filter==='all'||(filter==='enabled'?enabled:!enabled));
   }));
+  allCerebrasModels = computed(() => [...new Map(this.accounts().filter(a=>a.provider==='cerebras').flatMap(a=>a.models || []).filter(m=>m.id!=='default').map(m=>[m.id,m])).values()]);
+  cerebrasEnabledCount = computed(() => this.allCerebrasModels().filter(m=>!this.modelBlacklist().includes(m.id)).length);
+  filteredCerebrasModels = computed(() => this.allCerebrasModels().filter(m=>{
+    const q=this.providerModelSearch().toLowerCase().trim(), filter=this.providerModelFilter(), enabled=!this.modelBlacklist().includes(m.id);
+    return (!q||m.label.toLowerCase().includes(q)||m.id.toLowerCase().includes(q))&&(filter==='all'||(filter==='enabled'?enabled:!enabled));
+  }));
   disabledModelsCount = computed(() => this.modelBlacklist().length);
   geminiEnabledCount = computed(() => {
     const blacklist = new Set(this.modelBlacklist());
@@ -225,10 +240,10 @@ export class ModelsService {
   });
   totalModelsCount = computed(
     () =>
-      this.allGeminiModels().length + this.allCodexModels().length + this.allChatGPTModels().length + this.allOpenRouterModels().length,
+      this.allGeminiModels().length + this.allCodexModels().length + this.allChatGPTModels().length + this.allOpenRouterModels().length + this.allCerebrasModels().length,
   );
   totalEnabledCount = computed(
-    () => this.geminiEnabledCount() + this.codexEnabledCount() + this.chatgptEnabledCount() + this.openRouterEnabledCount(),
+    () => this.geminiEnabledCount() + this.codexEnabledCount() + this.chatgptEnabledCount() + this.openRouterEnabledCount() + this.cerebrasEnabledCount(),
   );
   providerModelSearch = signal('');
   providerModelFilter = signal<'all' | 'enabled' | 'disabled'>('all');
@@ -298,12 +313,13 @@ export class ModelsService {
       ...this.allCodexModels().map((m) => m.id),
       ...this.allChatGPTModels().map((m) => m.id),
       ...this.allOpenRouterModels().map(m=>m.id),
+      ...this.allCerebrasModels().map(m=>m.id),
     ];
     await this.saveBlacklist(Array.from(new Set(allIds)));
   }
   async enableAllForProvider(provider: ProviderId) {
     const models =
-      provider === 'openrouter' ? this.allOpenRouterModels() : provider === 'antigravity'
+      provider === 'cerebras' ? this.allCerebrasModels() : provider === 'openrouter' ? this.allOpenRouterModels() : provider === 'antigravity'
         ? this.allGeminiModels()
         : provider === 'codex'
           ? this.allCodexModels()
@@ -314,7 +330,7 @@ export class ModelsService {
   }
   async disableAllForProvider(provider: ProviderId) {
     const models =
-      provider === 'openrouter' ? this.allOpenRouterModels() : provider === 'antigravity'
+      provider === 'cerebras' ? this.allCerebrasModels() : provider === 'openrouter' ? this.allOpenRouterModels() : provider === 'antigravity'
         ? this.allGeminiModels()
         : provider === 'codex'
           ? this.allCodexModels()
@@ -369,7 +385,7 @@ export class ModelsService {
       this.models().find((m) => m.id === modelId) ||
       this.allGeminiModels().find((m) => m.id === modelId) ||
       this.allCodexModels().find((m) => m.id === modelId) ||
-      this.allChatGPTModels().find((m) => m.id === modelId) || this.allOpenRouterModels().find(m=>m.id===modelId);
+      this.allChatGPTModels().find((m) => m.id === modelId) || this.allOpenRouterModels().find(m=>m.id===modelId) || this.allCerebrasModels().find(m=>m.id===modelId);
     const options = currentModel?.reasoning;
     if (options && options.length > 0) {
       return [{ id: 'default', label: 'Default' }, ...options.filter((r) => r.id !== 'default')];
@@ -404,7 +420,7 @@ export class ModelsService {
     const accounts = Array.isArray(this.accounts()) ? this.accounts() : [];
     if (service === 'auto') return accounts.length > 0;
     const provider: ProviderId =
-      service === 'openrouter' ? 'openrouter' : service === 'gemini' ? 'antigravity' : service === 'codex' ? 'codex' : 'chatgpt';
+      service === 'cerebras' ? 'cerebras' : service === 'openrouter' ? 'openrouter' : service === 'gemini' ? 'antigravity' : service === 'codex' ? 'codex' : 'chatgpt';
     const pId = this.current()?.projectId || this.selectedProjectId();
     const project = pId ? this.projects().find((p) => p.id === pId) : null;
     const list =
@@ -431,7 +447,7 @@ export class ModelsService {
   }
   selectModel(id: string) {
     this.selectedModel.set(id);
-    if (id !== 'default') {
+    if (id !== 'default' && !(this.selectedService() === 'cerebras' && this.models().some(m => m.id === id))) {
       const isGemini = this.allGeminiModels().some((m) => m.id === id);
       const isCodex = this.allCodexModels().some((m) => m.id === id);
       const isChatGPT = this.allChatGPTModels().some((m) => m.id === id);
@@ -441,6 +457,8 @@ export class ModelsService {
       } else if (isCodex) {
         this.selectedService.set('codex');
         this.selectedAccount = 'codex';
+      } else if (this.allCerebrasModels().some(m=>m.id===id)) {
+        this.selectedService.set('cerebras');this.selectedAccount='cerebras';
       } else if (this.allOpenRouterModels().some(m=>m.id===id)) {
         this.selectedService.set('openrouter');this.selectedAccount='openrouter';
       } else if (isChatGPT) {
@@ -452,7 +470,7 @@ export class ModelsService {
       this.models().find((m) => m.id === id) ||
       this.allGeminiModels().find((m) => m.id === id) ||
       this.allCodexModels().find((m) => m.id === id) ||
-      this.allChatGPTModels().find((m) => m.id === id) || this.allOpenRouterModels().find(m=>m.id===id);
+      this.allChatGPTModels().find((m) => m.id === id) || this.allOpenRouterModels().find(m=>m.id===id) || this.allCerebrasModels().find(m=>m.id===id);
     if (
       currentModel?.defaultReasoning &&
       (!this.selectedReasoning() || this.selectedReasoning() === 'default')
@@ -467,7 +485,7 @@ export class ModelsService {
       this.models().find((m) => m.id === modelId) ||
       this.allGeminiModels().find((m) => m.id === modelId) ||
       this.allCodexModels().find((m) => m.id === modelId) ||
-      this.allChatGPTModels().find((m) => m.id === modelId) || this.allOpenRouterModels().find(m=>m.id===modelId);
+      this.allChatGPTModels().find((m) => m.id === modelId) || this.allOpenRouterModels().find(m=>m.id===modelId) || this.allCerebrasModels().find(m=>m.id===modelId);
     const reasoningExists = currentModel?.reasoning?.some((r) => r.id === this.selectedReasoning());
     if (
       modelId !== 'default' &&

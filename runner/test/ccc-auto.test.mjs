@@ -1148,3 +1148,23 @@ test('CCC Antigravity subscription candidates receive isolated code and agent jo
     assert.match(await runAuto(scopedJob,f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
   },{levels:[1]});
 });
+
+test('CCC Cerebras candidates receive isolated code and agent jobs',async()=>{
+  const {defaultCccAutoSettings,cccAutoSchema}=await import('../dist/ccc-settings.js');
+  for(const mode of ['code','agent'])await fixture(async f=>{
+    const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+    settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'cerebras',accountId:'123e4567-e89b-42d3-a456-426614174000',model:'gpt-oss-120b',reasoning:'default',mode,fast:false}];
+    assert.equal(cccAutoSchema.safeParse(settings).success,true);
+    const solve=async(j,s,e)=>{
+      assert.equal(j.provider,'cerebras');assert.equal(j.model,'gpt-oss-120b');assert.equal(j.reasoning,'default');assert.equal(j.fast,false);
+      assert.deepEqual(j.personalMcp,[]);assert.equal(j.previousThreadId,undefined);assert.equal(j.mode,'task');
+      if(mode==='code')return '```json\n'+JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}',outputMode:'exact'})+'\n```';
+      const output=j.prompt.match(/directly write (\S+) with JSON/)[1];
+      await writeFile(output,JSON.stringify({answers:[{file_id:'1-small',solution:'42\n'},{file_id:'2-large',solution:'42\n'}]}));
+      return 'Solver ready.';
+    };
+    // Give each mode independent platform progress and saved state.
+    const scopedJob={...job,sessionId:mode,provider:'cerebras',cccAuto:settings,personalMcp:[{name:'codex-only'}]};
+    assert.match(await runAuto(scopedJob,f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
+  },{levels:[1]});
+});

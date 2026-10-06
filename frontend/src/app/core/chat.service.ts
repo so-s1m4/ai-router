@@ -46,7 +46,7 @@ export class ChatService {
     return this.accountService.accounts().find((a) => a.id === id)?.name || '';
   }
   providerLabel(id?: string) {
-    return id === 'openrouter' ? 'OpenRouter' : id === 'codex'
+    return id === 'cerebras' ? 'Cerebras' : id === 'openrouter' ? 'OpenRouter' : id === 'codex'
       ? 'Codex'
       : id === 'gemini' || id === 'antigravity'
         ? 'Gemini'
@@ -446,7 +446,7 @@ export class ChatService {
       if (m) return m.label.replace(/\s*·\s*(Gemini|Codex|ChatGPT)$/, '');
     }
     const s = this.modelService.selectedService();
-    return s === 'openrouter' ? 'OpenRouter' : s === 'gemini' ? 'Gemini' : s === 'codex' ? 'Codex' : 'ChatGPT';
+    return s === 'cerebras' ? 'Cerebras' : s === 'openrouter' ? 'OpenRouter' : s === 'gemini' ? 'Gemini' : s === 'codex' ? 'Codex' : 'ChatGPT';
   }
   onComposerEnter(e: KeyboardEvent) {
     if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;

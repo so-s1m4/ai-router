@@ -423,7 +423,7 @@ export class WorkspaceStore {
     return this.accountService.accounts().find((a) => a.id === id)?.name || '';
   }
   providerLabel(id?: ProviderId | string) {
-    return id === 'openrouter' ? 'OpenRouter' : id === 'codex'
+    return id === 'cerebras' ? 'Cerebras' : id === 'openrouter' ? 'OpenRouter' : id === 'codex'
       ? 'Codex'
       : id === 'antigravity' || id === 'gemini'
         ? 'Gemini'
