@@ -82,13 +82,21 @@ async function atomic(file: string, data: unknown) {
   await rename(file + '.tmp', file);
 }
 async function solverSource(directory: string): Promise<string | undefined> {
-  const handle = await open(path.join(directory, 'solution.cpp'), 'r').catch(error => {
-    if (error.code === 'ENOENT') return undefined;
-    throw error;
-  });
-  if (!handle) return undefined;
-  try { if ((await handle.stat()).size <= 256 * 1024) return await handle.readFile('utf8'); }
-  finally { await handle.close(); }
+  for (const name of ['solution.cpp', 'solution.py']) {
+    const handle = await open(path.join(directory, name), 'r').catch(error => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+    if (!handle) continue;
+    try { if ((await handle.stat()).size <= 256 * 1024) return await handle.readFile('utf8'); }
+    finally { await handle.close(); }
+  }
+}
+function pythonAgentPrompt(prompt: string): string {
+  const start = prompt.indexOf('Write all solver algorithms in C++17');
+  const end = prompt.indexOf('\nFor tasks requiring computation', start);
+  return (prompt.slice(0, start) + 'Write all solver algorithms in Python 3 using only the standard library, including corrections. Write solution.py as a standalone program reading one input from stdin and writing its answer to stdout. Use the supplied python.cjs helper for batch I/O. Check an example using node python.cjs --input EXAMPLE_PATH. Do not reimplement the helper.' + prompt.slice(end))
+    .replaceAll('solution.cpp', 'solution.py').replaceAll('cpp.cjs', 'python.cjs').replaceAll('your C++ program', 'your Python program');
 }
 function filename(value: unknown): string {
   if (typeof value !== 'string' || !value || value.includes('\\') || value.includes('\0') || value.split('/').some(part => part === '..')) throw new Error('CCC returned an unsafe filename');
@@ -230,7 +238,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
       const savedMode = state.solverThreadModes?.[previousThreadId];
       // Code threads permanently disable tools and carry JSON-only instructions.
       // Legacy code candidates have no mode metadata: never resume them as agents.
-      if ((savedMode && savedMode !== threadMode) || (!savedMode && !codeOnly && candidate?.mode === 'code')) previousThreadId = undefined;
+      if ((savedMode && savedMode !== threadMode) || (!savedMode && !codeOnly && (candidate?.mode === 'code' || candidate?.mode === 'python'))) previousThreadId = undefined;
     }
     let latestUsage: Record<string, number> = {};
     const usageKey = Symbol(solverTaskId);
@@ -563,6 +571,8 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           await mkdir(optimizedDir, { recursive: true, mode: 0o700 });
           await prepareSolverTemplate(optimizedDir, path.join(directory, '.results'));
           const source = await solverSource(dir);
+          const optimizer = candidate ? {...candidate, mode:'code' as const, reasoning: ['xhigh','max'].includes(candidate.reasoning) ? candidate.reasoning : 'high' as const} : undefined;
+          const optimizationReasoning = optimizer?.reasoning ?? 'high';
           let optimizedThreadId = threadId;
           const checkpoint = (value: string) => {
             optimizedThreadId = value;
@@ -574,13 +584,13 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
             await askSolver(prompt.replaceAll(originalDir, optimizedDir) +
               `\nThe original solver is still computing in ${dir}. Improve its algorithm for faster execution. Work in ${optimizedDir}. Original source: ${JSON.stringify(source)}. Return a complete faster recipe or direct answers.`,
               optimizationTaskId + '-agent', s, false, false,
-              { candidate, reasoning: reasoning === 'low' ? 'medium' : reasoning, previousThreadId: optimizedThreadId, onCheckpoint: checkpoint });
+              { candidate: optimizer, reasoning: optimizationReasoning, previousThreadId: optimizedThreadId, onCheckpoint: checkpoint });
           };
           if (fastEligible) {
             const response = await askSolver(codePrompt(level, { ...context, source, evaluationFeedback: feedback,
               instruction: 'The original computation is still running. Improve its algorithm for faster execution. Return complete optimized C++17 source.' }),
               optimizationTaskId, s, false, true,
-              { candidate, reasoning, previousThreadId: optimizedThreadId, onCheckpoint: checkpoint });
+              { candidate: optimizer, reasoning: optimizationReasoning, previousThreadId: optimizedThreadId, onCheckpoint: checkpoint });
             if (!JSON.parse(response).source?.trim()) await fullOptimization();
             else await prepareFastCode(response, optimizedDir, files, s, path.join(directory, '.compiled'));
           } else await fullOptimization();
@@ -612,22 +622,23 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
           const checkpoint = (value:string) => {threadId=value;state.candidateThreads ??= {};state.candidateThreads[identity]={accountId:candidate.accountId!,threadId:value};};
           const previousFailure = candidateFailures.get(candidate.id);
           const failedSource = previousFailure ? await solverSource(previousFailure.directory) : undefined;
-          const agentPrompt = prompt.replaceAll(originalDir,candidateDir) + (previousFailure
+          const candidatePrompt = candidate.mode === 'python' ? pythonAgentPrompt(prompt) : prompt;
+          const agentPrompt = candidatePrompt.replaceAll(originalDir,candidateDir) + (previousFailure
             ? `\nPrevious candidate failure: ${JSON.stringify({ error: previousFailure.error, sourceDirectory: previousFailure.directory, source: failedSource })}. Correct the failed solver before executing it again.` : '');
           let preparationError: unknown = previousFailure?.error;
           for(let revision=0;revision<=settings.preparationRetries;revision++) {
             candidateSignal.throwIfAborted();
             try {
-              if(candidate.mode === 'code') {
+              if(candidate.mode === 'code' || candidate.mode === 'python') {
                 const response = await askSolver(codePrompt(level,{...context,evaluationFeedback:feedback ?? null,previousLevel:previousLevelContext,
                   source: revision > 0 ? await solverSource(candidateDir) : failedSource,
                   preparationError:preparationError ? boundedText(String(preparationError),8000) : null, extraInstructions:settings.extraInstructions,
-                  userRequest:(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}),
+                  userRequest:(job.originalPrompt || job.prompt).split('Current user request:\n').at(-1)}, candidate.mode === 'python' ? 'python' : 'cpp'),
                   `${job.taskId}-ccc-${level}-${attempt}-${candidate.id}-code-${revision}`,candidateSignal,false,true,
                   {candidate,previousThreadId:threadId,onCheckpoint:checkpoint});
                 if(!JSON.parse(response).source?.trim()) {
                   await askSolver(agentPrompt + `\nPreparation feedback: ${preparationError ? String(preparationError).slice(-8000) : ''}`,`${job.taskId}-ccc-${level}-${attempt}-${candidate.id}-agent-${revision}`,candidateSignal,false,false,{candidate,previousThreadId:threadId,onCheckpoint:checkpoint});
-                } else await prepareFastCode(response,candidateDir,files,candidateSignal,path.join(directory,'.compiled'));
+                } else await prepareFastCode(response,candidateDir,files,candidateSignal,path.join(directory,'.compiled'),candidate.mode === 'python' ? 'python' : 'cpp');
               } else await askSolver(agentPrompt + `\nPreparation feedback: ${preparationError ? String(preparationError).slice(-8000) : ''}`,
                 `${job.taskId}-ccc-${level}-${attempt}-${candidate.id}-agent-${revision}`,candidateSignal,false,false,{candidate,previousThreadId:threadId,onCheckpoint:checkpoint});
               await validatePreparation(candidateDir, attemptIds);

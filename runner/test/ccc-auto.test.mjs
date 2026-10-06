@@ -935,7 +935,7 @@ test('a lost probe response blocks queued candidates while their results are sav
 
 test('configured CCC rules select model/account/provider by level and report their usage separately',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.extraInstructions='Use exact integer arithmetic';
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.extraInstructions='Use exact integer arithmetic';
   settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/fast',fast:false,openRouterRouting:{only:['google-ai-studio/flex'],allowFallbacks:false}}];
   settings.levels[1].candidates=[{...settings.levels[1].candidates[0],accountId:'codex-account',model:'custom-codex',reasoning:'high'}];
   const seen=[];
@@ -949,14 +949,14 @@ test('configured CCC rules select model/account/provider by level and report the
   assert.equal(usage.totalTokens,30);assert.deepEqual(usage.cccUsage.map(g=>[g.provider,g.model,g.usage.totalTokens]),[['openrouter','test/fast',15],['codex','custom-codex',15]]);
 }));
 test('configured candidates recover from rejection within solution attempt limit',async()=>fixture(async f=>{
-  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.solutionAttempts=2;settings.levels[0].candidates=[settings.levels[0].candidates[0]];
   await f.run({cccAuto:settings});assert.equal(f.solverJobs.length,2);
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,3);assert.ok(f.calls.filter(c=>c.name==='submit_solution').every(c=>c.args.level===1));
 },{rejectFirst:true}));
 test('configured runtime failure reports the assertion and supplies failed source on the next attempt',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
   settings.solutionAttempts=2;settings.preparationRetries=0;settings.reuseThreads=false;
   settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/model'}];
@@ -978,7 +978,7 @@ test('configured runtime failure reports the assertion and supplies failed sourc
 
 test('configured agent receives runtime failure and source without a reusable thread',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
   settings.solutionAttempts=2;settings.preparationRetries=0;settings.reuseThreads=false;
   settings.levels[0].candidates=[{...settings.levels[0].candidates[0],mode:'agent',reasoning:'medium'}];
@@ -1000,7 +1000,7 @@ test('configured agent receives runtime failure and source without a reusable th
 },{levels:[1]}));
 
 test('configured CCC preserves outbox and resumes without another model call',async()=>fixture(async f=>{
-  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.levels[0].candidates=[settings.levels[0].candidates[0]];
+  const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.levels[0].candidates=[settings.levels[0].candidates[0]];
   const call=f.client.call.bind(f.client);let refuse=true;
   f.client.call=async(name,args)=>{if(name==='submit_solution'&&refuse)throw new CccToolError(429);return call(name,args);};
   settings.rateLimitRetries=0;
@@ -1010,7 +1010,7 @@ test('configured CCC preserves outbox and resumes without another model call',as
 
 test('configured agent retries a text-only reply and receives missing-artifact feedback',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
   settings.levels[0].candidates=[{...settings.levels[0].candidates[0],mode:'agent',reasoning:'medium'}];
   const seen=[];
@@ -1030,7 +1030,7 @@ test('configured agent retries a text-only reply and receives missing-artifact f
 
 test('configured code fallback retries missing artifacts with feedback',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
   settings.levels[0].candidates=[settings.levels[0].candidates[0]];
   let codeCalls=0,agentCalls=0;
@@ -1049,7 +1049,7 @@ test('configured code fallback retries missing artifacts with feedback',async()=
 
 test('code fallback and repair never resume a thread with incompatible tool permissions',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
   settings.levels[0].candidates=[settings.levels[0].candidates[0]];
   let codeCalls=0,agentCalls=0;
@@ -1074,7 +1074,7 @@ test('code fallback and repair never resume a thread with incompatible tool perm
 
 test('legacy saved code threads are not reused for agent fallback after restart',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
   const candidate={...settings.levels[0].candidates[0],accountId:job.accountId};
   settings.levels[0].candidates=[candidate];
@@ -1095,11 +1095,11 @@ test('legacy saved code threads are not reused for agent fallback after restart'
 
 test('configured candidate with no artifacts fails clearly while another continues',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;
   settings.levels[0].candidates=[
     {...settings.levels[0].candidates[0],id:'missing',mode:'agent',reasoning:'medium'},
-    {...settings.levels[0].candidates[1],id:'working',mode:'agent',reasoning:'medium',delaySeconds:0.1},
+    {...settings.levels[0].candidates[0],id:'working',mode:'agent',reasoning:'medium',delaySeconds:0.1},
   ];
   let failedCalls=0;
   const solve=async(j,s,e)=>{if(j.jobId.includes('-missing-')){failedCalls++;return 'Solver ready.';}return f.solve(j,s,e);};
@@ -1111,7 +1111,7 @@ test('configured candidate with no artifacts fails clearly while another continu
 
 test('configured code repair receives its failed source without relying on provider threads',async()=>fixture(async f=>{
   const {defaultCccAutoSettings}=await import('../dist/ccc-settings.js');
-  const settings=defaultCccAutoSettings();
+  const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');
   settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;settings.preparationRetries=1;settings.reuseThreads=false;
   settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'openrouter',accountId:'openrouter-account',model:'test/model'}];
   const broken='#include <iostream>\nint main(){std::cout << missing_value << std::endl;}';
@@ -1132,7 +1132,7 @@ test('configured code repair receives its failed source without relying on provi
 test('CCC Antigravity subscription candidates receive isolated code and agent jobs',async()=>{
   const {defaultCccAutoSettings,cccAutoSchema}=await import('../dist/ccc-settings.js');
   for(const mode of ['code','agent'])await fixture(async f=>{
-    const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+    const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
     settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'antigravity',accountId:'123e4567-e89b-42d3-a456-426614174000',model:'gemini-test',reasoning:'default',mode,fast:false}];
     assert.equal(cccAutoSchema.safeParse(settings).success,true);
     const solve=async(j,s,e)=>{
@@ -1152,7 +1152,7 @@ test('CCC Antigravity subscription candidates receive isolated code and agent jo
 test('CCC Cerebras candidates receive isolated code and agent jobs',async()=>{
   const {defaultCccAutoSettings,cccAutoSchema}=await import('../dist/ccc-settings.js');
   for(const mode of ['code','agent'])await fixture(async f=>{
-    const settings=defaultCccAutoSettings();settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
+    const settings=defaultCccAutoSettings();for(const rule of settings.levels)rule.candidates.forEach(c=>c.mode='code');settings.submissionIntervalSeconds=0;settings.optimizationEnabled=false;settings.endLevel=1;
     settings.levels[0].candidates=[{...settings.levels[0].candidates[0],provider:'cerebras',accountId:'123e4567-e89b-42d3-a456-426614174000',model:'gpt-oss-120b',reasoning:'default',mode,fast:false}];
     assert.equal(cccAutoSchema.safeParse(settings).success,true);
     const solve=async(j,s,e)=>{
@@ -1168,3 +1168,55 @@ test('CCC Cerebras candidates receive isolated code and agent jobs',async()=>{
     assert.match(await runAuto(scopedJob,f.cwd,f.client,solve,f.controller.signal,()=>{}),/Accepted 2 new outputs/);
   },{levels:[1]});
 });
+
+test('default Python solver executes scored inputs without starting an optimizer', async () => fixture(async f => {
+  const {defaultCccAutoSettings} = await import('../dist/ccc-settings.js');
+  const settings = defaultCccAutoSettings(); settings.submissionIntervalSeconds = 0; settings.endLevel = 1;
+  const seen = [];
+  const solve = async j => {
+    seen.push(j);
+    assert.match(j.prompt, /complete Python 3 source/);
+    return JSON.stringify({source:'print(42)', outputMode:'exact'});
+  };
+  assert.match(await runAuto({...job, cccAuto:settings}, f.cwd, f.client, solve, f.controller.signal, e=>f.events.push(e)), /Accepted 2 new outputs/);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].reasoning, 'low');
+}, {levels:[1]}));
+
+test('slow Python computation starts C++ with high reasoning and supplies the Python source', async () => fixture(async f => {
+  const {defaultCccAutoSettings} = await import('../dist/ccc-settings.js');
+  const settings = defaultCccAutoSettings(); settings.submissionIntervalSeconds = 0; settings.endLevel = 1; settings.optimizationDelaySeconds = 0.05;
+  const seen = [];
+  const solve = async j => {
+    seen.push(j);
+    if (seen.length === 1) {
+      assert.match(j.prompt, /complete Python 3 source/);
+      return JSON.stringify({source:'import time\ntime.sleep(3)\nprint(42)', outputMode:'exact'});
+    }
+    assert.match(j.prompt, /complete C\+\+17 source/);
+    assert.match(j.prompt, /time.sleep/);
+    assert.equal(j.reasoning, 'high');
+    return JSON.stringify({source:'#include <iostream>\nint main(){std::cout << 42 << std::endl;}', outputMode:'exact'});
+  };
+  assert.match(await runAuto({...job, cccAuto:settings}, f.cwd, f.client, solve, f.controller.signal, e=>f.events.push(e)), /Accepted 2 new outputs/);
+  assert.equal(seen.length, 2);
+}, {fastLevels:1, levels:[1]}));
+
+test('insufficient Python context falls back to an agent that writes Python', async () => fixture(async f => {
+  const {defaultCccAutoSettings} = await import('../dist/ccc-settings.js');
+  const settings = defaultCccAutoSettings(); settings.submissionIntervalSeconds = 0; settings.endLevel = 1; settings.optimizationEnabled = false;
+  const seen = [];
+  const solve = async j => {
+    seen.push(j);
+    if (j.solverCodeOnly) return JSON.stringify({source:'', outputMode:'exact'});
+    assert.match(j.prompt, /Write all solver algorithms in Python 3/);
+    assert.match(j.prompt, /"script":"python.cjs"/);
+    assert.doesNotMatch(j.prompt, /C\+\+17|solution\.cpp/);
+    const dir = j.prompt.match(/Use workdir (\S+) for local commands/)[1];
+    await writeFile(path.join(dir, 'solution.py'), 'print(42)');
+    await writeFile(path.join(dir, 'solver.json'), JSON.stringify({runtime:'node',script:'python.cjs'}));
+    return 'Solver ready.';
+  };
+  assert.match(await runAuto({...job, cccAuto:settings}, f.cwd, f.client, solve, f.controller.signal, e=>f.events.push(e)), /Accepted 2 new outputs/);
+  assert.equal(seen.length, 2);
+}, {levels:[1]}));

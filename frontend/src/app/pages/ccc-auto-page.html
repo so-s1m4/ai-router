@@ -24,7 +24,7 @@
                 <label class="model-field">Модель<input class="custom-input" [(ngModel)]="candidate.model" [attr.list]="'ccc-models-' + i + '-' + ci" placeholder="provider/model" /><datalist [id]="'ccc-models-' + i + '-' + ci">@for (model of models(candidate); track model.id) {<option [value]="model.id">{{ model.label }}</option>}</datalist></label>
                 <label>Reasoning<select class="custom-select" [(ngModel)]="candidate.reasoning">@for (effort of candidateReasonings(candidate); track effort) {<option [value]="effort">{{ effort }}</option>}</select></label>
                 <label>Старт через, секунд<input class="custom-input" type="number" [(ngModel)]="candidate.delaySeconds" min="0" max="3600" step="0.1" /></label>
-                <label>Способ решения<select class="custom-select" [(ngModel)]="candidate.mode"><option value="code">Прямая генерация C++</option><option value="agent">Агент с инструментами</option></select></label>
+                <label>Способ решения<select class="custom-select" [(ngModel)]="candidate.mode"><option value="python">Прямая генерация Python</option><option value="code">Прямая генерация C++</option><option value="agent">Агент с инструментами</option></select></label>
                 <label class="toggle fast"><input type="checkbox" [(ngModel)]="candidate.fast" [disabled]="candidate.provider !== 'codex'" />Codex Fast</label>
               </div>
               @if (candidate.provider === 'openrouter') {
@@ -52,7 +52,7 @@
         <label>Попыток решения уровня<input class="custom-input" type="number" [(ngModel)]="settings.solutionAttempts" min="1" max="10" /></label>
         <label>Исправлений подготовки кандидата<input class="custom-input" type="number" [(ngModel)]="settings.preparationRetries" min="0" max="5" /></label>
         <label class="toggle"><input type="checkbox" [(ngModel)]="settings.reuseThreads" />Продолжать сохранённые потоки Codex</label>
-        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.optimizationEnabled" />Готовить ускоренное решение во время расчёта</label>
+        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.optimizationEnabled" />Готовить C++ с высоким reasoning при долгом расчёте</label>
         <label>Ускорение через, секунд<input class="custom-input" type="number" [(ngModel)]="settings.optimizationDelaySeconds" [disabled]="!settings.optimizationEnabled" min="0" max="3600" step="0.1" /></label>
       </div></section>
       <section class="card settings-card"><h2>Границы запуска</h2><p class="muted">Пройденные входы пропускаются автоматически.</p><div class="field-grid"><label>Первый уровень<input class="custom-input" type="number" [(ngModel)]="settings.startLevel" min="1" max="100" /></label><label>Последний уровень<input class="custom-input" type="number" [(ngModel)]="settings.endLevel" min="1" max="100" placeholder="Все уровни" /></label></div><button class="btn" (click)="settings.endLevel=null">До последнего уровня</button></section>

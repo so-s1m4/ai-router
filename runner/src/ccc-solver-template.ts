@@ -3,6 +3,38 @@ import path from 'node:path';
 
 // The solver only implements text -> text; the runner supplies batch file I/O.
 export async function prepareSolverTemplate(directory: string, cache = path.join(directory, '.results')) {
+  await writeFile(path.join(directory, 'python.cjs'), `const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+async function output(file, target) {
+  const input = fs.openSync(file, 'r');
+  const destination = target ? fs.openSync(target, 'w') : 1;
+  try {
+    await new Promise((resolve, reject) => {
+      const script = path.join(__dirname, 'solution.py');
+      const child = spawn(process.platform === 'linux' ? 'prlimit' : 'python3',
+        process.platform === 'linux' ? ['--as=' + (process.env.CCC_CPP_MEMORY_BYTES || 512 * 1024 * 1024), '--', 'python3', script] : [script],
+        {stdio: [input, destination, 'inherit']});
+      child.on('error', reject);
+      child.on('close', (code, signal) => code === 0 ? resolve() : reject(new Error('Python solver failed: ' + (signal || code))));
+    });
+  } finally {
+    fs.closeSync(input);
+    if (target) fs.closeSync(destination);
+  }
+}
+(async () => {
+  if (process.argv[2] === '--input') return output(process.argv[3]);
+  const task = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const answers = [];
+  for (const [index, input] of task.inputs.entries()) {
+    const name = 'output-' + index + '.txt';
+    await output(input.path, name);
+    answers.push({file_id: input.file_id, path: name});
+  }
+  fs.writeFileSync(process.argv[3], JSON.stringify({answers}));
+})().catch(error => { console.error(error); process.exitCode = 1; });
+`, {mode: 0o600});
   await writeFile(path.join(directory, 'batch.cjs'), `const fs = require('node:fs');
 const path = require('node:path');
 exports.runBatch = async function(solve) {

@@ -150,7 +150,7 @@ class AppServerConnection {
         ...(job.model !== 'default' ? { model: job.model } : {}), cwd,
         approvalPolicy: 'never', sandbox: job.mode === 'task' ? taskSandbox : 'read-only',
         ...(solverConfig ? { config: solverConfig } : {}),
-        ...(job.solverCodeOnly ? { baseInstructions: 'Generate the requested C++ source as JSON. Use no tools. Return an empty source if the statement is insufficient.', developerInstructions: 'All compilation, examples, file I/O and submissions are handled by the caller.' } : {}),
+        ...(job.solverCodeOnly ? { baseInstructions: 'Generate source in the requested programming language as JSON. Use no tools. Return an empty source if the statement is insufficient.', developerInstructions: 'All compilation, examples, file I/O and submissions are handled by the caller.' } : {}),
         serviceName: 'ai_router_runner'
       });
       threadId = String(started.thread?.id || '');

@@ -12,6 +12,9 @@ describe('CCC-Auto settings',()=>{
     });
     const fixture=TestBed.createComponent(CccAutoPageComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('.level-rule').length).toBe(5);
+    const mode = fixture.nativeElement.querySelector('option[value="python"]') as HTMLOptionElement;
+    expect(mode.textContent).toContain('Python');
+    expect(fixture.componentInstance.settings.levels[0].candidates[0].mode).toBe('python');
     const component=fixture.componentInstance;component.settings.levels[0].candidates[0].provider='openrouter';component.providerChanged(component.settings.levels[0].candidates[0]);component.settings.levels[0].candidates[0].delaySeconds=12;
     const candidate=component.settings.levels[0].candidates[0];
     component.setRoutingProviders(candidate,'google-ai-studio/flex, google-vertex google-vertex');
@@ -22,6 +25,7 @@ describe('CCC-Auto settings',()=>{
     await component.save();expect(component.notice).toContain('Сохранено');
     const call=api.calls.all().find(c=>c.args[1]?.method==='PUT')!;
     const saved=JSON.parse(call.args[1]!.body as string);expect(saved.levels[0].candidates[0].model).toBe('openrouter/auto');expect(saved.levels[0].candidates[0].delaySeconds).toBe(12);expect(saved.levels[0].candidates[0].fast).toBeFalse();expect(saved.levels[0].candidates[0].openRouterRouting).toEqual({only:['google-ai-studio/flex'],allowFallbacks:false});
+    expect(saved.levels[0].candidates[0].mode).toBe('python');
   });
   it('offers Gemini subscription CLI with account models and disables Codex Fast',()=>{
     const fixture=TestBed.createComponent(CccAutoPageComponent);

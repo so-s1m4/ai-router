@@ -11,7 +11,7 @@ test('CCC rules reject gaps, overlaps, invalid bounds and empty races',()=>{
     (s:any)=>s.levels[1].from=3,
     (s:any)=>s.levels[0].to=3,
     (s:any)=>s.levels[0].candidates.forEach((c:any)=>c.enabled=false),
-    (s:any)=>s.levels[0].candidates[1].id=s.levels[0].candidates[0].id,
+    (s:any)=>s.levels[0].candidates.push({...s.levels[0].candidates[0]}),
     (s:any)=>s.levels[0].candidates[0].delaySeconds=-1,
     (s:any)=>s.levels[0].candidates[0].accountId='../secret',
     (s:any)=>s.solutionAttempts=0,
@@ -69,4 +69,16 @@ test('CCC accepts Cerebras candidates in code and agent modes with shared accoun
     settings.levels[0].candidates[0]={...settings.levels[0].candidates[0],provider:'cerebras',accountId:'12345678-1234-1234-1234-123456789abc:cerebras',model:'gpt-oss-120b',reasoning:'medium',mode,fast:false};
     assert.equal(cccAutoSchema.parse(settings).levels[0].candidates[0].provider,'cerebras');
   }
+});
+
+test('CCC defaults to one immediate Python candidate and accepts legacy C++ settings',()=>{
+  const settings=defaultCccAutoSettings();
+  assert.equal(settings.optimizationDelaySeconds,10);
+  for(const rule of settings.levels){
+    assert.equal(rule.candidates.length,1);
+    assert.equal(rule.candidates[0].mode,'python');
+    assert.equal(rule.candidates[0].delaySeconds,0);
+    rule.candidates[0].mode='code';
+  }
+  assert.equal(cccAutoSchema.safeParse(settings).success,true);
 });

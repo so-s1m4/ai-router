@@ -17,8 +17,8 @@ export function fastLevelLimit(): number {
   return Number.isSafeInteger(value) && value >= 0 && value <= 100 ? value : Infinity;
 }
 
-export function codePrompt(level: number, context: unknown): string {
-  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete C++17 source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. Keep the source compact; omit commentary and boilerplate. A sameAs field refers to identical source already supplied in this context. The runner compiles and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${codeContext(context)}`;
+export function codePrompt(level: number, context: unknown, language: 'cpp' | 'python' = 'cpp'): string {
+  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete ${language === 'python' ? 'Python 3' : 'C++17'} source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. Keep the source compact; omit commentary and boilerplate. A sameAs field refers to identical source already supplied in this context. Use only the standard library. The runner prepares and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${codeContext(context)}`;
 }
 
 async function compileUncached(directory: string, signal: AbortSignal) {
@@ -74,17 +74,18 @@ async function compile(directory: string, signal: AbortSignal, cache: string) {
 }
 
 export async function prepareFastCode(response: string, directory: string,
-  files: { name: string; path: string }[], signal: AbortSignal, cache = path.join(directory, '.compiled')) {
+  files: { name: string; path: string }[], signal: AbortSignal, cache = path.join(directory, '.compiled'), language: 'cpp' | 'python' = 'cpp') {
   const value = JSON.parse(response);
   if (value.outputMode !== undefined && !['exact', 'constructive'].includes(value.outputMode)) {
     throw new Error('Fast solver returned an invalid output mode');
   }
   if (typeof value.source !== 'string' || !value.source.trim() || Buffer.byteLength(value.source) > 256 * 1024) {
-    throw new Error('Fast solver returned no usable C++ source');
+    throw new Error('Fast solver returned no usable source');
   }
-  await writeFile(path.join(directory, 'solution.cpp'), value.source, { mode: 0o600 });
-  await compile(directory, signal, cache);
-  await writeFile(path.join(directory, 'solver.json'), JSON.stringify({ runtime: 'node', script: 'cpp.cjs' }), { mode: 0o600 });
+  signal.throwIfAborted();
+  await writeFile(path.join(directory, language === 'python' ? 'solution.py' : 'solution.cpp'), value.source, { mode: 0o600 });
+  if (language === 'cpp') await compile(directory, signal, cache);
+  await writeFile(path.join(directory, 'solver.json'), JSON.stringify({ runtime: 'node', script: language === 'python' ? 'python.cjs' : 'cpp.cjs' }), { mode: 0o600 });
   const examples = files.filter(file => /example|sample/i.test(file.name) && /^(in_|input)|\.(in)$/i.test(file.name));
   if (!examples.length) return;
   const task = path.join(directory, 'examples.json'), answers = path.join(directory, 'example-answers.json');

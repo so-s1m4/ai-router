@@ -30,7 +30,7 @@ export class CccAutoPageComponent implements OnInit {
   setRoutingProviders(c:CccCandidate,value:string){c.openRouterRouting={only:[...new Set(value.split(/[,\s]+/).filter(Boolean))],allowFallbacks:c.openRouterRouting?.allowFallbacks ?? true};}
   setRoutingFallbacks(c:CccCandidate,value:boolean){c.openRouterRouting={only:c.openRouterRouting?.only ?? [],allowFallbacks:value};}
   useGoogleFlex(c:CccCandidate){c.openRouterRouting={only:['google-ai-studio/flex'],allowFallbacks:false};}
-  addCandidate(index:number){const row=this.settings.levels[index];if(row.candidates.length>=8)return;row.candidates.push({id:'candidate-'+Date.now().toString(36),enabled:true,provider:'codex',model:'gpt-6.1-sol',reasoning:'high',delaySeconds:30,mode:'code',fast:true});}
+  addCandidate(index:number){const row=this.settings.levels[index];if(row.candidates.length>=8)return;row.candidates.push({id:'candidate-'+Date.now().toString(36),enabled:true,provider:'codex',model:'gpt-6.1-sol',reasoning:'high',delaySeconds:30,mode:'python',fast:true});}
   removeCandidate(index:number,id:string){const row=this.settings.levels[index];if(row.candidates.length>1)row.candidates=row.candidates.filter(c=>c.id!==id);}
   copyCandidates(index:number){const candidates=this.settings.levels[index].candidates;for(const row of this.settings.levels)row.candidates=structuredClone(candidates);this.notice='Состав участников скопирован на все диапазоны. Нажмите «Сохранить».';}
   splitLast(){const last=this.settings.levels.at(-1)!;if(last.from>=100||this.settings.levels.length>=20)return;last.to=last.from;this.settings.levels.push({from:last.from+1,to:null,candidates:structuredClone(last.candidates)});}

@@ -14,7 +14,7 @@ export const cccCandidateSchema = z.object({
   model: z.string().trim().min(1).max(100),
   reasoning: z.enum(['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
   delaySeconds: z.number().min(0).max(3600),
-  mode: z.enum(['code', 'agent']),
+  mode: z.enum(['code', 'python', 'agent']),
   fast: z.boolean(),
   openRouterRouting: openRouterRoutingSchema.optional(),
 }).strict();
@@ -54,7 +54,6 @@ export function defaultCccAutoSettings(): CccAutoSettings {
     solutionAttempts:3, preparationRetries:2, optimizationEnabled:true, optimizationDelaySeconds:10,
     reuseThreads:true, startLevel:1, endLevel:null, extraInstructions:'',
     levels:[1,2,3,4,5].map(from => ({from, to:from === 5 ? null : from,
-      candidates: ['low','medium','high'].map((reasoning, i) => ({id:['light','medium','high'][i],
-        enabled:true, provider:'codex', model:'gpt-6.1-sol', reasoning:reasoning as 'low'|'medium'|'high',
-        delaySeconds:i === 2 ? 20 : 0, mode:'code', fast:true}))}))};
+      candidates: [{id:'light', enabled:true, provider:'codex', model:'gpt-6.1-sol',
+        reasoning:'low', delaySeconds:0, mode:'python', fast:true}]}))};
 }
