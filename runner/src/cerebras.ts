@@ -59,5 +59,5 @@ export async function executeCerebras(job:Job,home:string,cwd:string,signal:Abor
     if(!models.length)throw new RunnerError('No Cerebras models available','unavailable');
     job={...job,model:models[0].id};
   }
-  return executeChatApi(job,home,cwd,signal,emit,{name:'Cerebras',base,readKey:readCerebrasKey,body:cerebrasBody,httpError});
+  return executeChatApi(job,home,cwd,signal,emit,{name:'Cerebras',base,readKey:readCerebrasKey,body:cerebrasBody,httpError,retryEmptyAnswers:true});
 }

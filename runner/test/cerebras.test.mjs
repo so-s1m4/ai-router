@@ -87,3 +87,45 @@ test('Cerebras advertises supported reasoning levels and never sends OpenRouter 
   assert.equal(body.reasoning_effort,undefined);assert.equal(body.provider,undefined);
   assert.throws(()=>cerebrasBody({...job,reasoning:'xhigh'},[]),/Unsupported Cerebras/);
 });
+
+test('Cerebras recovers reasoning-only solver responses without tools and accumulates retry usage',async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'cerebras-empty-'));const original=globalThis.fetch;let calls=0;
+  const events=[];
+  globalThis.fetch=async(url,options)=>{
+    if(url.endsWith('/models'))return Response.json(directory);
+    const body=JSON.parse(options.body);calls++;
+    assert.equal(body.tools,undefined);assert.equal(body.reasoning_effort,'medium');
+    assert.equal(body.messages[1].content,job.prompt);
+    if(calls===1){
+      assert.equal(body.response_format.type,'json_schema');
+      return Response.json({choices:[{message:{content:null,reasoning:'Need to implement solver'},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15}});
+    }
+    assert.equal(body.response_format,undefined);assert.match(body.messages.at(-1).content,/complete requested solver JSON/);
+    return Response.json({choices:[{message:{content:'{"source":"print(42)","outputMode":"exact"}'},finish_reason:'stop'}],usage:{prompt_tokens:12,completion_tokens:8,total_tokens:20}});
+  };
+  try{
+    await saveCerebrasKey(dir,key);
+    assert.equal(JSON.parse(await executeCerebras({...job,mode:'task',solverCodeOnly:true},dir,dir,new AbortController().signal,e=>events.push(e))).source,'print(42)');
+    assert.equal(calls,2);assert.equal(events.filter(e=>e.type==='usage').at(-1).data.totalTokens,35);
+    assert.equal(events.filter(e=>e.type==='delta').length,1);
+    assert.ok(events.some(e=>e.type==='status'&&e.message.includes('retrying (1/2)')));
+  }finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
+});
+
+test('Cerebras empty-answer recovery is bounded and does not retry truncation, filtering, auth or cancellation',async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'cerebras-empty-limit-'));const original=globalThis.fetch;
+  try{
+    globalThis.fetch=async()=>Response.json(directory);await saveCerebrasKey(dir,key);
+    for(const [finishReason,expectedCalls,pattern] of [['stop',3,/empty answer after 2 retries/],['length',1,/truncated.*token limit/],['content_filter',1,/empty answer/]]){
+      let calls=0;globalThis.fetch=async()=>{calls++;return Response.json({choices:[{message:{content:' ',reasoning:'Thinking'},finish_reason:finishReason}]});};
+      await assert.rejects(executeCerebras(job,dir,dir,new AbortController().signal,()=>{}),pattern);
+      assert.equal(calls,expectedCalls);
+    }
+    let calls=0;globalThis.fetch=async()=>{calls++;return new Response('{}',{status:401});};
+    await assert.rejects(executeCerebras(job,dir,dir,new AbortController().signal,()=>{}),e=>e.code==='auth');assert.equal(calls,1);
+    const controller=new AbortController();calls=0;
+    globalThis.fetch=async()=>{calls++;return Response.json({choices:[{message:{content:null},finish_reason:'stop'}]});};
+    await assert.rejects(executeCerebras(job,dir,dir,controller.signal,e=>{if(e.type==='status'&&e.message.includes('retrying'))controller.abort(new Error('Cancelled'));}),/Cancelled/);
+    assert.equal(calls,1);
+  }finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
+});

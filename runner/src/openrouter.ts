@@ -60,7 +60,7 @@ export function openRouterBody(job:Job,messages:unknown[]) {
     ...(job.reasoning&&job.reasoning!=='default'?{reasoning:job.reasoning==='none'?{enabled:false}:{effort:job.reasoning==='max'?'xhigh':job.reasoning}}:{}),
     ...(job.solverCodeOnly?{response_format:{type:'json_schema',json_schema:{name:'ccc_solver',strict:true,schema:codeOutputSchema}}}:job.mode==='task'?{tools,tool_choice:'auto'}:{})};
 }
-export type ChatApiAdapter={name:string;base:string;readKey:(home:string)=>Promise<string>;body:(job:Job,messages:unknown[])=>Record<string,unknown>;httpError:(status:number)=>RunnerError};
+export type ChatApiAdapter={name:string;base:string;readKey:(home:string)=>Promise<string>;body:(job:Job,messages:unknown[])=>Record<string,unknown>;httpError:(status:number)=>RunnerError;retryEmptyAnswers?:boolean};
 export async function executeOpenRouter(job:Job,home:string,cwd:string,signal:AbortSignal,emit:(e:Event)=>void):Promise<string> {
   return executeChatApi(job,home,cwd,signal,emit,{name:'OpenRouter',base,readKey:readOpenRouterKey,body:openRouterBody,httpError});
 }
@@ -70,14 +70,18 @@ export async function executeChatApi(job:Job,home:string,cwd:string,signal:Abort
   const taskSignal=AbortSignal.any([signal,AbortSignal.timeout(cliTimeoutSeconds(job.mode)*1000)]);
   const messages:any[]=[{role:'system',content:`You are an assistant working in ${cwd}. ${job.solverCodeOnly?'Return only the requested JSON.':'Use run_command for filesystem work when tools are available. Finish with a concise answer. Do not read account credentials or files outside the task workspace.'}`},{role:'user',content:job.prompt}];
   const usage={inputTokens:0,outputTokens:0,totalTokens:0,reasoningOutputTokens:0,cachedInputTokens:0};
+  let emptyRetries=0;
+  let schemaUnsupported=false;
   for(let turn=0;turn<100;turn++) {
     taskSignal.throwIfAborted();
     emit({type:'status',message:`${name}: ${job.model}`});
     let response:Response;
     const body=adapter.body(job,messages);
+    if(schemaUnsupported)delete body.response_format;
     try{response=await fetch(base+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal:taskSignal});}
     catch(error){if(signal.aborted)throw signal.reason;if(taskSignal.aborted)throw new RunnerError(`${name} task timed out`,'timeout');throw new RunnerError(`${name} API is unavailable`,'unavailable');}
-    if(response.status===400&&job.solverCodeOnly){
+    if(response.status===400&&job.solverCodeOnly&&body.response_format){
+      schemaUnsupported=true;
       response=await fetch(base+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({...body,response_format:undefined}),signal:taskSignal});
     }
     if(!response.ok)throw httpError(response.status);
@@ -87,7 +91,26 @@ export async function executeChatApi(job:Job,home:string,cwd:string,signal:Abort
     if(u){usage.inputTokens+=u.prompt_tokens||0;usage.outputTokens+=u.completion_tokens||0;usage.totalTokens+=u.total_tokens||0;usage.reasoningOutputTokens+=u.completion_tokens_details?.reasoning_tokens||0;usage.cachedInputTokens+=u.prompt_tokens_details?.cached_tokens||0;emit({type:'usage',data:{...usage}});}
     const message=data.choices?.[0]?.message;
     if(!message)throw new RunnerError(`${name} returned no response`,'failed');
-    if(!message.tool_calls?.length){if(typeof message.content!=='string'||!message.content.trim())throw new RunnerError(`${name} returned an empty answer`,'failed');if(data.choices[0].finish_reason==='length')throw new RunnerError(`${name} answer was truncated`,'failed');const text=job.solverCodeOnly?message.content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''):message.content;emit({type:'delta',text});return text;}
+    const finishReason=data.choices[0].finish_reason;
+    if(finishReason==='length')throw new RunnerError(`${name} answer was truncated (output token limit reached)`,'failed');
+    if(!message.tool_calls?.length){
+      if(typeof message.content!=='string'||!message.content.trim()){
+        if(adapter.retryEmptyAnswers&&(!finishReason||finishReason==='stop')&&emptyRetries<2){
+          emptyRetries++;
+          // Some endpoints accept the schema but return no final output. Keep the
+          // original task and tool history; retry without structured-output enforcement.
+          if(job.solverCodeOnly)schemaUnsupported=true;
+          if(emptyRetries===1)messages.push({role:'user',content:job.solverCodeOnly
+            ? 'Your previous response contained no final answer. Return the complete requested solver JSON, including source and outputMode. Do not return only reasoning.'
+            : 'Your previous response contained no final answer. Complete the task and return a non-empty final answer, or use the available tools.'});
+          emit({type:'status',message:`${name}: empty answer; retrying (${emptyRetries}/2)`});
+          continue;
+        }
+        throw new RunnerError(`${name} returned an empty answer${emptyRetries?' after 2 retries':''}`,'failed');
+      }
+      const text=job.solverCodeOnly?message.content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''):message.content;
+      emit({type:'delta',text});return text;
+    }
     if(job.solverCodeOnly||job.mode!=='task')throw new RunnerError(`Unexpected ${name} tool call`,'failed');
     messages.push({role:'assistant',content:message.content ?? null,tool_calls:message.tool_calls,
       ...(typeof message.reasoning==='string'?{reasoning:message.reasoning}:{}),

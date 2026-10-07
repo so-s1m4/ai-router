@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { PersonalMcp } from './personal-mcp.js';
 
 export interface CccClient {
+  ready?(): Promise<void>;
   call(name: string, args: Record<string, unknown>): Promise<any>;
   close(): Promise<void>;
 }
@@ -128,6 +129,11 @@ export function recoveringCcc(
   let connection: Promise<CccClient> | undefined;
   let closed = false;
   return {
+    async ready() {
+      signal.throwIfAborted();
+      if (closed) throw new Error('CCC connection is closed');
+      await (connection ||= connect());
+    },
     async call(name, args) {
       for (let attempt = 0; ; attempt++) {
         signal.throwIfAborted();

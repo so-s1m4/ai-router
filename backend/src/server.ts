@@ -434,6 +434,8 @@ async function executeRun(userId:string, taskId:string, raw:unknown, ack:(r:{ok:
   const availableChoices=onlineChoices.filter(a=>usage.available(a.ownerId,a.id));
   if(!availableChoices.length)return ack({ok:false,waiting:true,error:'Waiting for provider quota to recover'});
   choices=availableChoices;
+  // Keep CCC preparation and the following contest request on the same warm runner.
+  if(input.workflow==='ccc-auto'&&chat.runnerId)choices.sort((a,b)=>Number(b.runnerId===chat.runnerId)-Number(a.runnerId===chat.runnerId));
   if(!await getSession(userId,chat.id))return ack?.({ok:false,error:'Chat not found'});
   if(busy.has(key))return ack({ok:false,waiting:true,error:'Waiting for this chat'});
   const releaseProject=project?.shared?lockProject(project.id):()=>{};if(!releaseProject)return ack?.({ok:false,waiting:true,error:'Waiting for project synchronization or another task'});
