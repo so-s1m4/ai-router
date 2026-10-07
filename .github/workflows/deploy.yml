@@ -78,7 +78,21 @@ jobs:
       - run: npm ci --prefix runner
       - run: npm run build --prefix backend
       - run: npm run build --prefix runner
-      - run: node --test --test-force-exit --test-timeout=120000 tests/*.integration.mjs
+      - run: node --test --test-force-exit --test-timeout=120000 tests/*.integration.mjs 2>&1 | tee "$RUNNER_TEMP/integration-tests.log"
+      - name: Report integration failures
+        if: failure()
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          report = Path(os.environ['RUNNER_TEMP']) / 'integration-tests.log'
+          if report.exists():
+              lines = report.read_text().splitlines()
+              for i, line in enumerate(lines):
+                  if line.startswith('not ok'):
+                      detail = '\n'.join(lines[max(0, i - 1):i + 65])
+                      detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f'::error::{detail}')
 
   images:
     needs: [build, compose, integration]
