@@ -390,11 +390,6 @@ export class FilesService {
 
       for (let i = 0; i < rawFiles.length; i++) {
         const file = rawFiles[i];
-        if (file.size > 20 * 1024 * 1024) {
-          errors.push(`“${file.name}” exceeds 20 MB`);
-          continue;
-        }
-
         let name = file.name;
         if (!name || name === 'image.png' || name === 'blob') {
           const ext = file.type ? (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg') : 'png';

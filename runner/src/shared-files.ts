@@ -128,7 +128,7 @@ export function attachSharedFiles(socket:Socket){
   if(!parsed.success)return ack?.({ok:false,error:'Invalid file'});
   const {projectId,name,data}=parsed.data;
   const bytes=Buffer.isBuffer(data)?data:data instanceof Uint8Array?Buffer.from(data):null;
-  if(!bytes||!bytes.length||bytes.length>20*1024*1024)return ack?.({ok:false,error:'The file is empty or larger than 20 MB'});
+  if(!bytes||!bytes.length)return ack?.({ok:false,error:'The file is empty'});
   if(!allowed(name)||name.includes('/'))return ack?.({ok:false,error:'Invalid file name'});
   try{
    const scope={sessionId:projectId,projectId};

@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { runnerSocket } from './runners.js';
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
-
 export function uploadProjectFile(runnerId: string, projectId: string, name: string, data: Buffer): Promise<{name:string;size:number}> {
-  if (data.length > MAX_FILE_BYTES) return Promise.reject(new Error('File larger than 20 MB'));
   const socket = runnerSocket(runnerId);
   if (!socket) return Promise.reject(new Error('The runner is offline'));
   const transferId = randomUUID();

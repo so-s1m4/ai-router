@@ -27,7 +27,7 @@ async function start(){
  const busySessions=new Set<string>();
  const updater=new CliUpdater({root,busy:()=>active.size>0,promoted:provider=>{if(provider==='codex')retireCodexAppServers();}});
  await updater.start();
- const d=await device();const socket=io(url+'/runner',{path:'/socket.io',transports:['websocket'],auth:{runnerId:d.id,secret:d.secret},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000});
+ const d=await device();const socket=io(url+'/runner',{path:'/socket.io',transports:['websocket'],transportOptions:{websocket:{maxPayload:0}},auth:{runnerId:d.id,secret:d.secret},reconnection:true,reconnectionDelay:1000,reconnectionDelayMax:10000});
  const steeringCheckpoints=new Map<string,{writer:CheckpointWriter;prompt:string}>();
  await startPreviews(socket);
  attachSharedFiles(socket);

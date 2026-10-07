@@ -23,11 +23,13 @@ test('file exchange lists workspace output and rejects private paths and symlink
  try{
   const projectId='923b2a0f-64b0-4e4d-9bf9-d5f5f3b393ea';
   const transferId='b03b7201-6e45-446a-a916-707e3c0fe3d1';
-  const data=Buffer.alloc(2*1024*1024,65);
+  const data=Buffer.alloc(21*1024*1024,65);
   assert.equal((await ask('file:write',{projectId,transferId,name:'.env',data})).ok,false);
   const uploaded=await ask('file:write',{projectId,transferId,name:'upload.txt',data});
   assert.equal(uploaded.ok,true);
   assert.equal(uploaded.size,data.length);
+  assert.deepEqual(await readFile(path.join(root,'projects',projectId,'upload.txt')),data);
+  assert.equal((await ask('file:write',{projectId,transferId,name:'empty.zip',data:Buffer.alloc(0)})).ok,false);
   assert.equal((await ask('file:write',{projectId,transferId,name:'upload.txt',data})).name,'upload-1.txt');
   const projectFiles=await ask('file:list',{sessionId,projectId});
   assert.equal(projectFiles.files.length,2);
