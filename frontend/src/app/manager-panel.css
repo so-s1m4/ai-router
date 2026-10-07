@@ -158,14 +158,14 @@
 }
 
 .quiet {
-  background: rgba(220, 229, 245, 0.05);
-  border: 1px solid rgba(220, 229, 245, 0.12);
+  background: rgba(228, 228, 228, 0.05);
+  border: 1px solid rgba(228, 228, 228, 0.12);
   color: var(--text-main);
 }
 
 .quiet:hover, .icon-button:hover, .container-actions button:hover {
-  background: rgba(220, 229, 245, 0.1);
-  border-color: rgba(220, 229, 245, 0.22);
+  background: rgba(228, 228, 228, 0.1);
+  border-color: rgba(228, 228, 228, 0.22);
   color: var(--text-main);
 }
 
@@ -200,20 +200,20 @@
   white-space: nowrap;
   border-radius: var(--radius-pill);
   padding: 6px 14px;
-  background: rgba(220, 229, 245, 0.04);
-  border: 1px solid rgba(220, 229, 245, 0.1);
+  background: rgba(228, 228, 228, 0.04);
+  border: 1px solid rgba(228, 228, 228, 0.1);
   color: var(--text-secondary);
 }
 
 .manager-tabs button:hover {
-  background: rgba(220, 229, 245, 0.08);
+  background: rgba(228, 228, 228, 0.08);
   color: var(--text-main);
 }
 
 .manager-tabs button.active {
-  background: rgba(220, 229, 245, 0.15);
+  background: rgba(228, 228, 228, 0.15);
   color: var(--text-main);
-  border-color: rgba(220, 229, 245, 0.25);
+  border-color: rgba(228, 228, 228, 0.25);
   box-shadow: none;
 }
 
@@ -227,7 +227,7 @@
 
 .manager-error {
   background: var(--danger-bg);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid rgba(104, 104, 104, 0.3);
   color: var(--danger);
 }
 
