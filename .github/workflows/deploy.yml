@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-router-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  group: ai-router-deploy-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
   cancel-in-progress: true
 
 jobs:
