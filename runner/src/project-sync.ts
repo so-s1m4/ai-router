@@ -6,7 +6,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import type { Socket } from 'socket.io-client';
 import { z } from 'zod';
 
-const MAX_BYTES=64*1024*1024, MAX_ARCHIVE=96*1024*1024, CHUNK=256*1024;
+const CHUNK=256*1024;
 const skipped=new Set(['node_modules','.ai-router','.codex','.ssh','.aws','.config','.cache','.next','.angular']);
 const localOnly=(name:string)=>skipped.has(name)||/^\.env(?:\.|$)/.test(name);
 function validName(name:string){return name.length<=1000&&name.split('/').every(p=>p&&p!=='.'&&p!=='..'&&!p.includes('\\')&&!p.includes('\0')&&!localOnly(p));}
@@ -14,7 +14,7 @@ type Entry={name:string;data:string;mode:number};
 export async function exportProject(directory:string,allowMissing=false):Promise<Buffer>{
  if(allowMissing)await mkdir(directory,{recursive:true,mode:0o700});
  const actual=await realpath(directory);if(actual!==directory)throw new Error('Project directory must not be a link');
- const entries:Entry[]=[];let bytes=0;
+ const entries:Entry[]=[];
  async function walk(dir:string,prefix=''){
   for(const row of await readdir(dir,{withFileTypes:true})){
    const name=prefix+row.name;if(!validName(name))continue;
@@ -22,23 +22,22 @@ export async function exportProject(directory:string,allowMissing=false):Promise
    if(row.isDirectory())await walk(path.join(dir,row.name),name+'/');
    else if(row.isFile()){
     const handle=await open(path.join(dir,row.name),constants.O_RDONLY|constants.O_NOFOLLOW);
-    try{const info=await handle.stat();if(!info.isFile()||bytes+info.size>MAX_BYTES||entries.length>=20000)throw new Error('Shared project exceeds the 64 MB or 20,000 file sync limit');
-     const data=await handle.readFile();bytes+=data.length;if(bytes>MAX_BYTES)throw new Error('Shared project exceeds 64 MB');
+    try{const info=await handle.stat();if(!info.isFile())throw new Error('Invalid project file: '+name);
+     const data=await handle.readFile();
      entries.push({name,data:data.toString('base64'),mode:info.mode&0o777});
     }finally{await handle.close();}
    }
   }
  }
- await walk(directory);const encoded=JSON.stringify(entries);if(Buffer.byteLength(encoded)>MAX_ARCHIVE)throw new Error('Project archive metadata is too large');const archive=gzipSync(encoded);if(archive.length>MAX_ARCHIVE)throw new Error('Project archive is too large');return archive;
+ await walk(directory);return gzipSync(JSON.stringify(entries));
 }
 export async function importProject(directory:string,archive:Buffer){
- if(archive.length>MAX_ARCHIVE)throw new Error('Project archive is too large');
- const entries:unknown=JSON.parse(gunzipSync(archive,{maxOutputLength:MAX_ARCHIVE}).toString());
- if(!Array.isArray(entries)||entries.length>20000)throw new Error('Invalid project archive');
- const names=new Set<string>();let bytes=0;
+ const entries:unknown=JSON.parse(gunzipSync(archive).toString());
+ if(!Array.isArray(entries))throw new Error('Invalid project archive');
+ const names=new Set<string>();
  const files=entries.map((row:Entry)=>{
-  if(!row||typeof row.name!=='string'||!validName(row.name)||names.has(row.name)||typeof row.data!=='string'||!Number.isInteger(row.mode)||row.mode<0||row.mode>0o777||! /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(row.data))throw new Error('Invalid project archive entry');
-  names.add(row.name);const data=Buffer.from(row.data,'base64');bytes+=data.length;if(bytes>MAX_BYTES)throw new Error('Shared project exceeds 64 MB');return {...row,data};
+  if(!row||typeof row.name!=='string'||!validName(row.name)||names.has(row.name)||typeof row.data!=='string'||!Number.isInteger(row.mode)||row.mode<0||row.mode>0o777||row.data.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(row.data))throw new Error('Invalid project archive entry');
+  names.add(row.name);const data=Buffer.from(row.data,'base64');return {...row,data};
  });
  await mkdir(path.dirname(directory),{recursive:true,mode:0o700});
  if(await realpath(path.dirname(directory))!==path.dirname(directory))throw new Error('Project parent must not be a link');
@@ -78,7 +77,7 @@ export function attachProjectSync(socket:Socket,root:string,isBusy:(projectId:st
   const t=transfers.get(transferId);if(!t||t.projectId!==projectId||t.direction!=='export'||offset!==t.offset)throw new Error('Invalid transfer');
   const data=t.bytes.subarray(offset,offset+CHUNK);t.offset+=data.length;t.until=Date.now()+120000;if(t.offset===t.bytes.length)transfers.delete(transferId);return {data};
  });
- handler('project:import',scope.extend({size:z.number().int().min(1).max(MAX_ARCHIVE)}),async({projectId,size})=>{
+ handler('project:import',scope.extend({size:z.number().int().min(1).safe()}),async({projectId,size})=>{
   if(isBusy(projectId))throw new Error('Project is running');if(transfers.size>=4)throw new Error('Too many project transfers');
   const transferId=randomUUID();transfers.set(transferId,{projectId,bytes:Buffer.alloc(size),offset:0,direction:'import',until:Date.now()+120000});return {transferId};
  });

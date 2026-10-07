@@ -3,8 +3,37 @@ import test from 'node:test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, chmod, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { exportProject, importProject } from '../dist/project-sync.js';
+
+test('sync accepts files above 64 MiB and archive metadata above 96 MiB',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'project-sync-large-'));
+ try{
+  const source=path.join(root,'source'),target=path.join(root,'target');
+  await mkdir(source);
+  const size=73*1024*1024;
+  await writeFile(path.join(source,'large.bin'),Buffer.alloc(size,0x5a));
+  const archive=await exportProject(source);
+  assert.ok(gunzipSync(archive).length>96*1024*1024);
+  await importProject(target,archive);
+  const data=await readFile(path.join(target,'large.bin'));
+  assert.equal(data.length,size);
+  assert.ok(data.every(byte=>byte===0x5a));
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('sync accepts more than 20,000 files',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'project-sync-many-'));
+ try{
+  const source=path.join(root,'source'),target=path.join(root,'target');
+  const entries=Array.from({length:20001},(_,i)=>({name:`file-${i}.txt`,data:'eA==',mode:0o600}));
+  await importProject(source,gzipSync(JSON.stringify(entries)));
+  const archive=await exportProject(source);
+  assert.equal(JSON.parse(gunzipSync(archive).toString()).length,20001);
+  await importProject(target,archive);
+  assert.equal(await readFile(path.join(target,'file-20000.txt'),'utf8'),'x');
+ }finally{await rm(root,{recursive:true,force:true});}
+});
 
 test('sync carries source, binary artifacts, git and deletions, preserves executable permissions and local recovery copy',async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'project-sync-'));
