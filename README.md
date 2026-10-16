@@ -157,6 +157,8 @@ CLI-адаптеры используют официальные потоки [C
 
 Runner checks the latest stable Codex and Antigravity CLI releases at startup and every six hours. It stages and validates each new version in `/runner-data/cli/releases`, then atomically switches the executable path when no task is active. Failed downloads leave the installed CLI available. The shared `runner_data` volume preserves updates across container restarts; login scripts and Runner Manager use the same binaries. Cached Codex App Server connections retire after their current turn.
 
+Runner images install the latest Antigravity CLI and require version 1.4.0 or newer (`AGY_CLI_MIN_VERSION` build argument). Raising this minimum also invalidates the cached CLI installation layer.
+
 Defaults: `CLI_AUTO_UPDATE=true` and `CLI_UPDATE_INTERVAL_SECONDS=21600`. Override them in the runner stack environment to disable updates or change the interval. Mock mode and explicit `CODEX_BIN`/`AGY_BIN` overrides skip automatic updates. Antigravity’s native updater remains disabled because runner manages verified releases between tasks. Codex uses the official [npm release channel](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex); Antigravity uses the release manifest referenced by its official [installer](https://antigravity.google/cli/install.sh) and verifies SHA-512 before activation.
 
 ### Frontend structure

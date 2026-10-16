@@ -9,6 +9,7 @@ FROM node:22-bookworm-slim
 ARG INSTALL_CODEX_CLI=false
 ARG CODEX_CLI_VERSION=latest
 ARG INSTALL_AGY_CLI=false
+ARG AGY_CLI_MIN_VERSION=1.4.0
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ca-certificates \
@@ -34,7 +35,8 @@ RUN apt-get update \
        curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh \
        && bash /tmp/agy-install.sh --dir /usr/local/bin \
        && rm /tmp/agy-install.sh \
-       && agy --version; \
+       && agy --version \
+       && dpkg --compare-versions "$(agy --version)" ge "$AGY_CLI_MIN_VERSION"; \
      fi
 WORKDIR /app
 COPY package*.json ./
