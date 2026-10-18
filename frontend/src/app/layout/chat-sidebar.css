@@ -1,4 +1,6 @@
-.projects-section { padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+.sidebar-scroll { padding: 6px 8px 16px; gap: 14px; }
+.sidebar-section { gap: 3px; }
+.projects-section { padding-top: 0; border-top: 0; }
 .section-label { min-height: 30px; padding: 0 8px 6px; font-size: 11px; color: var(--text-muted); }
 .btn-subtle-add { width: 28px; height: 28px; }
 .tree-folder { margin-bottom: 3px; }
@@ -7,7 +9,7 @@
 .project-chevron { flex: none; color: var(--text-muted); transition: transform .15s ease; }
 .project-chevron.expanded { transform: rotate(90deg); }
 .project-chat-count { flex: none; min-width: 20px; padding: 2px 5px; border-radius: 5px; background: var(--bg-surface-elevated); color: var(--text-muted); font-size: 10px; text-align: center; font-variant-numeric: tabular-nums; }
-.tree-sub-list { margin: 2px 0 7px 14px; padding-left: 9px; border-left: 1px solid var(--border-medium); gap: 2px; }
+.tree-sub-list { margin: 2px 0 5px 16px; padding-left: 5px; border-left: 1px solid var(--border-medium); gap: 2px; }
 .chat-list-row { position: relative; gap: 0; border-radius: 7px; }
 .chat-list-row:hover, .chat-list-row:focus-within { background: var(--bg-surface-elevated); }
 .chat-list-row.selected { background: var(--bg-surface-hover); }
@@ -45,15 +47,15 @@ button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -
 .project-collapse.is-open { grid-template-rows: 1fr; opacity: 1; }
 .project-collapse-inner { overflow: hidden; min-height: 0; }
 .project-collapse.is-open .project-collapse-inner { overflow: visible; }
-.projects-section { border-top: 0; padding-top: 12px; }
-.section-label { font-size: 10px; font-weight: 500; letter-spacing: .04em; padding-left: 10px; }
+.projects-section { border-top: 0; padding-top: 0; }
+.section-label { font-size: 10px; font-weight: 500; letter-spacing: .04em; padding-left: 8px; }
 .chat-list-row { border-radius: 8px; transition: background-color 160ms; }
 .chat-list-row.selected { background: var(--primary-subtle); }
 .chat-list-row.selected::before { background: var(--primary); top: 12px; bottom: 12px; }
 .chat-list-row.selected .chat-title { color: var(--primary-text); }
 .chat-actions-panel { animation: chat-menu-in 140ms ease-out; transform-origin: top right; }
 .chat-actions-panel button { color: var(--danger); }
-.tree-folder-head { border-radius: 8px; }
+.tree-folder-head { border-radius: 8px; gap: 8px; }
 .project-chat-count { background: transparent; font-size: 10px; color: var(--text-muted); }
 .tree-sub-list { border-left-color: var(--border-medium); }
 @keyframes chat-menu-in { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }

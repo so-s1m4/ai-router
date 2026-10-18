@@ -7,16 +7,16 @@ button:active:not(:disabled) { transform: scale(.97); }
 .rail-btn { border-radius: 10px; }
 .rail-btn.active { box-shadow: inset 0 0 0 1px #b8bcc810; }
 .sidebar { border-right: 1px solid var(--border-subtle); transition: width 300ms var(--ease-out), flex-basis 300ms var(--ease-out), opacity 220ms ease, transform 320ms var(--ease-out); }
-.sidebar-header { height: 80px; padding: 16px; }
+.sidebar-header { height: 72px; padding: 12px; }
 .sidebar-brand-btn { display: flex; align-items: center; gap: 10px; text-align: left; font-size: 14px; letter-spacing: -.25px; }
 .sidebar-brand-btn small { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; color: var(--text-muted); letter-spacing: 0; }
 .workspace-logo { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--border-hover); background: var(--bg-surface-elevated); color: var(--primary-text); font-size: 24px; }
-.sidebar-search-launch { display: flex; align-items: center; gap: 8px; flex: none; min-height: 36px; margin: 0 14px 10px; padding: 0 10px; background: #ffffff03; border: 1px solid var(--border-medium); border-radius: 8px; color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: left; }
+.sidebar-search-launch { display: flex; align-items: center; gap: 8px; flex: none; min-height: 36px; margin: 0 12px 8px; padding: 0 10px; background: #ffffff03; border: 1px solid var(--border-medium); border-radius: 8px; color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: left; }
 .sidebar-search-launch:hover { background: var(--bg-surface-elevated); color: var(--text-secondary); }
 .sidebar-search-launch span { flex: 1; }
 kbd { font-family: inherit; font-size: 10px; color: var(--text-muted); border: 1px solid var(--border-medium); border-radius: 4px; padding: 2px 4px; }
 .sidebar-header .sidebar-icon-btn[title="Search"] { display: none; }
-.sidebar-new-chat { padding: 0 14px 16px; }
+.sidebar-new-chat { margin: 0; padding: 0 12px 12px; }
 .btn-new-chat-row { min-height: 38px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--primary-subtle); color: var(--primary-text); font-size: 12px; }
 .sidebar-scroll { padding: 6px 10px 16px; }
 .topbar { border-bottom: 1px solid var(--border-subtle); background: var(--bg-canvas); }
@@ -71,11 +71,12 @@ kbd { font-family: inherit; font-size: 10px; color: var(--text-muted); border: 1
   .gesture-active .sidebar { transition: none; }
   .drawer-overlay { display: block; opacity: 0; visibility: hidden; pointer-events: none; background: #0008; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); transition: opacity 250ms, visibility 250ms; }
   .drawer-overlay.visible { opacity: 1; visibility: visible; pointer-events: auto; }
-  .sidebar-header { height: 78px; padding: 12px 18px; border: 0; }
+  .sidebar-header { height: 72px; padding: 12px; border: 0; }
   .sidebar-brand-btn { font-size: 15px; }
   .sidebar-brand-btn small { font-size: 11px; }
-  .sidebar-search-launch { min-height: 44px; margin: 0 16px 12px; font-size: 12px; }
-  .sidebar-new-chat { display: block; padding: 0 16px 12px; }
+  .sidebar-search-launch { min-height: 44px; margin: 0 12px 8px; font-size: 12px; }
+  .sidebar-search-launch kbd { display: none; }
+  .sidebar-new-chat { display: block; padding: 0 12px 10px; }
   .btn-new-chat-row { min-height: 44px; }
   .sidebar-scroll { padding: 8px 12px 16px; }
   .mobile-drawer-content { scrollbar-width: thin; }

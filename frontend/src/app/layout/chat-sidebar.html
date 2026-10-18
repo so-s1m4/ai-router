@@ -128,7 +128,6 @@
                 [attr.aria-controls]="'project-chats-' + p.id"
                 [title]="p.name"
               >
-                <svg lucideChevronRight [size]="13" class="project-chevron" [class.expanded]="vm.isProjectExpanded(p)"></svg>
                 @if (vm.projectIcon(p) === 'graduation-cap') {
                   <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
                 } @else if (vm.projectIcon(p) === 'origami') {
@@ -140,6 +139,7 @@
                 }
                 <span class="truncate">{{ p.name }}</span>
                 <span class="project-chat-count" [attr.aria-label]="chats.length + ' chats'">{{ chats.length }}</span>
+                <svg lucideChevronRight [size]="13" class="project-chevron" [class.expanded]="vm.isProjectExpanded(p)"></svg>
               </button>
 
               <div class="project-collapse" [class.is-open]="vm.isProjectExpanded(p)" [attr.inert]="vm.isProjectExpanded(p) ? null : ''" [attr.aria-hidden]="!vm.isProjectExpanded(p)">
