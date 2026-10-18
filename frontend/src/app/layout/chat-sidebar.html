@@ -1,11 +1,15 @@
 <aside
   class="sidebar"
+  aria-label="Workspace navigation"
+  [attr.role]="vm.layoutService.mobileMenu() ? 'dialog' : null"
+  [attr.aria-modal]="vm.layoutService.mobileMenu() ? true : null"
+  [attr.inert]="!vm.layoutService.sidebarOpen() && !vm.layoutService.mobileMenu() ? '' : null"
   [class.collapsed]="!vm.layoutService.sidebarOpen()"
   [class.drawer-open]="vm.layoutService.mobileMenu()"
 >
   <div class="sidebar-header">
     <button class="sidebar-brand-btn" (click)="vm.chatService.newSession()" title="Workspace">
-      <span>AI Router</span>
+      <span class="workspace-logo" aria-hidden="true"><svg lucideOrigami [size]="19"></svg></span><span>AI Router<small>Personal workspace</small></span>
     </button>
     <div class="sidebar-header-actions">
       <button
@@ -17,14 +21,18 @@
       </button>
       <button
         class="sidebar-icon-btn"
-        (click)="vm.layoutService.searchOpen.set(!vm.layoutService.searchOpen())"
+        (click)="toggleSearch()"
         title="Search"
+        aria-label="Search"
       >
         <svg lucideSearch [size]="17"></svg>
       </button>
     </div>
   </div>
 
+  <button class="sidebar-search-launch" (click)="toggleSearch()" aria-label="Search chats and projects" [attr.aria-expanded]="vm.layoutService.searchOpen()">
+    <svg lucideSearch [size]="15"></svg><span>Search anything</span><kbd>Ctrl K</kbd>
+  </button>
   @if (vm.layoutService.searchOpen()) {
     <div class="sidebar-search-box">
       <svg lucideSearch [size]="14"></svg>
@@ -34,6 +42,8 @@
         [ngModel]="vm.layoutService.sidebarSearch()"
         (ngModelChange)="vm.layoutService.sidebarSearch.set($event)"
         class="sidebar-search-input"
+        aria-label="Find a chat or project"
+        (keydown.escape)="vm.layoutService.searchOpen.set(false); vm.layoutService.sidebarSearch.set('')"
       />
       @if (vm.layoutService.sidebarSearch()) {
         <button class="sidebar-search-clear" (click)="vm.layoutService.sidebarSearch.set('')">
@@ -79,7 +89,7 @@
         <div class="section-label"><span>Recent chats</span></div>
         <div class="section-list">
           @for (s of vm.filteredRecentSessions(); track s.id) {
-            <div class="chat-list-row" [class.selected]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'">
+            <div class="chat-list-row" (contextmenu)="showChatActions($event, s.id)" [class.selected]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'">
               <button
                 class="sidebar-item"
                 [class.active]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'"
@@ -132,10 +142,10 @@
                 <span class="project-chat-count" [attr.aria-label]="chats.length + ' chats'">{{ chats.length }}</span>
               </button>
 
-              @if (vm.isProjectExpanded(p)) {
-                <div class="tree-sub-list" [id]="'project-chats-' + p.id">
+              <div class="project-collapse" [class.is-open]="vm.isProjectExpanded(p)" [attr.inert]="vm.isProjectExpanded(p) ? null : ''" [attr.aria-hidden]="!vm.isProjectExpanded(p)">
+                <div class="project-collapse-inner"><div class="tree-sub-list" [id]="'project-chats-' + p.id">
                   @for (c of (fullProjects().has(p.id) ? chats : chats.slice(0, 4)); track c.id) {
-                    <div class="chat-list-row" [class.selected]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'">
+                    <div class="chat-list-row" (contextmenu)="showChatActions($event, c.id)" [class.selected]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'">
                       <button
                         class="tree-sub-item"
                         [class.active]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'"
@@ -156,8 +166,8 @@
                   <button class="tree-sub-item project-new-chat" (click)="vm.newSessionFor(p.id)">
                     <svg lucidePlus [size]="14"></svg><span>New chat</span>
                   </button>
-                </div>
-              }
+                </div></div>
+              </div>
             </div>
           } @empty {
             <p class="sidebar-empty">{{ vm.layoutService.sidebarSearch() ? 'No matching projects' : 'Create a project to group your chats' }}</p>
@@ -247,6 +257,7 @@
       }
     </nav>
   </div>
+  <p class="drawer-gesture-hint">Swipe left to close · Hold a chat for options</p>
   <div class="mobile-drawer-footer">
     <app-install-app [compact]="true"></app-install-app>
     <button class="mobile-drawer-new-chat" (click)="vm.chatService.newSession()">

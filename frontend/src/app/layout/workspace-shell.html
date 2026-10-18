@@ -1,16 +1,20 @@
-<div class="app-layout" (keydown.escape)="vm.layoutService.mobileMenu.set(false)">
-  @if (vm.layoutService.mobileMenu()) {
-    <div class="drawer-overlay" (click)="vm.layoutService.mobileMenu.set(false)"></div>
-  }
+<div class="app-layout" [class.gesture-active]="dragging()"
+  [class.drawer-visible]="vm.layoutService.mobileMenu() || dragging()"
+  [style.--drawer-offset]="drawerOffset() === null ? null : drawerOffset() + 'px'"
+  (touchstart)="startGesture($event)" (touchmove)="moveGesture($event)"
+  (touchend)="endGesture()" (touchcancel)="cancelGesture()"
+  (keydown.escape)="vm.layoutService.mobileMenu.set(false)">
+  <div class="drawer-overlay" [class.visible]="vm.layoutService.mobileMenu() || dragging()"
+    (click)="vm.layoutService.mobileMenu.set(false)" aria-hidden="true"></div>
 
   <!-- 1. LEFT MINI RAIL (DOCK) -->
-  <app-navigation-rail></app-navigation-rail>
+  <app-navigation-rail [attr.inert]="mobile() && vm.layoutService.mobileMenu() ? '' : null"></app-navigation-rail>
 
   <!-- 2. SECONDARY SIDEBAR (260px COLLAPSIBLE) -->
   <app-chat-sidebar></app-chat-sidebar>
 
   <!-- 3. MAIN AREA -->
-  <main class="main-content">
+  <main class="main-content" [attr.inert]="mobile() && vm.layoutService.mobileMenu() ? '' : null">
     @if (vm.page() !== 'chat') {
       <nav class="mobile-bottom-nav" aria-label="Quick navigation">
         <button [class.active]="vm.page() === 'projects'" (click)="vm.showPage('projects')">

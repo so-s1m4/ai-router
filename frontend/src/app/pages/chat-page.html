@@ -47,10 +47,11 @@
     @if (!vm.sessionService.current()?.messages?.length) {
       <!-- THE HERO SCREEN: WHAT'S ON THE AGENDA TODAY? -->
       <div class="hero-view">
-        <span class="hero-eyebrow">YOUR WORKSPACE</span>
-        <h1 class="hero-title">What will we do today?</h1>
+        <div class="hero-mark" aria-hidden="true"><svg lucideSparkles [size]="26"></svg></div>
+        <span class="hero-eyebrow">ONE WORKSPACE. EVERY MODEL.</span>
+        <h1 class="hero-title">A little idea. A big next step.</h1>
         <p class="hero-subtitle">
-          Describe the task. The assistant will help with code, files and ideas.
+          Build something, untangle a problem, or follow a new idea.
         </p>
 
         @if (vm.error()) {
@@ -80,6 +81,12 @@
           </select>
         </div>
         <app-chat-composer [hero]="true"></app-chat-composer>
+        <div class="starter-prompts" aria-label="Ideas to get started">
+          <button (click)="usePrompt('Help me build a web app. Ask me about the idea and suggest a plan.')"><svg lucideFolder [size]="14"></svg> Build something</button>
+          <button (click)="usePrompt('Help me review my code. Ask which files or changes to look at.')"><svg lucideCopy [size]="14"></svg> Review code</button>
+          <button (click)="usePrompt('Help me explore an idea. Ask me what I am thinking about.')"><svg lucideSparkles [size]="14"></svg> Explore an idea</button>
+        </div>
+        <p class="workspace-shortcut">Your models. Your projects. One place.<span>Ctrl / Cmd K to search</span></p>
       </div>
     } @else {
       <div #messageFeed class="message-feed" (click)="vm.clipboardService.handleChatClick($event)">

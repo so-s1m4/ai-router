@@ -276,13 +276,17 @@ export class WorkspaceStore {
     const key = typeof p === 'string' ? p : p.id || p.name;
     const name = typeof p === 'string' ? p : p.name;
     return (
+      !!this.layoutService.sidebarSearch().trim() ||
       this.layoutService.expandedProjects().has(key) ||
       this.layoutService.expandedProjects().has(name)
     );
   }
 
   chatsForProject(p: Project): ChatSession[] {
-    return this.chatsFor(p.id);
+    const query = this.layoutService.sidebarSearch().trim().toLowerCase();
+    const chats = this.chatsFor(p.id);
+    if (!query || p.name.toLowerCase().includes(query)) return chats;
+    return chats.filter(chat => (chat.title || '').toLowerCase().includes(query));
   }
 
   filteredRecentSessions = computed(() => {
@@ -296,7 +300,8 @@ export class WorkspaceStore {
     const query = this.layoutService.sidebarSearch().trim().toLowerCase();
     const all = this.projectService.projects();
     if (!query) return all;
-    return all.filter((p) => p.name.toLowerCase().includes(query));
+    return all.filter((p) => p.name.toLowerCase().includes(query) ||
+      this.chatsFor(p.id).some(chat => (chat.title || '').toLowerCase().includes(query)));
   });
 
   selectProject(id: string) {

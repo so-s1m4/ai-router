@@ -47,6 +47,15 @@ export class ChatPageComponent implements AfterViewInit, OnDestroy {
     this.vm.chatViewService.messageFeed = ref;
     this.vm.chatViewService.ensureChatScrollAttached();
   }
+  usePrompt(prompt: string) {
+    this.vm.chatService.draft = prompt;
+    const textarea = document.querySelector<HTMLTextAreaElement>('.pill-textarea');
+    if (textarea) {
+      textarea.value = prompt;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.focus();
+    }
+  }
   ngAfterViewInit() {
     this.vm.chatViewService.ngAfterViewInit();
   }

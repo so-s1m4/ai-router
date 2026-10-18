@@ -1,6 +1,7 @@
 @import './app/app.css';
 @import './app/adaptive.css';
 @import './app/features.css';
+@import './app/workspace.css';
 @import '@fontsource/jetbrains-mono/cyrillic-400.css';
 @import '@fontsource/jetbrains-mono/cyrillic-500.css';
 @import '@fontsource/jetbrains-mono/cyrillic-600.css';
@@ -17,49 +18,50 @@
 .site-card .card-actions a{text-decoration:none}
 
 :root {
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Graphite surfaces and soft silver accents. */
-  --bg-canvas: #141414;
-  --bg-sidebar: #1c1c1c;
-  --bg-rail: #171717;
-  --bg-surface: #1c1c1c;
-  --bg-surface-elevated: #252525;
-  --bg-surface-hover: #303030;
-  --bg-surface-active: #383838;
-  --bg-input: #1c1c1c;
-  --bg-input-focus: #222222;
+  /* Graphite surfaces and a soft periwinkle accent. */
+  --bg-canvas: #101114;
+  --bg-sidebar: #17181c;
+  --bg-rail: #111216;
+  --bg-surface: #1a1b20;
+  --bg-surface-elevated: #22232a;
+  --bg-surface-hover: #2b2c35;
+  --bg-surface-active: #323441;
+  --bg-input: #17181e;
+  --bg-input-focus: #20212a;
 
   /* Borders */
-  --border-subtle: #303030;
-  --border-medium: #424242;
-  --border-hover: #606060;
-  --border-focus: #bcbcbc;
+  --border-subtle: #ffffff0d;
+  --border-medium: #ffffff18;
+  --border-hover: #ffffff2e;
+  --border-focus: #9a9cfa;
 
-  /* Neutral action accents */
-  --primary: #c4c4c4;
-  --primary-hover: #dedede;
-  --primary-fg: #181818;
+  /* Actions */
+  --primary: #a5a7ff;
+  --primary-hover: #bdbfff;
+  --primary-fg: #17172a;
   --primary-glow: rgba(94, 94, 94, 0.1);
-  --primary-subtle: #303030;
-  --primary-text: #d2d2d2;
+  --primary-subtle: #9395ff16;
+  --primary-text: #bebfff;
   --accent-purple: #b0b0b0;
 
   /* Status */
-  --success: #b8b8b8;
-  --success-bg: #2b2b2b;
-  --success-border: #4b4b4b;
-  --warning: #bababa;
-  --warning-bg: #2a2a2a;
-  --danger: #a6a6a6;
-  --danger-bg: #272727;
-  --danger-hover: #bcbcbc;
+  --success: #72d5ae;
+  --success-bg: #72d5ae12;
+  --success-border: #72d5ae30;
+  --warning: #edc781;
+  --warning-bg: #edc78112;
+  --danger: #f28b99;
+  --danger-bg: #f28b9912;
+  --danger-hover: #ffa6b2;
 
   /* Text */
-  --text-main: #e6e6e6;
-  --text-secondary: #b5b5b5;
-  --text-muted: #969696;
+  --text-main: #eeeef2;
+  --text-secondary: #b3b4c0;
+  --text-muted: #888a9c;
   --text-inverse: #ededed;
 
   /* Radii */
@@ -72,9 +74,9 @@
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.07);
+  --shadow-md: 0 12px 32px #0003;
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 0 3px rgba(94, 94, 94, 0.08);
+  --shadow-glow: 0 0 0 3px #a5a7ff12;
 }
 
 *, *::before, *::after {

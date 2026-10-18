@@ -75,6 +75,19 @@ export class ChatSidebarComponent {
     });
   }
 
+  showChatActions(event: MouseEvent, id: string) {
+    event.preventDefault();
+    this.openActions.set(id);
+    setTimeout(() => document.querySelector<HTMLButtonElement>('#chat-options-' + CSS.escape(id) + ' button')?.focus());
+  }
+
+  toggleSearch() {
+    this.vm.layoutService.searchOpen.update(open => !open);
+    if (this.vm.layoutService.searchOpen()) {
+      setTimeout(() => document.querySelector<HTMLInputElement>('.sidebar-search-input')?.focus());
+    } else this.vm.layoutService.sidebarSearch.set('');
+  }
+
   toggleAllChats(projectId: string) {
     this.fullProjects.update(ids => {
       const next = new Set(ids);
