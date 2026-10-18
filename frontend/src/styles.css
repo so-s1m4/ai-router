@@ -22,30 +22,30 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Graphite surfaces and a soft periwinkle accent. */
-  --bg-canvas: #101114;
-  --bg-sidebar: #17181c;
-  --bg-rail: #111216;
-  --bg-surface: #1a1b20;
-  --bg-surface-elevated: #22232a;
-  --bg-surface-hover: #2b2c35;
-  --bg-surface-active: #323441;
-  --bg-input: #17181e;
-  --bg-input-focus: #20212a;
+  /* Near-black surfaces with restrained silver accents. */
+  --bg-canvas: #08090b;
+  --bg-sidebar: #0d0e11;
+  --bg-rail: #08090b;
+  --bg-surface: #111216;
+  --bg-surface-elevated: #18191e;
+  --bg-surface-hover: #202126;
+  --bg-surface-active: #292a30;
+  --bg-input: #101115;
+  --bg-input-focus: #16171c;
 
   /* Borders */
   --border-subtle: #ffffff0d;
   --border-medium: #ffffff18;
   --border-hover: #ffffff2e;
-  --border-focus: #9a9cfa;
+  --border-focus: #8e929e;
 
   /* Actions */
-  --primary: #a5a7ff;
-  --primary-hover: #bdbfff;
-  --primary-fg: #17172a;
+  --primary: #b8bcc8;
+  --primary-hover: #d2d5de;
+  --primary-fg: #101115;
   --primary-glow: rgba(94, 94, 94, 0.1);
-  --primary-subtle: #9395ff16;
-  --primary-text: #bebfff;
+  --primary-subtle: #b8bcc80e;
+  --primary-text: #c7cad3;
   --accent-purple: #b0b0b0;
 
   /* Status */
@@ -59,9 +59,9 @@
   --danger-hover: #ffa6b2;
 
   /* Text */
-  --text-main: #eeeef2;
-  --text-secondary: #b3b4c0;
-  --text-muted: #888a9c;
+  --text-main: #e1e2e6;
+  --text-secondary: #a4a6af;
+  --text-muted: #848791;
   --text-inverse: #ededed;
 
   /* Radii */
@@ -76,7 +76,7 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 12px 32px #0003;
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 0 3px #a5a7ff12;
+  --shadow-glow: 0 0 0 3px #b8bcc812;
 }
 
 *, *::before, *::after {
