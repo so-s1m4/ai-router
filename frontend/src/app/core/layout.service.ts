@@ -4,9 +4,7 @@ import { Injectable, signal } from '@angular/core';
 export class LayoutService {
   mobileMenu = signal(false);
   sidebarOpen = signal(true);
-  expandedProjects = signal<Set<string>>(
-    new Set(['CCC-Solutions', 'Quest Control', 'proj-ccc', 'proj-quest']),
-  );
+  expandedProjects = signal<Set<string>>(new Set());
   userMenuOpen = signal(false);
   helpModalOpen = signal(false);
   searchOpen = signal(false);

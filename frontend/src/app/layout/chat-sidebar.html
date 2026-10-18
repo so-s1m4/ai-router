@@ -51,6 +51,120 @@
   </div>
 
   <div class="mobile-drawer-content">
+
+
+    <div class="sidebar-scroll">
+      <ng-template #chatActions let-chat>
+        <div class="sidebar-chat-actions">
+          <button
+            class="chat-actions-trigger"
+            [id]="'chat-actions-' + chat.id"
+            [attr.aria-label]="'Chat options: ' + (chat.title || 'New chat')"
+            [attr.aria-expanded]="openActions() === chat.id"
+            [attr.aria-controls]="'chat-options-' + chat.id"
+            (click)="openActions.set(openActions() === chat.id ? null : chat.id)"
+            title="Chat options"
+          ><svg lucideEllipsis [size]="16"></svg></button>
+          @if (openActions() === chat.id) {
+            <div class="chat-actions-panel" [id]="'chat-options-' + chat.id">
+              <button (click)="deleteChat(chat.id)" [disabled]="vm.chatService.deletingSessions().has(chat.id)">
+                <svg lucideTrash2 [size]="15"></svg><span>Delete chat</span>
+              </button>
+            </div>
+          }
+        </div>
+      </ng-template>
+
+      <section class="sidebar-section" aria-label="Recent chats">
+        <div class="section-label"><span>Recent chats</span></div>
+        <div class="section-list">
+          @for (s of vm.filteredRecentSessions(); track s.id) {
+            <div class="chat-list-row" [class.selected]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'">
+              <button
+                class="sidebar-item"
+                [class.active]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'"
+                [attr.aria-current]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat' ? 'page' : null"
+                (click)="vm.chatService.openSession(s.id)"
+                [title]="s.title || 'New chat'"
+              >
+                <span class="chat-title">{{ s.title || 'New chat' }}</span>
+                @if (vm.chatService.running() && vm.sessionService.current()?.id === s.id) {
+                  <span class="item-running-spinner" aria-label="Running"></span>
+                }
+              </button>
+              <ng-container *ngTemplateOutlet="chatActions; context: { $implicit: s }"></ng-container>
+            </div>
+          } @empty {
+            <p class="sidebar-empty">{{ vm.layoutService.sidebarSearch() ? 'No matching chats' : 'Your new chats will appear here' }}</p>
+          }
+        </div>
+      </section>
+
+      <section class="sidebar-section projects-section" aria-label="Projects">
+        <div class="section-label">
+          <span>Projects</span>
+          <button class="btn-subtle-add" (click)="vm.createProject()" title="New project" aria-label="New project">
+            <svg lucidePlus [size]="15"></svg>
+          </button>
+        </div>
+        <div class="section-list">
+          @for (p of vm.filteredProjects(); track p.id || p.name) {
+            @let chats = vm.chatsForProject(p);
+            <div class="tree-folder" [class.expanded]="vm.isProjectExpanded(p)">
+              <button
+                class="tree-folder-head"
+                (click)="vm.layoutService.toggleProjectExpand(p.id || p.name)"
+                [attr.aria-expanded]="vm.isProjectExpanded(p)"
+                [attr.aria-controls]="'project-chats-' + p.id"
+                [title]="p.name"
+              >
+                <svg lucideChevronRight [size]="13" class="project-chevron" [class.expanded]="vm.isProjectExpanded(p)"></svg>
+                @if (vm.projectIcon(p) === 'graduation-cap') {
+                  <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
+                } @else if (vm.projectIcon(p) === 'origami') {
+                  <svg lucideOrigami [size]="16" class="icon-origami"></svg>
+                } @else if (vm.isProjectExpanded(p)) {
+                  <svg lucideFolderOpen [size]="16" class="item-icon-folder"></svg>
+                } @else {
+                  <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
+                }
+                <span class="truncate">{{ p.name }}</span>
+                <span class="project-chat-count" [attr.aria-label]="chats.length + ' chats'">{{ chats.length }}</span>
+              </button>
+
+              @if (vm.isProjectExpanded(p)) {
+                <div class="tree-sub-list" [id]="'project-chats-' + p.id">
+                  @for (c of (fullProjects().has(p.id) ? chats : chats.slice(0, 4)); track c.id) {
+                    <div class="chat-list-row" [class.selected]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'">
+                      <button
+                        class="tree-sub-item"
+                        [class.active]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'"
+                        [attr.aria-current]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat' ? 'page' : null"
+                        (click)="vm.chatService.openSession(c.id)"
+                        [title]="c.title || 'New chat'"
+                      ><span class="chat-title">{{ c.title || 'New chat' }}</span></button>
+                      <ng-container *ngTemplateOutlet="chatActions; context: { $implicit: c }"></ng-container>
+                    </div>
+                  } @empty {
+                    <p class="sidebar-empty">No chats yet</p>
+                  }
+                  @if (chats.length > 4) {
+                    <button class="tree-sub-item tree-sub-more" (click)="toggleAllChats(p.id)" [attr.aria-expanded]="fullProjects().has(p.id)">
+                      {{ fullProjects().has(p.id) ? 'Show less' : 'Show all ' + chats.length + ' chats' }}
+                    </button>
+                  }
+                  <button class="tree-sub-item project-new-chat" (click)="vm.newSessionFor(p.id)">
+                    <svg lucidePlus [size]="14"></svg><span>New chat</span>
+                  </button>
+                </div>
+              }
+            </div>
+          } @empty {
+            <p class="sidebar-empty">{{ vm.layoutService.sidebarSearch() ? 'No matching projects' : 'Create a project to group your chats' }}</p>
+          }
+        </div>
+      </section>
+    </div>
     <nav class="mobile-drawer-links" aria-label="Main navigation">
       <span class="nav-group-label">Workspace</span>
       <button
@@ -132,93 +246,6 @@
         </button>
       }
     </nav>
-
-    <div class="sidebar-scroll">
-      <!-- RECENTS SECTION -->
-      <div class="sidebar-section">
-        <div class="section-label"><span>Recent chats</span></div>
-        <div class="section-list">
-          @for (s of vm.filteredRecentSessions(); track s.id) {
-            <div class="chat-list-row">
-<button
-              class="sidebar-item"
-              [class.active]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'"
-              (click)="vm.chatService.openSession(s.id)"
-              [title]="s.title || 'New chat'"
-            >
-              <span class="truncate">{{ s.title || 'New chat' }}</span>
-              @if (vm.chatService.running() && vm.sessionService.current()?.id === s.id) {
-                <span class="item-running-spinner"></span>
-              }
-            </button>
-<button class="chat-delete-btn" (click)="vm.chatService.deleteSession(s.id)"
-  [disabled]="vm.chatService.deletingSessions().has(s.id)"
-  [attr.aria-label]="'Delete chat: ' + s.title" title="Delete chat">
-  <svg lucideTrash2 [size]="15"></svg>
-</button>
-</div>
-          }
-        </div>
-      </div>
-
-      <!-- PROJECTS SECTION -->
-      <div class="sidebar-section">
-        <div class="section-label">
-          <span>Projects</span>
-          <button class="btn-subtle-add" (click)="vm.createProject()" title="New project">
-            <svg lucidePlus [size]="14"></svg>
-          </button>
-        </div>
-        <div class="section-list">
-          @for (p of vm.filteredProjects(); track p.id || p.name) {
-            <div class="tree-folder">
-              <button
-                class="tree-folder-head"
-                (click)="vm.layoutService.toggleProjectExpand(p.id || p.name)"
-              >
-                @if (vm.projectIcon(p) === 'graduation-cap') {
-                  <svg lucideGraduationCap [size]="16" class="icon-htlink"></svg>
-                } @else if (vm.projectIcon(p) === 'origami') {
-                  <svg lucideOrigami [size]="16" class="icon-origami"></svg>
-                } @else if (vm.isProjectExpanded(p)) {
-                  <svg lucideFolderOpen [size]="16" class="item-icon-folder"></svg>
-                } @else {
-                  <svg lucideFolder [size]="16" class="item-icon-folder"></svg>
-                }
-                <span class="truncate">{{ p.name }}</span>
-              </button>
-
-              @if (vm.isProjectExpanded(p)) {
-                <div class="tree-sub-list">
-                  @for (c of vm.chatsForProject(p).slice(0, 4); track c.id) {
-                    <div class="chat-list-row">
-<button
-                      class="tree-sub-item truncate"
-                      [class.active]="vm.sessionService.current()?.id === c.id"
-                      (click)="vm.chatService.openSession(c.id)"
-                      [title]="c.title"
-                    >
-                      {{ c.title }}
-                    </button>
-<button class="chat-delete-btn" (click)="vm.chatService.deleteSession(c.id)"
-  [disabled]="vm.chatService.deletingSessions().has(c.id)"
-  [attr.aria-label]="'Delete chat: ' + c.title" title="Delete chat">
-  <svg lucideTrash2 [size]="15"></svg>
-</button>
-</div>
-                  }
-                  @if (vm.chatsForProject(p).length > 4) {
-                    <button class="tree-sub-item tree-sub-more" (click)="vm.selectProject(p.id)">
-                      All chats
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          }
-        </div>
-      </div>
-    </div>
   </div>
   <div class="mobile-drawer-footer">
     <app-install-app [compact]="true"></app-install-app>

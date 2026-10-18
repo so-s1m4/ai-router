@@ -28,6 +28,23 @@
         delaySeconds: i === 2 ? 20 : 0, mode: 'code', fast: true}))})),
   };
   const runners = [{id: 'demo-runner', name: 'Development runner', online: true, managementOnline: true}];
+  const projects = ['AI Router', 'Website', 'Research'].map((name, i) => ({
+    id: 'demo-project-' + i, name, runnerId: 'demo-runner', createdAt: inHours(-48), updatedAt: inHours(-i),
+  }));
+  let sessions = [
+    ['Huawei browser support', 'demo-project-0'],
+    ['Make the project sidebar easier to navigate', 'demo-project-0'],
+    ['Model routing rules', 'demo-project-0'],
+    ['Mobile layout improvements', 'demo-project-0'],
+    ['Install the web app', 'demo-project-0'],
+    ['Review the latest changes', 'demo-project-0'],
+    ['Landing page ideas', 'demo-project-1'],
+    ['Compare available models', null],
+  ].map(([title, projectId], i) => ({
+    id: 'demo-chat-' + i, title, projectId, updatedAt: inHours(-i),
+    messages: [{id: 'demo-message-' + i, role: 'assistant', at: inHours(-i),
+      text: 'This is a sample chat. Explore the project sidebar, expand a project, or open a chat menu. Demo changes reset when you reload.'}],
+  }));
   const originalFetch = window.fetch.bind(window);
   const response = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
   window.fetch = async (input, options = {}) => {
@@ -67,10 +84,22 @@
       } else if (method === 'PATCH') {a.runnerId = body.runnerId; a.mode = 'runner'; a.detail = 'Development runner';}
       return response({ok: true});
     }
-    if (method === 'GET' && (['/projects', '/sessions', '/access-grants'].includes(path) || /\/previews$/.test(path))) return response([]);
+    if (method === 'GET' && path === '/projects') return response(projects);
+    if (method === 'GET' && path === '/sessions') return response(sessions);
+    const sessionMatch = path.match(/^\/sessions\/([^/]+)$/);
+    if (sessionMatch) {
+      const session = sessions.find(item => item.id === sessionMatch[1]);
+      if (!session) return response({error: 'Demo chat not found'}, 404);
+      if (method === 'DELETE') {
+        sessions = sessions.filter(item => item.id !== session.id);
+        return response({ok: true});
+      }
+      if (method === 'GET') return response(session);
+    }
+    if (method === 'GET' && (['/access-grants'].includes(path) || /\/previews$/.test(path))) return response([]);
     return response({error: 'This action is unavailable in the UI demo.'}, 400);
   };
-  if (location.pathname === '/') history.replaceState(null, '', '/ccc-auto');
+  if (location.pathname === '/') history.replaceState(null, '', '/chats?session=demo-chat-0');
   document.addEventListener('DOMContentLoaded', () => {
     const label = document.createElement('div');
     label.textContent = 'UI demo · sample data · reload to reset';
