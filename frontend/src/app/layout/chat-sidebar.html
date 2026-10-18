@@ -221,6 +221,7 @@
     </div>
   </div>
   <div class="mobile-drawer-footer">
+    <app-install-app [compact]="true"></app-install-app>
     <button class="mobile-drawer-new-chat" (click)="vm.chatService.newSession()">
       <svg lucideSquarePen [size]="20"></svg><span>New chat</span>
     </button>

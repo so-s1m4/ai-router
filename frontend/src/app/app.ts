@@ -1,3 +1,4 @@
+import { InstallService } from './core/install.service';
 import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { WorkspaceStore } from './core/workspace.store';
 import { AuthPageComponent } from './pages/auth-page';
@@ -21,6 +22,7 @@ import { ProjectMembersDialogComponent } from './shared/project-members-dialog';
 })
 export class App implements OnInit, OnDestroy {
   readonly vm = inject(WorkspaceStore);
+  readonly install = inject(InstallService);
   ngOnInit() {
     this.vm.ngOnInit();
   }

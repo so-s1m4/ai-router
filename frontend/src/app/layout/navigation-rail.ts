@@ -1,3 +1,4 @@
+import { InstallAppComponent } from '../shared/install-app';
 import { CommonModule } from '@angular/common';
 import { Component,inject } from '@angular/core';
 import {
@@ -19,7 +20,7 @@ import { WorkspaceStore } from '../core/workspace.store';
 @Component({
   selector: 'app-navigation-rail',
   standalone: true,
-  imports: [
+  imports: [InstallAppComponent,
     CommonModule,
     LucideMessageSquare,
     LucideFolder,

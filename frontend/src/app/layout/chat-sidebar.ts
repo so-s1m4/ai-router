@@ -1,3 +1,4 @@
+import { InstallAppComponent } from '../shared/install-app';
 import { CommonModule } from '@angular/common';
 import { Component,inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -27,7 +28,7 @@ import { WorkspaceStore } from '../core/workspace.store';
 @Component({
   selector: 'app-chat-sidebar',
   standalone: true,
-  imports: [
+  imports: [InstallAppComponent,
     CommonModule,
     FormsModule,
     LucideX,
