@@ -20,6 +20,9 @@ function folderProfile({ folder, data, runtime, executable, temporary }) {
 (allow process* sysctl-read mach-lookup ipc-posix* signal)
 (allow network*)
 (allow file-read-metadata)
+; dyld reads the root directory when starting a process. This literal grants
+; access to the directory itself, without granting access to its descendants.
+(allow file-read* (literal "/"))
 (allow file-read* file-map-executable ${read.map(p => `(subpath ${quote(p)})`).join(' ')})
 (allow file-map-executable ${[folder, data, temporary].map(p => `(subpath ${quote(p)})`).join(' ')})
 (allow file-read* file-write* (subpath "/dev") ${[folder, data, temporary].map(p => `(subpath ${quote(p)})`).join(' ')})

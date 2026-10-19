@@ -63,23 +63,11 @@ jobs:
           report = Path(os.environ['RUNNER_TEMP']) / 'desktop-tests.log'
           if report.exists():
               lines = report.read_text().splitlines()
-              for line in lines:
-                  if line.startswith('# Sandbox startup'):
-                      print('::error::' + line.replace('%', '%25'))
               for i, line in enumerate(lines):
                   if line.startswith('not ok'):
                       detail = '\n'.join(lines[max(0, i - 8):i + 90])
                       detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                       print(f'::error::{detail}')
-          import time
-          time.sleep(3)
-          for directory in [Path.home() / 'Library/Logs/DiagnosticReports', Path('/Library/Logs/DiagnosticReports')]:
-              if directory.exists():
-                  for crash in sorted(directory.glob('*'), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
-                      if crash.is_file() and time.time() - crash.stat().st_mtime < 300:
-                          detail = crash.read_text(errors='replace')[:18000]
-                          detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-                          print(f'::error::{crash.name}: {detail}')
       - uses: actions/upload-artifact@v4
         if: always()
         with:
