@@ -32,9 +32,13 @@ test('macOS folder sandbox blocks sibling files, writes and symlink escapes in s
     catch (error) {
       if (error.signal === 'SIGABRT') {
         const { spawnSync } = require('node:child_process');
-        for (const rule of ['', '(allow file-map-executable)', '(allow file-read*)', '(allow mach*)', '(allow default)']) {
+        for (const rule of ['(allow file-read* (subpath "/private/preboot"))', '(allow file-read* (subpath "/private/var"))', '(allow file-read* (subpath "/private"))', '(allow file-read* (subpath "/System/Volumes"))', '(allow file-read* (literal "/"))']) {
           const result = spawnSync('/usr/bin/sandbox-exec', ['-p', profile + '\n' + rule, '/usr/bin/true'], {cwd:folder,encoding:'utf8'});
           console.log('Sandbox startup probe:', JSON.stringify({rule,status:result.status,signal:result.signal,stderr:result.stderr}));
+        }
+        for (const systemPath of ['/System/Library/dyld', '/System/Cryptexes/OS', '/System/Volumes/Preboot/Cryptexes/OS', '/usr/lib/dyld']) {
+          try { console.log('Sandbox startup path:', systemPath, require('node:fs').realpathSync(systemPath)); }
+          catch (pathError) { console.log('Sandbox startup path:', systemPath, pathError.message); }
         }
       }
       error.message += `\nstatus=${error.status} signal=${error.signal}\n${error.stderr || ''}`; throw error;
