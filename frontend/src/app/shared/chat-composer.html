@@ -1,7 +1,6 @@
 <div
   class="hero-pill-bar"
   [class.bottom-composer-pill]="!hero"
-  [class.composer-running]="vm.chatService.running()"
 >
   <input #filePicker type="file" multiple hidden (change)="vm.filesService.uploadFile($event)" />
   <button
@@ -29,42 +28,19 @@
     ></textarea>
   </div>
 
-  @if (vm.chatService.running()) {
-    <button
-      class="pill-btn-voice btn-circle-stop"
-      type="button"
-      (click)="vm.chatService.cancel()"
-      [disabled]="vm.chatService.canceling()"
-      [title]="vm.chatService.canceling() ? 'Stopping…' : 'Stop task'"
-      aria-label="Stop task"
-    >
-      <svg lucideSquare [size]="16"></svg></button
-    ><button
-      class="pill-btn-send"
-      type="button"
-      [disabled]="
-        !vm.chatService.draft.trim() ||
-        !vm.chatService.steeringAvailable() ||
-        vm.chatService.steeringSending() ||
-        vm.filesService.uploading()
-      "
-      (click)="vm.chatService.steer()"
-      title="Clarify the current task"
-      aria-label="Clarify the current task"
-    >
+  <button
+    class="pill-btn-send"
+    type="button"
+    [disabled]="actionDisabled"
+    (click)="performAction()"
+    [title]="actionLabel"
+    [attr.aria-label]="actionLabel"
+  >
+    @if (stopAction) {
+      <svg lucideSquare [size]="16"></svg>
+    } @else {
       <svg lucideArrowUp [size]="18"></svg>
-    </button>
-  } @else {
-    <button
-      class="pill-btn-send"
-      type="button"
-      [disabled]="!vm.chatService.draft.trim() || vm.filesService.uploading()"
-      (click)="vm.chatService.send()"
-      title="Send"
-      aria-label="Send"
-    >
-      <svg lucideArrowUp [size]="18"></svg>
-    </button>
-  }
+    }
+  </button>
   <app-model-controls></app-model-controls>
 </div>

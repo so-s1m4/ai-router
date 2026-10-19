@@ -26,6 +26,34 @@ export class ChatComposerComponent implements OnDestroy {
     if (this.hero) this.vm.chatViewService.heroComposerTextareaRef = ref;
     else this.vm.chatViewService.composerTextareaRef = ref;
   }
+  get stopAction(): boolean {
+    return this.vm.chatService.running() && !this.vm.chatService.draft.trim();
+  }
+  get actionLabel(): string {
+    const chat = this.vm.chatService;
+    if (chat.canceling()) return 'Stopping…';
+    if (this.stopAction) return 'Stop task';
+    if (chat.steeringSending() || chat.taskSubmitting()) return 'Sending…';
+    if (chat.running()) {
+      return chat.steeringAvailable()
+        ? 'Clarify the current task'
+        : 'Clarification is unavailable for this task';
+    }
+    return 'Send';
+  }
+  get actionDisabled(): boolean {
+    const chat = this.vm.chatService;
+    if (chat.canceling()) return true;
+    if (this.stopAction) return false;
+    return !chat.draft.trim() || this.vm.filesService.uploading() ||
+      chat.taskSubmitting() || chat.steeringSending() ||
+      (chat.running() && !chat.steeringAvailable());
+  }
+  performAction() {
+    if (this.actionDisabled) return;
+    if (this.stopAction) void this.vm.chatService.cancel();
+    else void this.vm.chatService.send();
+  }
   resize() {
     if (this.hero) this.vm.chatViewService.adjustHeroTextareaHeight();
     else this.vm.chatViewService.adjustTextareaHeight();
