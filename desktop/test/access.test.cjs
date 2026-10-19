@@ -27,7 +27,10 @@ test('macOS folder sandbox blocks sibling files, writes and symlink escapes in s
   const { symlink } = require('node:fs/promises');
   await symlink(outside,path.join(folder,'escape.txt'));
   const profile = folderProfile({folder,data:path.join(root,'data'),runtime:'/nonexistent/runtime',executable:'/nonexistent/runtime/Electron',temporary:path.join(root,'tmp')});
-  const run = command => execFileSync('/usr/bin/sandbox-exec',['-p',profile,'/bin/sh','-c',command],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
+  const run = command => {
+    try { return execFileSync('/usr/bin/sandbox-exec',['-p',profile,'/bin/sh','-c',command],{encoding:'utf8',stdio:['ignore','pipe','pipe']}); }
+    catch (error) { error.message += `\nstatus=${error.status} signal=${error.signal}\n${error.stderr || ''}`; throw error; }
+  };
   const quote = value => "'"+value.replaceAll("'","'\\''")+"'";
   try {
     assert.equal(run(`/bin/cat ${quote(path.join(folder,'inside.txt'))}`),'allowed');
