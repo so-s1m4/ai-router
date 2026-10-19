@@ -116,9 +116,9 @@ app.whenReady().then(async () => {
   handle('desktop:folder',async () => { const result = await dialog.showOpenDialog(settingsWindow,{properties:['openDirectory'],title:'Папка для AI Router'}); return result.canceled ? null : fs.realpath(result.filePaths[0]); });
   handle('desktop:start',start); handle('desktop:stop',disable); handle('desktop:site',openSite);
   handle('desktop:disk',() => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'));
-  updates = createUpdates({ app, dialog, stopProcesses });
+  updates = createUpdates({ app, dialog, openExternal: url => shell.openExternal(url) });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    {label:'AI Router',submenu:[{label:'Открыть AI Router',click:() => { try { openSite(); } catch { settings(); } }},{label:'Доступ к Mac…',click:settings},{label:'Остановить и отключить доступ',click:() => disable().catch(error => dialog.showErrorBox('AI Router',error.message))},{type:'separator'},{label:'Проверить обновления…',click:() => updates.check(true)},{label:'Установить обновление и перезапустить',click:() => updates.install()},{type:'separator'},{role:'quit'}]},
+    {label:'AI Router',submenu:[{label:'Открыть AI Router',click:() => { try { openSite(); } catch { settings(); } }},{label:'Доступ к Mac…',click:settings},{label:'Остановить и отключить доступ',click:() => disable().catch(error => dialog.showErrorBox('AI Router',error.message))},{type:'separator'},{label:'Проверить обновления…',click:() => updates.check(true)},{type:'separator'},{role:'quit'}]},
     {role:'editMenu'},{role:'viewMenu'},{role:'windowMenu'}
   ]));
   if (config.server) openSite(); else settings();
