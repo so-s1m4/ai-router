@@ -52,6 +52,10 @@ test('Mac bridge authenticates, executes file commands, cancels work and revokes
     assert.ok((await mcp.listTools()).tools.some((tool:{name:string})=>tool.name==='mac_computer'));
     const screenshot=await mcp.callTool({name:'mac_computer',arguments:{operation:'screenshot',pid:123,bundle_id:'test.app',window_id:42}});
     assert.equal((screenshot.content as any)[1].type,'image');
+    const focused=await mcp.callTool({name:'mac_computer',arguments:{operation:'focus',pid:123,bundle_id:'test.app',element_id:'0:abc'}});
+    assert.equal(JSON.parse((focused.content as any)[0].text).operation,'focus');
+    const subtree=await mcp.callTool({name:'mac_computer',arguments:{operation:'inspect',pid:123,bundle_id:'test.app',element_id:'0:abc'}});
+    assert.equal(JSON.parse((subtree.content as any)[0].text).operation,'inspect');
     const invalid=await rpc(token,'tools/call',{name:'mac_computer',arguments:{operation:'press',pid:123}});
     assert.equal((await invalid.json()).error.code,-32602);
     const mcpResult=await mcp.callTool({name:'mac_run_command',arguments:{command:'printf from-mcp'}});

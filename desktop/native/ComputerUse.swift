@@ -49,25 +49,39 @@ func element(_ args: [String: Any], _ root: AXUIElement) throws -> AXUIElement {
     if string(node, "AXSubrole") == "AXSecureTextField" { try fail("Secure fields are unavailable.") }
     return node
 }
-func tree(_ root: AXUIElement) -> [[String: Any]] {
+// Breadth-first traversal keeps search/input controls visible even when a chat
+// exposes hundreds of messages before the controls in AXChildren.
+func tree(_ root: AXUIElement, _ rootPath: String = "") -> [String: Any] {
     var rows = [[String: Any]]()
-    func visit(_ node: AXUIElement, _ path: String, _ depth: Int) {
-        guard rows.count < 400, depth < 16 else { return }
+    var pending: [(AXUIElement, String, Int)] = [(root, rootPath, 0)]
+    var cursor = 0
+    var clipped = false
+    while cursor < pending.count && rows.count < 400 {
+        let (node, path, depth) = pending[cursor]
+        cursor += 1
         let secure = string(node, "AXSubrole") == "AXSecureTextField"
         var row: [String: Any] = ["element_id": path + ":" + fingerprint(node), "role": string(node, "AXRole"), "title": string(node, "AXTitle"), "description": string(node, "AXDescription"), "actions": actions(node)]
         if !secure { row["value"] = string(node, "AXValue") }
-        var writable = DarwinBoolean(false)
-        AXUIElementIsAttributeSettable(node, "AXValue" as CFString, &writable)
-        row["value_settable"] = writable.boolValue && !secure
+        for name in ["AXValue", "AXFocused"] {
+            var writable = DarwinBoolean(false)
+            AXUIElementIsAttributeSettable(node, name as CFString, &writable)
+            row[name == "AXValue" ? "value_settable" : "focus_settable"] = writable.boolValue && !secure
+        }
+        if let focused = attribute(node, "AXFocused") as? Bool { row["focused"] = focused }
         rows.append(row)
-        if !secure {
-            for (index, child) in children(node).prefix(500).enumerated() {
-                visit(child, path.isEmpty ? String(index) : path + "." + String(index), depth + 1)
+        // At most 500 children per node and 16 levels; expose truncation so the
+        // caller can inspect a specific subtree without activating its window.
+        let list = secure ? [] : children(node)
+        row["child_count"] = list.count
+        rows[rows.count - 1] = row
+        clipped = clipped || list.count > 500 || (depth >= 15 && !list.isEmpty)
+        if depth < 15 {
+            for (index, child) in list.prefix(500).enumerated() {
+                pending.append((child, path.isEmpty ? String(index) : path + "." + String(index), depth + 1))
             }
         }
     }
-    visit(root, "", 0)
-    return rows
+    return ["elements": rows, "limit": 400, "truncated": cursor < pending.count || clipped]
 }
 
 @available(macOS 14.0, *)
@@ -100,10 +114,18 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
         return ["image": data.base64EncodedString(), "mimeType": "image/jpeg", "width": image.width, "height": image.height, "window_id": id]
     }
     guard AXIsProcessTrusted() else { try fail("Enable Accessibility for AI Router in local Mac settings, then restart the app.") }
-    if operation == "inspect" { return ["elements": tree(root), "limit": 400] }
-    if operation == "press" || operation == "set_value" || operation == "action" {
+    if operation == "inspect" {
+        if let id = args["element_id"] as? String {
+            return tree(try element(args, root), String(id.split(separator: ":", omittingEmptySubsequences: false)[0]))
+        }
+        return tree(root)
+    }
+    if operation == "press" || operation == "set_value" || operation == "action" || operation == "focus" {
         let node = try element(args, root)
-        if operation == "set_value" {
+        if operation == "focus" {
+            // Focus an element inside the target app, never AXRaise or activate.
+            try check(AXUIElementSetAttributeValue(node, "AXFocused" as CFString, kCFBooleanTrue))
+        } else if operation == "set_value" {
             guard let value = args["text"] as? String, value.utf16.count <= 10000 else { try fail("Invalid text") }
             try check(AXUIElementSetAttributeValue(node, "AXValue" as CFString, value as CFString))
         } else {
