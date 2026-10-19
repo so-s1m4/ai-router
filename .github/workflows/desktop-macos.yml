@@ -7,6 +7,9 @@ on:
     tags: ['desktop-v*']
 permissions:
   contents: write
+defaults:
+  run:
+    shell: bash
 concurrency:
   group: desktop-${{ github.ref }}
   cancel-in-progress: false

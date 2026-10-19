@@ -1,6 +1,6 @@
 {
   "name": "ai-router-desktop",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "AI Router chats with a lightweight Mac files and terminal bridge",
   "author": "AI Router",
@@ -26,10 +26,14 @@
     ],
     "extraResources": [
       {
-        "from": "runtime/runner",
-        "to": "runner"
+        "from": "runtime",
+        "to": ".",
+        "filter": [
+          "runner/**/*"
+        ]
       }
     ],
+    "afterPack": "scripts/verify-runtime.cjs",
     "directories": {
       "output": "release"
     },
