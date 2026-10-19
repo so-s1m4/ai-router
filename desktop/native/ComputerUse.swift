@@ -199,6 +199,10 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
 
 @main struct ComputerUse {
     static func main() async {
+        // ScreenCaptureKit requires a WindowServer connection even for a CLI
+        // helper. Initialize AppKit without allowing this helper to activate.
+        let application = NSApplication.shared
+        application.setActivationPolicy(.prohibited)
         do {
             if CommandLine.arguments.contains("--request-permissions") || CommandLine.arguments.contains("--request-accessibility") {
                 let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

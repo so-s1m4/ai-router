@@ -1,4 +1,4 @@
-// Run on a Mac with Accessibility granted: node scripts/verify-background.mjs
+// Run on a Mac with Accessibility and Screen Recording granted: node scripts/verify-background.mjs
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {execFileSync, spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -40,7 +40,12 @@ try {
   act('press',{element_id:button.element_id});assert.equal(front(),before);
   assert.ok(act('inspect').elements.some(node=>node.value==='pressed:background-ok'));
   assert.equal(act('inspect',{element_id:field.element_id}).elements[0].element_id,field.element_id);
-  console.log('PASS: background value/focus/button actions verified, foreground unchanged; controls after 450 history elements and subtree IDs verified.');
+  const window=act('windows').windows.find(window=>window.title==='AI Router Background Test');
+  assert.ok(window);
+  const screenshot=act('screenshot',{window_id:window.window_id});
+  assert.equal(screenshot.mimeType,'image/jpeg');assert.ok(screenshot.image.length>100);
+  assert.equal(front(),before);
+  console.log('PASS: background screenshot and value/focus/button actions verified, foreground unchanged; controls after 450 history elements and subtree IDs verified.');
 } finally {
   if(child) {child.kill();await new Promise(resolve=>child.once('exit',resolve));}
   await rm(temp,{recursive:true,force:true});
