@@ -73,6 +73,7 @@ jobs:
         if: always()
         with:
           name: AI-Router-macOS
+          if-no-files-found: error
           path: |
             desktop/release/*.dmg
             desktop/release/*.zip
