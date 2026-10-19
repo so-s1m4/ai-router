@@ -26,7 +26,14 @@ $('start').onclick = () => action(async () => { await window.desktop.start($('co
 $('stop').onclick = () => action(async () => { await window.desktop.stop(); $('mode').value = 'off'; modes(); });
 $('disk').onclick = () => action(() => window.desktop.diskSettings());
 
-$('computer-permissions').onclick = () => action(async () => {
-  const result = await window.desktop.computerPermissions();
+async function openPermission(target) {
+  $('computer-status').textContent = 'Открываю настройки macOS…';
+  await window.desktop.computerPermissions(target);
+  $('computer-status').textContent = 'Включите AI Router в открытом разделе macOS. Если его нет в списке Accessibility, добавьте через «+» из папки «Программы». Затем разрешите запись экрана и перезапустите AI Router.';
+}
+$('computer-permissions').onclick = () => action(() => openPermission('accessibility'));
+$('screen-permissions').onclick = () => action(() => openPermission('screen-recording'));
+$('check-permissions').onclick = () => action(async () => {
+  const result = await window.desktop.computerPermissions('status');
   $('computer-status').textContent = 'Accessibility: ' + (result.accessibility ? 'разрешено' : 'нужно разрешить') + ' · Запись экрана: ' + (result.screen_recording ? 'разрешено' : 'нужно разрешить') + '. После изменения разрешений перезапустите AI Router.';
 });

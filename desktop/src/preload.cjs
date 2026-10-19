@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('desktop', {
   start: code => ipcRenderer.invoke('desktop:start', code),
   stop: () => ipcRenderer.invoke('desktop:stop'),
   openSite: () => ipcRenderer.invoke('desktop:site'),
-  computerPermissions: () => ipcRenderer.invoke('desktop:computer-permissions'),
+  computerPermissions: target => ipcRenderer.invoke('desktop:computer-permissions', target),
   diskSettings: () => ipcRenderer.invoke('desktop:disk'),
   onState: callback => ipcRenderer.on('desktop:changed', (_event, value) => callback(value))
 });

@@ -178,9 +178,11 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
 @main struct ComputerUse {
     static func main() async {
         do {
-            if CommandLine.arguments.contains("--request-permissions") {
+            if CommandLine.arguments.contains("--request-permissions") || CommandLine.arguments.contains("--request-accessibility") {
                 let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
                 _ = AXIsProcessTrustedWithOptions(options)
+            }
+            if CommandLine.arguments.contains("--request-permissions") || CommandLine.arguments.contains("--request-screen-recording") {
                 _ = CGRequestScreenCaptureAccess()
             }
             let data = FileHandle.standardInput.readDataToEndOfFile()

@@ -6,6 +6,7 @@ const { serverUrl, folderProfile } = require('./access.cjs');
 const { startupDiagnostics, exitMessage } = require('./diagnostics.cjs');
 const { killTree } = require('./process.cjs');
 const { createUpdates } = require('./updates.cjs');
+const { computerPermissions } = require('./permissions.cjs');
 let updates;
 let settingsWindow, siteWindow, runner, quitting = false;
 let config = { server: '', mode: 'off', folder: '', computerUse: false }, status = 'Доступ выключен', runnerError = '';
@@ -116,13 +117,9 @@ app.whenReady().then(async () => {
   });
   handle('desktop:folder',async () => { const result = await dialog.showOpenDialog(settingsWindow,{properties:['openDirectory'],title:'Папка для AI Router'}); return result.canceled ? null : fs.realpath(result.filePaths[0]); });
   handle('desktop:start',start); handle('desktop:stop',disable); handle('desktop:site',openSite);
-  handle('desktop:computer-permissions',async () => {
+  handle('desktop:computer-permissions', async (target = 'accessibility') => {
     if (config.mode !== 'full' || !config.computerUse) throw new Error('Сначала сохраните расширенный доступ с включённым управлением приложениями.');
-    const { execFile } = require('node:child_process');
-    return new Promise((resolve,reject) => {
-      const child = execFile(path.join(runtime,'computer-use'),['--request-permissions'],{timeout:60000},(error,stdout) => error ? reject(error) : resolve(JSON.parse(stdout)));
-      child.stdin.end();
-    });
+    return computerPermissions(target, {runtime, openExternal: url => shell.openExternal(url)});
   });
   handle('desktop:disk',() => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'));
   updates = createUpdates({ app, dialog, openExternal: url => shell.openExternal(url) });
