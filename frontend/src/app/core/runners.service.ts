@@ -34,7 +34,7 @@ export class RunnersService {
     if (managed) this.managedRunner.set(rows.find((row) => row.id === managed.id) || null);
     await this.refreshAccounts();
     if (!this.selectedRunner)
-      this.selectedRunner = this.runners().find((r) => !r.revokedAt)?.id || '';
+      this.selectedRunner = this.runners().find((r) => !r.revokedAt && r.kind !== 'mac')?.id || '';
   }
   projectRunner(project: Project) {
     if (project.shared) return 'Shared across runners';

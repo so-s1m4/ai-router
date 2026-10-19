@@ -2,6 +2,7 @@
 @import './app/adaptive.css';
 @import './app/features.css';
 @import './app/workspace.css';
+@import './app/mobile-config.css';
 @import '@fontsource/jetbrains-mono/cyrillic-400.css';
 @import '@fontsource/jetbrains-mono/cyrillic-500.css';
 @import '@fontsource/jetbrains-mono/cyrillic-600.css';

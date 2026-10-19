@@ -46,7 +46,7 @@
       >
         <option value="">Select container runner</option>
         @for (r of vm.runnerService.runners(); track r.id) {
-          @if (!r.revokedAt) {
+          @if (!r.revokedAt && r.kind !== 'mac') {
             <option [value]="r.id">{{ r.name }}</option>
           }
         }

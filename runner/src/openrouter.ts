@@ -68,7 +68,8 @@ export async function executeChatApi(job:Job,home:string,cwd:string,signal:Abort
   const {name,base,httpError}=adapter;
   const apiKey=await adapter.readKey(home);
   const taskSignal=AbortSignal.any([signal,AbortSignal.timeout(cliTimeoutSeconds(job.mode)*1000)]);
-  const messages:any[]=[{role:'system',content:`You are an assistant working in ${cwd}. ${job.solverCodeOnly?'Return only the requested JSON.':'Use run_command for filesystem work when tools are available. Finish with a concise answer. Do not read account credentials or files outside the task workspace.'}`},{role:'user',content:job.prompt}];
+  const toolsHint=job.macAccess?'run_command executes on the connected Mac. Its cwd is relative to the user-granted folder. Use it for the user’s local files.':'Use run_command for filesystem work when tools are available. Do not read account credentials or files outside the task workspace.';
+  const messages:any[]=[{role:'system',content:`You are an assistant working in ${cwd}. ${job.solverCodeOnly?'Return only the requested JSON.':toolsHint+' Finish with a concise answer.'}`},{role:'user',content:job.prompt}];
   const usage={inputTokens:0,outputTokens:0,totalTokens:0,reasoningOutputTokens:0,cachedInputTokens:0};
   let emptyRetries=0;
   let schemaUnsupported=false;
@@ -121,6 +122,16 @@ export async function executeChatApi(job:Job,home:string,cwd:string,signal:Abort
         if(call.function?.name!=='run_command')throw new Error('Unknown tool');
         const args=JSON.parse(call.function.arguments);
         if(typeof args.command!=='string'||args.command.length>40000)throw new Error('Invalid command');
+        if(job.macAccess){
+          emit({type:'tool',message:`${name} · Mac terminal`,data:{command:args.command.slice(0,300)}});
+          const response=await fetch(job.macAccess.url,{method:'POST',headers:{Authorization:'Bearer '+job.macAccess.token,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:call.id,method:'tools/call',params:{name:'mac_run_command',arguments:args}}),signal:taskSignal});
+          if(!response.ok)throw new Error('Mac access unavailable: HTTP '+response.status);
+          const reply=await response.json() as any;
+          if(reply.error)throw new Error(reply.error.message||'Mac command failed');
+          result=(reply.result?.content||[]).filter((item:any)=>item.type==='text').map((item:any)=>item.text).join('\n');
+          messages.push({role:'tool',tool_call_id:call.id,content:result});
+          continue;
+        }
         const workdir=path.resolve(cwd,args.cwd||'.');
         if(workdir!==cwd&&!workdir.startsWith(cwd+path.sep))throw new Error('Working directory must stay in the workspace');
         emit({type:'tool',message:`${name} command`,data:{command:args.command.slice(0,300)}});

@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtemp, readFile, rm, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+import express from 'express';
+import { Server } from 'socket.io';
+
+test('Mac bridge authenticates, executes file commands, cancels work and revokes access',async () => {
+  const directory=await mkdtemp(path.join(os.tmpdir(),'mac-bridge-'));
+  process.env.DATA_DIR=path.join(directory,'backend');
+  process.env.PUBLIC_URL='https://router.test';
+  const {ensureAdmin}=await import('./auth.js');
+  const {createPairing,enroll,revokeRunner,listRunners}=await import('./runners.js');
+  const {attachMacBridge,mountMacBridge,macLease}=await import('./mac-bridge.js');
+  const require=createRequire(import.meta.url);
+  const {io:client}=require('socket.io-client');
+  const {Client}=require('@modelcontextprotocol/sdk/client/index.js');
+  const {StreamableHTTPClientTransport}=require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+  const {createTools}=require('../../desktop/src/mac-tools.cjs');
+  const {killTree}=require('../../desktop/src/process.cjs');
+  await ensureAdmin('admin','test-password-for-mac-bridge');
+  const device=await enroll((await createPairing('owner','Test Mac')).code);
+  const app=express();app.use(express.json());mountMacBridge(app);
+  const http=createServer(app),io=new Server(http);attachMacBridge(io.of('/mac'));
+  await new Promise<void>(resolve=>http.listen(0,'127.0.0.1',resolve));
+  const address=http.address() as {port:number};const url=`http://127.0.0.1:${address.port}`;
+  const root=path.join(directory,'files');await mkdir(root);
+  const tools=createTools({root,data:process.env.DATA_DIR,env:{PATH:'/usr/bin:/bin',DESKTOP_ACCESS_MODE:'folder'},stopTree:killTree,shell:'/bin/sh'});
+  const socket=client(url+'/mac',{transports:['websocket'],auth:{runnerId:device.id,secret:device.secret}});
+  let commandStarted!:()=>void;
+  socket.on('mac:command',async(request:any,ack:any)=>{commandStarted?.();try {ack({ok:true,text:await tools.run(request.id,request.args)});}catch(error:any){ack({ok:false,error:error.message});}});
+  socket.on('mac:cancel',(id:string)=>void tools.cancel(id));
+  socket.on('disconnect',()=>void tools.stop());
+  const controller=new AbortController();let lease:ReturnType<typeof macLease>;
+  const rpc=async(token:string,method:string,params:unknown={})=>fetch(url+'/api/mac/mcp',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  try {
+    await new Promise<void>((resolve,reject)=>{socket.once('connect',resolve);socket.once('connect_error',reject);});
+    // Namespace registration persists the device kind before making it available.
+    for(let attempt=0;attempt<100;attempt++){lease=macLease('owner',controller.signal);if(lease)break;await new Promise(resolve=>setTimeout(resolve,10));}
+    assert.ok(lease!);const token=lease!.access.token;
+    assert.equal(macLease('other-user',controller.signal),null);
+    assert.equal((await rpc('invalid','tools/list')).status,401);
+    assert.equal((await rpc(token,'initialize',{protocolVersion:'2025-03-26'})).status,200);
+    const listed=await listRunners('owner');assert.equal(listed[0].kind,'mac');assert.equal(listed[0].macOnline,true);assert.equal(listed[0].online,false);
+    const mcp=new Client({name:'bridge-test',version:'1'});
+    await mcp.connect(new StreamableHTTPClientTransport(new URL(url+'/api/mac/mcp'),{requestInit:{headers:{Authorization:'Bearer '+token}}}));
+    assert.equal((await mcp.listTools()).tools[0].name,'mac_run_command');
+    const mcpResult=await mcp.callTool({name:'mac_run_command',arguments:{command:'printf from-mcp'}});
+    assert.match((mcpResult.content as any)[0].text,/from-mcp/);await mcp.close();
+    const run=async(command:string,cwd?:string)=>(await rpc(token,'tools/call',{name:'mac_run_command',arguments:{command,...(cwd?{cwd}:{})}})).json();
+    const result=await run('printf hello > created.txt; cat created.txt');
+    assert.match(result.result.content[0].text,/Exit code: 0\nhello/);
+    assert.equal(await readFile(path.join(root,'created.txt'),'utf8'),'hello');
+    assert.equal((await run('pwd','..')).result.isError,true);
+    const started=new Promise<void>(resolve=>{commandStarted=resolve;});
+    const pending=run('sleep 20; echo escaped > escaped.txt');await started;
+    controller.abort();await pending;
+    await assert.rejects(readFile(path.join(root,'escaped.txt')));
+    assert.equal((await rpc(token,'tools/list')).status,401);
+    const next=macLease('owner',new AbortController().signal);assert.ok(next);
+    await revokeRunner('owner',device.id);
+    assert.equal((await rpc(next.access.token,'tools/list')).status,401);next.close();
+  } finally {lease!?.close();socket.disconnect();await tools.stop();await new Promise<void>(resolve=>io.close(()=>resolve()));await rm(directory,{recursive:true,force:true});}
+});

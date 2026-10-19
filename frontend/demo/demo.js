@@ -18,6 +18,10 @@
   ];
   accounts.push({id: 'openrouter-api', name: 'OpenRouter API', provider: 'openrouter', authType: 'api_key', runnerId: 'demo-runner', mode: 'runner', auth: 'ready', detail: 'Demo connection', priority: 1, models: [{id: 'openrouter/auto', name: 'Auto'}, {id: 'openai/gpt-4.1', name: 'GPT-4.1'}, {id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4'}], limit: limit()});
   for (const account of accounts.filter(a => a.provider === 'codex')) account.models = [{id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol'}];
+  for (const account of accounts) for (const model of account.models || []) {
+    model.label = model.label || model.name || model.id;
+    if (account.provider === 'codex') { model.reasoning = ['low','medium','high','xhigh'].map(id => ({id,label:id.charAt(0).toUpperCase()+id.slice(1)})); model.defaultReasoning = 'medium'; }
+  }
   let cccSettings = {
     version: 1, submissionIntervalSeconds: 1, rateLimitRetries: 5, rateLimitDelaySeconds: 1,
     solutionAttempts: 3, preparationRetries: 2, optimizationEnabled: true, optimizationDelaySeconds: 10,

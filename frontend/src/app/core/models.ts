@@ -87,6 +87,8 @@ export type AccessGrant = {
   usageByModel: Record<string, number>;
 };
 export type Runner = {
+  kind?: 'mac';
+  macOnline?: boolean;
   id: string;
   name: string;
   online: boolean;

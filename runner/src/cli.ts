@@ -19,7 +19,7 @@ import { readAgyModels } from './agy-models.js';
 import { cliTimeoutSeconds } from './timeouts.js';
 import { chatgptAccountStatus, executeChatGPTWeb } from './chatgpt-web.js';
 export type ProviderId='codex'|'antigravity'|'chatgpt'|'openrouter'|'cerebras';
-export type Job={openRouterRouting?:OpenRouterRouting;cccAuto?:CccAutoSettings;personalMcp?:PersonalMcp[];sharedExecution?:boolean;continuationOf?:string;jobId:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;originalPrompt?:string;handoffContext?:string;previousThreadId?:string;model:string;reasoning?:string;fast?:boolean;workflow?:'standard'|'ccc-auto';solverOnly?:boolean;solverCodeOnly?:boolean;mode:'chat'|'task'};
+export type Job={macAccess?:{url:string;token:string};openRouterRouting?:OpenRouterRouting;cccAuto?:CccAutoSettings;personalMcp?:PersonalMcp[];sharedExecution?:boolean;continuationOf?:string;jobId:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;originalPrompt?:string;handoffContext?:string;previousThreadId?:string;model:string;reasoning?:string;fast?:boolean;workflow?:'standard'|'ccc-auto';solverOnly?:boolean;solverCodeOnly?:boolean;mode:'chat'|'task'};
 export type Event={type:'status'|'delta'|'tool'|'usage'|'checkpoint';text?:string;message?:string;data?:Record<string,unknown>};
 export type AccountModel={id:string;label:string;reasoning?:{id:string;label:string}[];defaultReasoning?:string};
 export type AccountStatus={models:AccountModel[];limits?:{resetCredits?:ResetCredits|null;primary?:{usedPercent:number;windowMinutes?:number;resetAt?:string};secondary?:{usedPercent:number;windowMinutes?:number;resetAt?:string}}};

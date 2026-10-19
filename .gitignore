@@ -17,3 +17,6 @@ device.json
 *.codexprofile.json
 auth.json
 download-test.txt
+desktop/runtime/
+desktop/release/
+desktop/release-*/

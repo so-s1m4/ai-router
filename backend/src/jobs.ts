@@ -1,3 +1,4 @@
+import { macLease } from './mac-bridge.js';
 import type { CccAutoSettings } from './ccc-settings.js';
 import type { PersonalMcp } from './personal-mcp.js';
 import { randomUUID } from 'node:crypto';
@@ -16,7 +17,7 @@ export function attachJobHandlers(namespace:Namespace){namespace.on('connection'
  socket.on('job:result',(raw:unknown)=>{const p=z.object({jobId:z.string().uuid(),ok:z.boolean(),text:z.string().max(500000).optional(),error:z.string().max(2000).optional(),code:z.string().max(40).optional()}).safeParse(raw);if(!p.success)return;const job=pending.get(p.data.jobId);if(job?.runnerId===runnerId)settle(p.data.jobId,p.data);});
  socket.on('disconnect',()=>{for(const [id,job] of pending)if(job.runnerId===runnerId)settle(id,{jobId:id,ok:false,error:'The runner has disconnected',code:'unavailable'});});
  });}
-export function dispatch(runnerId:string,payload:{cccAuto?:CccAutoSettings;personalMcp?:PersonalMcp[];sharedExecution?:boolean;continuationOf?:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;model:string;reasoning?:string;fast?:boolean;workflow?:'standard'|'ccc-auto';mode:'chat'|'task'},signal:AbortSignal,onEvent:(e:RunnerEvent)=>void):Promise<string>{if(signal.aborted)return Promise.reject(new JobError('Stopped by user','canceled'));const socket=runnerSocket(runnerId);if(!socket)return Promise.reject(new JobError('The runner is offline','unavailable'));const jobId=randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Timed out',code:'timeout'});},(timeoutSeconds(payload.mode)+15)*1000);pending.set(jobId,{runnerId,taskId:payload.taskId,resolve,reject,onEvent,timer});signal.addEventListener('abort',()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Stopped by user',code:'canceled'});},{once:true});socket.emit('job:start',{jobId,...payload},(ack:{ok:boolean;error?:string})=>{if(!ack?.ok)settle(jobId,{jobId,ok:false,error:ack?.error||'The runner rejected the task',code:'unavailable'});});});}
+function dispatchBase(runnerId:string,payload:{macAccess?:{url:string;token:string};macUserId?:string;cccAuto?:CccAutoSettings;personalMcp?:PersonalMcp[];sharedExecution?:boolean;continuationOf?:string;taskId:string;accountId:string;provider:ProviderId;sessionId:string;projectId?:string;prompt:string;model:string;reasoning?:string;fast?:boolean;workflow?:'standard'|'ccc-auto';mode:'chat'|'task'},signal:AbortSignal,onEvent:(e:RunnerEvent)=>void):Promise<string>{if(signal.aborted)return Promise.reject(new JobError('Stopped by user','canceled'));const socket=runnerSocket(runnerId);if(!socket)return Promise.reject(new JobError('The runner is offline','unavailable'));const jobId=randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Timed out',code:'timeout'});},(timeoutSeconds(payload.mode)+15)*1000);pending.set(jobId,{runnerId,taskId:payload.taskId,resolve,reject,onEvent,timer});signal.addEventListener('abort',()=>{socket.emit('job:cancel',{jobId});settle(jobId,{jobId,ok:false,error:'Stopped by user',code:'canceled'});},{once:true});socket.emit('job:start',{jobId,...payload},(ack:{ok:boolean;error?:string})=>{if(!ack?.ok)settle(jobId,{jobId,ok:false,error:ack?.error||'The runner rejected the task',code:'unavailable'});});});}
 
 export async function steerJob(taskId:string,text:string){
  const entry=[...pending.entries()].find(([,job])=>job.taskId===taskId);
@@ -25,4 +26,15 @@ export async function steerJob(taskId:string,text:string){
  if(!socket)throw new JobError('The runner is offline','unavailable');
  const reply=await socket.timeout(35000).emitWithAck('job:steer',{jobId,text});
  if(!reply?.ok)throw new JobError(reply?.error||'Runner does not support steering. Update runner.','unavailable');
+}
+
+export async function dispatch(runnerId:string,payload:Parameters<typeof dispatchBase>[1],signal:AbortSignal,onEvent:(e:RunnerEvent)=>void):Promise<string> {
+ const {macUserId,...job}=payload;
+ const lease=macUserId && payload.mode==='task' && !payload.sharedExecution && !payload.cccAuto && ['codex','openrouter','cerebras'].includes(payload.provider) ? macLease(macUserId,signal) : null;
+ if(lease){
+  job.macAccess=lease.access;
+  job.prompt+='\n\nThe user has connected their Mac. For work on their local files or terminal use mac_run_command on the connected Mac. Server tools run on a different machine. Do not substitute server files when Mac access fails.';
+  if(job.provider==='codex') job.personalMcp=[...(job.personalMcp||[]).filter(m=>m.name!=='ai_router_mac'),{name:'ai_router_mac',url:lease.access.url,headers:{Authorization:'Bearer '+lease.access.token}}];
+ }
+ try {return await dispatchBase(runnerId,job,signal,onEvent);} finally {lease?.close();}
 }

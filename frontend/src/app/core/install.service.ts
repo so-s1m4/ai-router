@@ -10,6 +10,7 @@ export class InstallService {
   private deferred: InstallPrompt | null = null;
   readonly available = signal(false);
   readonly installed = signal(
+    navigator.userAgent.includes('AI-Router-Desktop/') ||
     window.matchMedia('(display-mode: standalone)').matches ||
     !!(navigator as Navigator & { standalone?: boolean }).standalone,
   );
@@ -28,7 +29,7 @@ export class InstallService {
       this.installed.set(true);
     });
     window.matchMedia('(display-mode: standalone)').addEventListener('change', event => {
-      this.installed.set(event.matches);
+      this.installed.set(navigator.userAgent.includes('AI-Router-Desktop/') || event.matches);
     });
   }
 

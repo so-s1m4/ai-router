@@ -1,0 +1,71 @@
+name: macOS app
+on:
+  workflow_dispatch:
+  push:
+    tags: ['desktop-v*']
+permissions:
+  contents: write
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    # A single builder invocation merges both architectures into latest-mac.yml.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: desktop
+        run: node -e 'if (process.env.GITHUB_REF_NAME !== "desktop-v" + require("./package.json").version) process.exit(1)'
+      - run: npm ci --include=dev
+        working-directory: desktop
+      - run: npm run prepare:runtime
+        working-directory: desktop
+      - run: npm test
+        working-directory: desktop
+      - name: Build both Mac architectures
+        working-directory: desktop
+        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Test packaged runtime and folder isolation
+        working-directory: desktop
+        run: DESKTOP_TEST_EXECUTABLE="$PWD/release/mac-arm64/AI Router.app/Contents/MacOS/AI Router" DESKTOP_TEST_RUNTIME="$PWD/release/mac-arm64/AI Router.app/Contents/Resources/runner" npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Router-macOS
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest-mac.yml
+      - name: Verify release signing
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          MAC_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
+        run: |
+          if [ -z "$MAC_CERTIFICATE" ]; then
+            echo '::error::MAC_CERTIFICATE is required for macOS auto-updates. Unsigned builds remain available as workflow artifacts; no update is published.'
+            exit 1
+          fi
+          for bundle in release/mac-arm64 release/mac; do
+            codesign --verify --deep --strict "$bundle/AI Router.app"
+            codesign -d --verbose=4 "$bundle/AI Router.app" 2>&1 | grep 'Authority=Developer ID Application:'
+          done
+        working-directory: desktop
+      - name: Publish application update
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" desktop/release/*.dmg desktop/release/*.zip desktop/release/*.blockmap desktop/release/latest-mac.yml --verify-tag --title "AI Router ${GITHUB_REF_NAME#desktop-v}" --generate-notes

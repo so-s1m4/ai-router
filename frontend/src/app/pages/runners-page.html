@@ -1,11 +1,11 @@
 <div class="page-content">
   <div class="section-hero">
     <div>
-      <span class="section-tag">LOCAL CONTAINERS</span>
+      <span class="section-tag">CONNECTED DEVICES</span>
       <h2>Task runners</h2>
       <p>
-        Runner containers run on your servers or computers. They execute code, store secrets, and
-        hold connections to the CLI.
+        AI Router for macOS connects your files and terminal without a local AI agent.
+        Keep model connections on a server runner.
       </p>
     </div>
   </div>
@@ -48,28 +48,29 @@
             </div>
             <span
               class="badge"
-              [class.badge-ready]="r.online && !r.revokedAt"
+              [class.badge-ready]="(r.online || r.macOnline) && !r.revokedAt"
               [class.badge-danger]="r.revokedAt"
-              [class.badge-offline]="!r.online && !r.revokedAt"
+              [class.badge-offline]="!(r.online || r.macOnline) && !r.revokedAt"
             >
-              {{ r.revokedAt ? 'Disconnected' : r.online ? 'Online' : 'Offline' }}
+              {{ r.revokedAt ? 'Disconnected' : (r.online || r.macOnline) ? 'Online' : 'Offline' }}
             </span>
           </div>
 
           <h3>{{ r.name }}</h3>
+          @if (r.kind === 'mac') { <p>Mac files and terminal · models run on the server</p> }
           <div class="runner-id">
             ID: <code>{{ r.id }}</code>
           </div>
 
           @if (!r.revokedAt) {
             <div class="card-actions">
-              <button
+              @if (r.kind !== 'mac') { <button
                 class="btn btn-outline btn-sm"
                 (click)="vm.runnerService.managedRunner.set(r)"
               >
                 <svg lucideSettings2 [size]="15"></svg>
                 <span>Settings</span>
-              </button>
+              </button> }
               <button
                 class="btn btn-danger-outline btn-sm"
                 (click)="vm.runnerService.revokeRunner(r)"
@@ -89,8 +90,9 @@
       <span class="section-tag">CONNECTING THE DEVICE</span>
       <h3>Add a new runner</h3>
       <p>
-        Enter a name and generate an anchor code. Runner uses it once when first launched via Docker
-        Compose.
+        Enter a name and generate a pairing code. In AI Router for macOS, paste it into
+        “Доступ к Mac” and choose a folder or extended access. Docker runners use the same code
+        on their first launch.
       </p>
     </div>
     <div class="form-row">
