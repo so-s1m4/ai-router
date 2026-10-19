@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore: ['desktop/**', '.github/workflows/desktop-macos.yml']
 
 permissions:
   contents: read

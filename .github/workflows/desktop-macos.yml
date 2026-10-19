@@ -2,6 +2,8 @@ name: macOS app
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+    paths: ['desktop/**', '.github/workflows/desktop-macos.yml']
     tags: ['desktop-v*']
 permissions:
   contents: write
@@ -27,8 +29,23 @@ jobs:
         working-directory: desktop
       - run: npm run prepare:runtime
         working-directory: desktop
-      - run: npm test
+      - name: Test desktop
         working-directory: desktop
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/desktop-tests.log"
+      - name: Report test failures
+        if: failure()
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          report = Path(os.environ['RUNNER_TEMP']) / 'desktop-tests.log'
+          if report.exists():
+              lines = report.read_text().splitlines()
+              for i, line in enumerate(lines):
+                  if line.startswith('not ok'):
+                      detail = '\n'.join(lines[max(0, i - 8):i + 45])
+                      detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f'::error::{detail}')
       - name: Build both Mac architectures
         working-directory: desktop
         run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never
