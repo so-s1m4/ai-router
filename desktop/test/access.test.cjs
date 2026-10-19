@@ -28,8 +28,17 @@ test('macOS folder sandbox blocks sibling files, writes and symlink escapes in s
   await symlink(outside,path.join(folder,'escape.txt'));
   const profile = folderProfile({folder,data:path.join(root,'data'),runtime:'/nonexistent/runtime',executable:'/nonexistent/runtime/Electron',temporary:path.join(root,'tmp')});
   const run = command => {
-    try { return execFileSync('/usr/bin/sandbox-exec',['-p',profile,'/bin/sh','-c',command],{encoding:'utf8',stdio:['ignore','pipe','pipe']}); }
-    catch (error) { error.message += `\nstatus=${error.status} signal=${error.signal}\n${error.stderr || ''}`; throw error; }
+    try { return execFileSync('/usr/bin/sandbox-exec',['-p',profile,'/bin/sh','-c',command],{cwd:folder,encoding:'utf8',stdio:['ignore','pipe','pipe']}); }
+    catch (error) {
+      if (error.signal === 'SIGABRT') {
+        const { spawnSync } = require('node:child_process');
+        for (const rule of ['', '(allow file-map-executable)', '(allow file-read*)', '(allow mach*)', '(allow default)']) {
+          const result = spawnSync('/usr/bin/sandbox-exec', ['-p', profile + '\n' + rule, '/usr/bin/true'], {cwd:folder,encoding:'utf8'});
+          console.log('Sandbox startup probe:', JSON.stringify({rule,status:result.status,signal:result.signal,stderr:result.stderr}));
+        }
+      }
+      error.message += `\nstatus=${error.status} signal=${error.signal}\n${error.stderr || ''}`; throw error;
+    }
   };
   const quote = value => "'"+value.replaceAll("'","'\\''")+"'";
   try {
@@ -51,10 +60,10 @@ test('macOS folder sandbox blocks sibling files, writes and symlink escapes in s
       const smoke = path.join(data,'smoke.cjs');
       await writeFile(smoke, `require(${JSON.stringify(path.join(runnerRuntime,'node_modules/socket.io-client'))}); console.log('runtime-ok');`);
       const actualProfile = folderProfile({folder,data,runtime:runnerRuntime,executable:electron,temporary});
-      assert.match(execFileSync('/usr/bin/sandbox-exec',['-p',actualProfile,electron,smoke],{encoding:'utf8',env:{...process.env,ELECTRON_RUN_AS_NODE:'1',TMPDIR:temporary}}),/runtime-ok/);
+      assert.match(execFileSync('/usr/bin/sandbox-exec',['-p',actualProfile,electron,smoke],{cwd:data,encoding:'utf8',env:{...process.env,ELECTRON_RUN_AS_NODE:'1',TMPDIR:temporary}}),/runtime-ok/);
       // Exercise denied files through the actual packaged runtime as well as sh.
       for (const denied of [outside, path.join(folder,'escape.txt')]) {
-        assert.match(execFileSync('/usr/bin/sandbox-exec',['-p',actualProfile,electron,'-e',`try { require('node:fs').readFileSync(${JSON.stringify(denied)}); process.exit(1); } catch(e) { if (!['EPERM','EACCES'].includes(e.code)) throw e; console.log('blocked'); }`],{encoding:'utf8',env:{...process.env,ELECTRON_RUN_AS_NODE:'1',TMPDIR:temporary}}),/blocked/);
+        assert.match(execFileSync('/usr/bin/sandbox-exec',['-p',actualProfile,electron,'-e',`try { require('node:fs').readFileSync(${JSON.stringify(denied)}); process.exit(1); } catch(e) { if (!['EPERM','EACCES'].includes(e.code)) throw e; console.log('blocked'); }`],{cwd:data,encoding:'utf8',env:{...process.env,ELECTRON_RUN_AS_NODE:'1',TMPDIR:temporary}}),/blocked/);
       }
       assert.equal(fs.existsSync(path.join(runnerRuntime,'node_modules/@openai')),false, 'Mac bridge must not bundle Codex');
 
