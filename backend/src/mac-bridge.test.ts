@@ -29,9 +29,10 @@ test('Mac bridge authenticates, executes file commands, cancels work and revokes
   const address=http.address() as {port:number};const url=`http://127.0.0.1:${address.port}`;
   const root=path.join(directory,'files');await mkdir(root);
   const tools=createTools({root,data:process.env.DATA_DIR,env:{PATH:'/usr/bin:/bin',DESKTOP_ACCESS_MODE:'folder'},stopTree:killTree,shell:'/bin/sh'});
-  const socket=client(url+'/mac',{transports:['websocket'],auth:{runnerId:device.id,secret:device.secret}});
+  const socket=client(url+'/mac',{transports:['websocket'],auth:{runnerId:device.id,secret:device.secret,computerUse:true}});
   let commandStarted!:()=>void;
   socket.on('mac:command',async(request:any,ack:any)=>{commandStarted?.();try {ack({ok:true,text:await tools.run(request.id,request.args)});}catch(error:any){ack({ok:false,error:error.message});}});
+  socket.on('mac:computer',async(request:any,ack:any)=>ack({ok:true,content:[{type:'text',text:JSON.stringify({operation:request.args.operation})},{type:'image',data:'aGVsbG8=',mimeType:'image/jpeg'}]}));
   socket.on('mac:cancel',(id:string)=>void tools.cancel(id));
   socket.on('disconnect',()=>void tools.stop());
   const controller=new AbortController();let lease:ReturnType<typeof macLease>;
@@ -48,6 +49,11 @@ test('Mac bridge authenticates, executes file commands, cancels work and revokes
     const mcp=new Client({name:'bridge-test',version:'1'});
     await mcp.connect(new StreamableHTTPClientTransport(new URL(url+'/api/mac/mcp'),{requestInit:{headers:{Authorization:'Bearer '+token}}}));
     assert.equal((await mcp.listTools()).tools[0].name,'mac_run_command');
+    assert.ok((await mcp.listTools()).tools.some((tool:{name:string})=>tool.name==='mac_computer'));
+    const screenshot=await mcp.callTool({name:'mac_computer',arguments:{operation:'screenshot',pid:123,bundle_id:'test.app',window_id:42}});
+    assert.equal((screenshot.content as any)[1].type,'image');
+    const invalid=await rpc(token,'tools/call',{name:'mac_computer',arguments:{operation:'press',pid:123}});
+    assert.equal((await invalid.json()).error.code,-32602);
     const mcpResult=await mcp.callTool({name:'mac_run_command',arguments:{command:'printf from-mcp'}});
     assert.match((mcpResult.content as any)[0].text,/from-mcp/);await mcp.close();
     const run=async(command:string,cwd?:string)=>(await rpc(token,'tools/call',{name:'mac_run_command',arguments:{command,...(cwd?{cwd}:{})}})).json();

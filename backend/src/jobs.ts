@@ -33,7 +33,7 @@ export async function dispatch(runnerId:string,payload:Parameters<typeof dispatc
  const lease=macUserId && payload.mode==='task' && !payload.sharedExecution && !payload.cccAuto && ['codex','openrouter','cerebras'].includes(payload.provider) ? macLease(macUserId,signal) : null;
  if(lease){
   job.macAccess=lease.access;
-  job.prompt+='\n\nThe user has connected their Mac. For work on their local files or terminal use mac_run_command on the connected Mac. Server tools run on a different machine. Do not substitute server files when Mac access fails.';
+  job.prompt+='\n\nThe user has connected their Mac. For work on their local files or terminal use mac_run_command on the connected Mac. For Mac app interaction use mac_computer when available: inspect the target, act, then verify. Keep work in the background; never activate apps or fall back to global input. Server tools run on a different machine. Do not substitute server files when Mac access fails.';
   if(job.provider==='codex') job.personalMcp=[...(job.personalMcp||[]).filter(m=>m.name!=='ai_router_mac'),{name:'ai_router_mac',url:lease.access.url,headers:{Authorization:'Bearer '+lease.access.token}}];
  }
  try {return await dispatchBase(runnerId,job,signal,onEvent);} finally {lease?.close();}

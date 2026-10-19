@@ -16,6 +16,10 @@ test('packaging copies bridge dependencies and rejects an incomplete runtime', a
   await fs.writeFile(path.join(moduleDir, 'index.js'), 'exports.io = function() {};');
   await fs.writeFile(path.join(source, 'runtime/runner/package.json'), '{}');
   try {
+    const helper = path.join(source,'runtime/runner/computer-use');
+    if (process.platform === 'darwin') await fs.copyFile(path.join(__dirname,'../runtime/runner/computer-use'),helper);
+    else await fs.writeFile(helper,'fixture');
+    await fs.chmod(helper,0o755);
     // Use the real builder copier: it excludes node_modules at a FileSet root.
     const matchers = getFileMatchers(build, 'extraResources', resources, {
       defaultSrc: source, globalOutDir: path.join(root, 'output'),
