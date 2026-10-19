@@ -48,13 +48,24 @@ jobs:
                       print(f'::error::{detail}')
       - name: Build both Mac architectures
         working-directory: desktop
-        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never 2>&1 | tee "$RUNNER_TEMP/desktop-build.log"
         env:
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Report packaging failure
+        if: failure()
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          report = Path(os.environ['RUNNER_TEMP']) / 'desktop-build.log'
+          if report.exists():
+              detail = '\n'.join(report.read_text().splitlines()[-45:])
+              detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error::{detail}')
       - name: Test packaged runtime and folder isolation
         working-directory: desktop
         run: DESKTOP_TEST_EXECUTABLE="$PWD/release/mac-arm64/AI Router.app/Contents/MacOS/AI Router" DESKTOP_TEST_RUNTIME="$PWD/release/mac-arm64/AI Router.app/Contents/Resources/runner" npm test
