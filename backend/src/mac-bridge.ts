@@ -16,18 +16,21 @@ const computer = z.object({
   x:z.number().finite().min(0).max(100000).optional(),y:z.number().finite().min(0).max(100000).optional(),
   end_x:z.number().finite().min(0).max(100000).optional(),end_y:z.number().finite().min(0).max(100000).optional(),
   delta_y:z.number().int().min(-10000).max(10000).optional(),key_code:z.number().int().min(0).max(127).optional(),
+  button:z.enum(['left','right','middle']).optional(),
   modifiers:z.array(z.enum(['command','shift','option','control'])).max(4).optional()
 }).strict().superRefine((args,ctx) => {
+  if (args.button !== undefined && args.operation !== 'click') ctx.addIssue({code:'custom',message:'button is only supported for click'});
   if (!['status','apps'].includes(args.operation) && (!args.pid || !args.bundle_id)) ctx.addIssue({code:'custom',message:'Target pid and bundle_id required'});
 });
 const computerTool = {
   name:'mac_computer',
-  description:'Control apps on the connected Mac in the background. Start with status, apps, then inspect (Accessibility tree) or windows and screenshot. inspect accepts element_id to inspect a subtree; truncated means more elements are available. focus sets AXFocused within the target app without activating it. Target pid AND bundle_id from apps. Prefer press, set_value and action with element_id from a fresh inspect. Screenshot captures only window_id owned by target app and returns an image. click/scroll/drag use window-relative POINTS from windows, not screenshot pixels; key uses macOS virtual key_code and modifiers; type_text sends Unicode. Event input is experimental, app-dependent and paused for the foreground app. Never activate apps or use global mouse/keyboard as a fallback. After every action inspect or screenshot to verify; stop on unsupported behavior. macOS permissions must be granted locally.',
+  description:'Control apps on the connected Mac in the background. Start with status, apps, then inspect (Accessibility tree) or windows and screenshot. inspect accepts element_id to inspect a subtree; truncated means more elements are available. focus sets AXFocused within the target app without activating it. Target pid AND bundle_id from apps. Prefer press, set_value and action with element_id from a fresh inspect. Screenshot captures only window_id owned by target app and returns an image. click/scroll/drag use window-relative POINTS from windows, not screenshot pixels; click accepts button left (default), right (context menu), or middle (wheel click); scroll uses delta_y for wheel scrolling. key uses macOS virtual key_code and modifiers; type_text sends Unicode. Event input is experimental, app-dependent and paused for the foreground app. Never activate apps or use global mouse/keyboard as a fallback. After every action inspect or screenshot to verify; stop on unsupported behavior. macOS permissions must be granted locally.',
   inputSchema:{type:'object',properties:{
     operation:{type:'string',enum:['status','apps','windows','screenshot','inspect','focus','press','set_value','action','click','scroll','drag','key','type_text']},
     pid:{type:'integer'},bundle_id:{type:'string'},window_id:{type:'integer'},element_id:{type:'string'},
     text:{type:'string'},action:{type:'string',enum:['AXPress','AXConfirm','AXCancel','AXIncrement','AXDecrement','AXShowMenu','AXPick']},
     x:{type:'number'},y:{type:'number'},end_x:{type:'number'},end_y:{type:'number'},
+    button:{type:'string',enum:['left','right','middle'],description:'Mouse button for click; defaults to left.'},
     delta_y:{type:'integer'},key_code:{type:'integer'},modifiers:{type:'array',items:{type:'string',enum:['command','shift','option','control']}}
   },required:['operation'],additionalProperties:false}
 };

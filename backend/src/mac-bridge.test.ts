@@ -32,7 +32,7 @@ test('Mac bridge authenticates, executes file commands, cancels work and revokes
   const socket=client(url+'/mac',{transports:['websocket'],auth:{runnerId:device.id,secret:device.secret,computerUse:true}});
   let commandStarted!:()=>void;
   socket.on('mac:command',async(request:any,ack:any)=>{commandStarted?.();try {ack({ok:true,text:await tools.run(request.id,request.args)});}catch(error:any){ack({ok:false,error:error.message});}});
-  socket.on('mac:computer',async(request:any,ack:any)=>ack({ok:true,content:[{type:'text',text:JSON.stringify({operation:request.args.operation})},{type:'image',data:'aGVsbG8=',mimeType:'image/jpeg'}]}));
+  socket.on('mac:computer',async(request:any,ack:any)=>ack({ok:true,content:[{type:'text',text:JSON.stringify(request.args)},{type:'image',data:'aGVsbG8=',mimeType:'image/jpeg'}]}));
   socket.on('mac:cancel',(id:string)=>void tools.cancel(id));
   socket.on('disconnect',()=>void tools.stop());
   const controller=new AbortController();let lease:ReturnType<typeof macLease>;
@@ -56,6 +56,17 @@ test('Mac bridge authenticates, executes file commands, cancels work and revokes
     assert.equal(JSON.parse((focused.content as any)[0].text).operation,'focus');
     const subtree=await mcp.callTool({name:'mac_computer',arguments:{operation:'inspect',pid:123,bundle_id:'test.app',element_id:'0:abc'}});
     assert.equal(JSON.parse((subtree.content as any)[0].text).operation,'inspect');
+    const computerTool=(await mcp.listTools()).tools.find((tool:{name:string})=>tool.name==='mac_computer');
+    assert.deepEqual(computerTool.inputSchema.properties.button.enum,['left','right','middle']);
+    for (const button of ['left','right','middle',undefined]) {
+      const args={operation:'click',pid:123,bundle_id:'test.app',window_id:42,x:10,y:20,...(button?{button}:{})};
+      const clicked=await mcp.callTool({name:'mac_computer',arguments:args});
+      assert.deepEqual(JSON.parse((clicked.content as any)[0].text),args);
+    }
+    for (const args of [{operation:'click',button:'unknown'},{operation:'scroll',button:'right'}]) {
+      const rejected=await rpc(token,'tools/call',{name:'mac_computer',arguments:{pid:123,bundle_id:'test.app',...args}});
+      assert.equal((await rejected.json()).error.code,-32602);
+    }
     const invalid=await rpc(token,'tools/call',{name:'mac_computer',arguments:{operation:'press',pid:123}});
     assert.equal((await invalid.json()).error.code,-32602);
     const mcpResult=await mcp.callTool({name:'mac_run_command',arguments:{command:'printf from-mcp'}});

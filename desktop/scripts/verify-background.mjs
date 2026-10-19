@@ -45,7 +45,17 @@ try {
   const screenshot=act('screenshot',{window_id:window.window_id});
   assert.equal(screenshot.mimeType,'image/jpeg');assert.ok(screenshot.image.length>100);
   assert.equal(front(),before);
-  console.log('PASS: background screenshot and value/focus/button actions verified, foreground unchanged; controls after 450 history elements and subtree IDs verified.');
+  // NSEvent type and buttonNumber must both match; inspect every event and
+  // ensure process-targeted mouse input never changes the active application.
+  for (const [button,expected] of [[undefined,'mouse:2:0'],['right','mouse:4:1'],['middle','mouse:26:2']]) {
+    act('click',{window_id:window.window_id,x:350,y:50,...(button?{button}:{})});
+    assert.ok(act('inspect').elements.some(node=>node.value===expected),`Missing ${expected}`);
+    assert.equal(front(),before);
+  }
+  act('scroll',{window_id:window.window_id,x:350,y:50,delta_y:-100});
+  assert.ok(act('inspect').elements.some(node=>node.value?.startsWith('scroll:') && node.value!=='scroll:0.0'));
+  assert.equal(front(),before);
+  console.log('PASS: background AX, screenshot, left/right/middle clicks and wheel scrolling verified; foreground unchanged.');
 } finally {
   if(child) {child.kill();await new Promise(resolve=>child.once('exit',resolve));}
   await rm(temp,{recursive:true,force:true});

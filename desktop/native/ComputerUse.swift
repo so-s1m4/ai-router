@@ -135,12 +135,18 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
         }
         return ["ok": true, "verify": "Inspect or screenshot to verify the result."]
     }
+    let buttonName = args["button"] as? String ?? "left"
+    if args["button"] != nil {
+        guard operation == "click", let button = args["button"] as? String, ["left", "right", "middle"].contains(button) else { try fail("button must be left, right, or middle and is only supported for click.") }
+    }
     // Never post to the global event stream, activate an app, or move the real cursor.
     guard !app.isActive else { try fail("Target app is in the foreground. Background event input is paused while you use it. AX actions remain available.") }
     let source = CGEventSource(stateID: .privateState)
     func post(_ event: CGEvent?) throws {
         guard let event else { try fail("Could not create event") }
         event.postToPid(app.processIdentifier)
+        // Allow the process-targeted event to leave this short-lived helper.
+        usleep(20000)
     }
     if operation == "key" || operation == "type_text" {
         if operation == "type_text" {
@@ -172,8 +178,13 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
               let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
               let x = args["x"] as? Double, let y = args["y"] as? Double, x >= 0, y >= 0, x < rect.width, y < rect.height else { try fail("Supply a valid target window_id and window-relative x,y in points, from windows (not scaled screenshot pixels).") }
         let point = CGPoint(x: rect.minX + x, y: rect.minY + y)
-        func mouse(_ type: CGEventType, _ at: CGPoint) throws {
-            let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: at, mouseButton: .left)
+        func mouse(_ type: CGEventType, _ at: CGPoint, _ button: CGMouseButton = .left) throws {
+            // NSEvent preserves the destination window number when converted to
+            // CGEvent; pointer-window hints alone arrive with windowNumber == 0.
+            guard let eventType = NSEvent.EventType(rawValue: UInt(type.rawValue)) else { try fail("Invalid mouse event type") }
+            let event = NSEvent.mouseEvent(with: eventType, location: CGPoint(x: at.x - rect.minX, y: rect.maxY - at.y), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: windowID, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)?.cgEvent
+            event?.location = at
+            event?.setIntegerValueField(.mouseEventButtonNumber, value: Int64(button.rawValue))
             event?.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
             event?.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
             try post(event)
@@ -182,6 +193,9 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
             guard let dy = args["delta_y"] as? Int, abs(dy) <= 10000 else { try fail("Invalid delta_y") }
             let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 1, wheel1: Int32(dy), wheel2: 0, wheel3: 0)
             event?.location = point
+            // CoreGraphics has no named destination-window field for scroll
+            // events. NSEvent encodes windowNumber in field 51 on macOS.
+            event?.setIntegerValueField(CGEventField(rawValue: 51)!, value: Int64(windowID))
             try post(event)
         } else if operation == "drag" {
             guard let endX = args["end_x"] as? Double, let endY = args["end_y"] as? Double, endX >= 0, endY >= 0, endX < rect.width, endY < rect.height else { try fail("Invalid drag endpoint") }
@@ -191,7 +205,10 @@ func execute(_ args: [String: Any]) async throws -> [String: Any] {
                 try mouse(.leftMouseDragged, CGPoint(x: point.x + (endX - x) * Double(step) / 10, y: point.y + (endY - y) * Double(step) / 10))
             }
         } else {
-            try mouse(.leftMouseDown, point); try mouse(.leftMouseUp, point)
+            let button: CGMouseButton = buttonName == "right" ? .right : buttonName == "middle" ? .center : .left
+            let down: CGEventType = buttonName == "right" ? .rightMouseDown : buttonName == "middle" ? .otherMouseDown : .leftMouseDown
+            let up: CGEventType = buttonName == "right" ? .rightMouseUp : buttonName == "middle" ? .otherMouseUp : .leftMouseUp
+            try mouse(down, point, button); try mouse(up, point, button)
         }
     } else { try fail("Unknown operation") }
     return ["ok": true, "experimental": true, "verify": "Process-targeted input is app-dependent. Inspect or screenshot to verify; do not assume delivery means success."]

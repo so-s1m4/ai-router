@@ -1,10 +1,23 @@
 import AppKit
+final class EventWindow: NSWindow {
+    var report: ((String) -> Void)?
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp:
+            report?("mouse:\(event.type.rawValue):\(event.buttonNumber)")
+        case .scrollWheel: report?("scroll:\(event.scrollingDeltaY)")
+        default: break
+        }
+        super.sendEvent(event)
+    }
+}
 final class Controller: NSObject {
     let field = NSTextField(string: "initial")
     let result = NSTextField(labelWithString: "waiting")
     @objc func press(_ sender: Any?) { result.stringValue = "pressed:" + field.stringValue }
     func start() {
-        let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = EventWindow(contentRect: NSRect(x: 80, y: 80, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        window.report = { [self] value in result.stringValue = value }
         window.title = "AI Router Background Test"
         let root = window.contentView!
         // A large earlier subtree must not consume the entire inspect budget.
