@@ -25,8 +25,7 @@ function createUpdates({ app, dialog, stopProcesses, updater, platform = process
       const result = await updater.checkForUpdates();
       // Observe the download promise as well: network/signature failures can occur after the check.
       if (result?.downloadPromise) {
-        if (manual) await notify('Найдена новая версия. Обновление загружается в фоне.');
-        await result.downloadPromise;
+        await Promise.all([result.downloadPromise, manual ? notify('Найдена новая версия. Обновление загружается в фоне.') : Promise.resolve()]);
       } else if (manual) await notify('Установлена последняя доступная версия.');
     } catch {
       if (manual) await notify('Не удалось получить обновление. Проверьте интернет и наличие опубликованного релиза приложения на GitHub.');
