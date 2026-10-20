@@ -40,6 +40,9 @@ jobs:
         run: npx electron-builder --mac dmg zip --arm64 --x64 --config.mac.identity=- --publish never 2>&1 | tee "$RUNNER_TEMP/desktop-build.log"
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify packaged signatures and native Electron launch
+        working-directory: desktop
+        run: node scripts/verify-mac-signing.cjs
       - name: Report packaging failure
         if: failure()
         shell: python
