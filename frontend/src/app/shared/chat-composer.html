@@ -24,8 +24,14 @@
       placeholder="Describe the task..."
       aria-label="Message to assistant"
       rows="1"
-      (keydown)="vm.chatService.onComposerEnter($event)"
+      (keydown)="composerKey($event)"
     ></textarea>
+    @if(voice.interim()){<span class="voice-preview" role="status">{{voice.interim()}}</span>}
+    @if(voice.error()){<span class="voice-error" role="alert">{{voice.error()}}</span>}
+    @if(voice.busy){<span class="voice-hint" role="status">{{voice.starting()?'Requesting permission…':voice.stopping()?'Finishing dictation…':'Listening · Russian'}}</span>}
+    <button class="pill-btn-icon voice-button" type="button" [class.listening]="voice.busy" [disabled]="voice.stopping()" (click)="toggleVoice()" [attr.aria-pressed]="voice.busy" [attr.aria-label]="voice.busy?'Stop dictation':'Dictate in Russian'" [title]="voice.busy?'Stop dictation':'Dictation · Russian'">
+      <svg lucideMic [size]="18"></svg>
+    </button>
   </div>
 
   <button

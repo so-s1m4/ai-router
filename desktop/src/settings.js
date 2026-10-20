@@ -14,7 +14,7 @@ async function action(fn) {
 }
 window.desktop.state().then(state => {
   $('server').value = state.server || ''; $('mode').value = state.mode || 'off';
-  folder = state.folder || ''; $('folder').textContent = folder || 'Папка не выбрана'; modes(); update(state);
+  folder = state.folder || ''; $('folder').textContent = folder || 'No folder selected'; modes(); update(state);
 });
 window.desktop.onState(update);
 $('mode').onchange = modes;

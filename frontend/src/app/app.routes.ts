@@ -55,5 +55,6 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/runners-page').then((m) => m.RunnersPageComponent),
   },
   {path:'ccc-auto',title:'CCC-Auto · AI Router',loadComponent:()=>import('./pages/ccc-auto-page').then(m=>m.CccAutoPageComponent)},
+  {path:'github',title:'GitHub Actions · AI Router',loadComponent:()=>import('./pages/github-page').then(m=>m.GithubPageComponent)},
   { path: '**', redirectTo: 'projects' },
 ];

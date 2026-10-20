@@ -8,8 +8,8 @@ function createTools({ root, data, env, stopTree, shell = '/bin/zsh' }) {
     if (typeof value !== 'string') throw new Error('Invalid working directory');
     const directory = await fs.realpath(path.resolve(root, value));
     // The enclosing macOS sandbox also confines shell commands and symlinks.
-    if (env.DESKTOP_ACCESS_MODE === 'folder' && directory !== root && !directory.startsWith(root + path.sep)) throw new Error('Папка вне разрешённого доступа');
-    if (directory === data || directory.startsWith(data + path.sep)) throw new Error('Служебная папка недоступна');
+    if (env.DESKTOP_ACCESS_MODE === 'folder' && directory !== root && !directory.startsWith(root + path.sep)) throw new Error('Folder is outside the allowed scope');
+    if (directory === data || directory.startsWith(data + path.sep)) throw new Error('App data folder is not accessible');
     return directory;
   }
   async function run(id, args) {

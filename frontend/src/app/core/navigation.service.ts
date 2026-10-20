@@ -8,6 +8,7 @@ export const PAGE_PATHS = {
   notifications: 'notifications',
   projects: 'projects',
   sites: 'sites',
+  github: 'github',
   providers: 'models',
   cccAuto: 'ccc-auto',
   connections: 'accounts',

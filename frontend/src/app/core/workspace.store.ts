@@ -385,6 +385,7 @@ export class WorkspaceStore {
       | 'chat'
       | 'projects'
       | 'sites'
+      | 'github'
       | 'cccAuto'
       | 'providers'
       | 'connections'

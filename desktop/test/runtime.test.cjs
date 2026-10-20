@@ -13,6 +13,8 @@ test('packaging copies bridge dependencies and rejects an incomplete runtime', a
   const resources = path.join(root, 'Resources');
   const moduleDir = path.join(source, 'runtime/runner/node_modules/socket.io-client');
   await fs.mkdir(moduleDir, { recursive: true });
+  await fs.mkdir(path.join(source,'runtime/speech'),{recursive:true});
+  for (const arch of ['arm64','x64']) await fs.writeFile(path.join(source,'runtime/speech/speech-'+arch),'fixture');
   await fs.writeFile(path.join(moduleDir, 'index.js'), 'exports.io = function() {};');
   await fs.writeFile(path.join(source, 'runtime/runner/package.json'), '{}');
   try {
@@ -24,6 +26,7 @@ test('packaging copies bridge dependencies and rejects an incomplete runtime', a
     await copyFiles(matchers);
     const context = { appOutDir: root, packager: { getResourcesDir: () => resources } };
     await verifyRuntime(context);
+    for (const arch of ['arm64','x64']) assert.equal(await fs.readFile(path.join(resources,'speech/speech-'+arch),'utf8'),'fixture');
     await fs.rm(path.join(resources, 'runner/node_modules'), { recursive: true });
     await assert.rejects(verifyRuntime(context));
   } finally {

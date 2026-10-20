@@ -1,0 +1,53 @@
+<section class="github-page">
+  <header><div><h1>GitHub Actions</h1><p>Builds and deployments from your repositories, right in AI Router.</p></div>
+    @if(connected()){<div class="connection"><span>{{login()}}</span><button (click)="disconnect()" [disabled]="loading()">Disconnect</button></div>}
+  </header>
+  @if(error()){<p class="error" role="alert">{{error()}}</p>}
+  @if(!ready()&&!connected()){<p role="status">Checking connection…</p>}
+  @else if(!connected()){
+    <form class="connect-card" (ngSubmit)="connect()">
+      <h2>Connect GitHub</h2>
+      <p>Create a Personal Access Token with access to your repositories and <strong>Actions: Read-only</strong>. For classic tokens, private repositories require the scope <strong>repo</strong>. Organizations may require SSO authorization.</p>
+      <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">Create token on GitHub ↗</a>
+      <label for="github-token">Personal Access Token</label>
+      <input id="github-token" name="token" type="password" autocomplete="off" [(ngModel)]="token" placeholder="github_pat_…" required />
+      <p>Токен хранится на сервере в зашифрованном виде. Connection личное для вашего аккаунта AI Router.</p>
+      <button class="primary" type="submit" [disabled]="loading()||!token.trim()">{{loading()?'Connecting…':'Connect GitHub'}}</button>
+    </form>
+  } @else {
+    <div class="toolbar">
+      <select aria-label="Repository" [(ngModel)]="repository" (ngModelChange)="selectRepository()" [disabled]="loading()">
+        <option value="">All available ({{repositories().length}})</option>
+        @for(repo of repositories();track repo.id){<option [value]="repo.full_name">{{repo.full_name}}{{repo.private?' · private':''}}</option>}
+      </select>
+      <input type="search" placeholder="Search workflows, branches, repositories" aria-label="Search runs" [ngModel]="query()" (ngModelChange)="query.set($event)" />
+      <label class="check"><input type="checkbox" [ngModel]="activeOnly()" (ngModelChange)="activeOnly.set($event)" />Active ({{activeCount()}})</label>
+      <button (click)="refresh()" [disabled]="loading()">{{loading()?'Refreshing…':'Refresh'}}</button>
+    </div>
+    <p class="muted" role="status">Refreshes every 30 seconds. Latest 20 runs per repository.
+      @if(updatedAt()){Updated {{updatedAt()|date:'HH:mm:ss'}}.}
+    </p>
+    @if(warnings().length){<details class="warning"><summary>Unable to fetch Actions for {{warnings().length}} repositories</summary>@for(warning of warnings();track warning.repository){<p>{{warning.repository}}: {{warning.error}}</p>}</details>}
+    <div class="runs">
+      @for(run of visible();track run.id){
+        <article class="run" [class.running]="run.status!=='completed'">
+          <button class="run-summary" (click)="toggle(run)" [attr.aria-expanded]="expanded()===run.id">
+            <span class="badge" [class.failure]="run.conclusion==='failure'||run.conclusion==='timed_out'" [class.success]="run.conclusion==='success'">{{status(run.status,run.conclusion)}}</span>
+            <span class="run-copy"><strong>{{run.title}}</strong><span>{{run.repository}} · {{run.name}}</span><small>{{run.branch}} · {{run.sha}} · {{run.createdAt|date:'dd.MM HH:mm'}}</small></span>
+            <span aria-hidden="true">{{expanded()===run.id?'−':'+'}}</span>
+          </button>
+          @if(expanded()===run.id){<div class="jobs">
+            <a [href]="run.url" target="_blank" rel="noopener noreferrer">Open run on GitHub ↗</a>
+            @if(jobsError()){<p class="error" role="alert">{{jobsError()}}</p>}
+            @if(jobsLoading()&&!jobs().length){<p role="status">Loading jobs…</p>}
+            @for(job of jobs();track job.id){<div class="job">
+              <div class="job-heading"><strong>{{job.name}}</strong><span>{{status(job.status,job.conclusion)}} · {{completedSteps(job)}}/{{job.steps.length}} steps</span></div>
+              @if(job.steps.length){<progress [value]="completedSteps(job)" [max]="job.steps.length" [attr.aria-label]="job.name+' — completed steps'"></progress>}
+              <ol>@for(step of job.steps;track step.number){<li [class.current]="step.status==='in_progress'"><span>{{step.name}}</span><small>{{status(step.status,step.conclusion)}}</small></li>}</ol>
+            </div>} @empty { @if(!jobsLoading()&&!jobsError()){<p>No jobs have been created yet.</p>} }
+          </div>}
+        </article>
+      } @empty {<div class="empty">{{loading()?'Loading runs…':query()||activeOnly()?'No runs match your filters.':'No runs yet. They will appear when a workflow runs on GitHub.'}}</div>}
+    </div>
+  }
+</section>

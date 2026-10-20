@@ -6,21 +6,21 @@ import { InstallService } from '../core/install.service';
   standalone: true,
   template: `
     @if (!install.installed()) {
-      <button class="install-trigger" [class.compact]="compact" type="button" title="Установить AI Router" aria-label="Установить AI Router" (click)="open()">@if (compact) { <span aria-hidden="true">↓</span> } @else { Установить AI Router }</button>
+      <button class="install-trigger" [class.compact]="compact" type="button" title="Install AI Router" aria-label="Install AI Router" (click)="open()">@if (compact) { <span aria-hidden="true">↓</span> } @else { Install AI Router }</button>
     }
     <dialog #dialog (close)="closed()" (click)="backdrop($event)">
-      <div class="install-heading"><img src="/icons/icon-192.png" width="48" height="48" alt=""><button type="button" aria-label="Закрыть" (click)="dialog.close()">✕</button></div>
-      <h2>AI Router на главном экране</h2>
-      <p>Открывайте рабочее пространство одним нажатием. Для чатов и задач нужно подключение к серверу.</p>
+      <div class="install-heading"><img src="/icons/icon-192.png" width="48" height="48" alt=""><button type="button" aria-label="Close" (click)="dialog.close()">✕</button></div>
+      <h2>AI Router on your home screen</h2>
+      <p>Open your workspace with one tap. Chats and tasks require a server connection.</p>
       @if (install.available()) {
-        <button class="install-primary" type="button" [disabled]="install.busy()" (click)="install.install()">{{ install.busy() ? 'Ожидание браузера…' : 'Установить приложение' }}</button>
+        <button class="install-primary" type="button" [disabled]="install.busy()" (click)="install.install()">{{ install.busy() ? 'Waiting for browser…' : 'Install app' }}</button>
       }
       @if (install.message()) { <p role="status">{{ install.message() }}</p> }
       <h3>Huawei Browser</h3>
-      <ol><li>Откройте меню браузера <strong>⋮ / ∷</strong>.</li><li>Выберите <strong>Добавить в → Рабочий стол</strong> или <strong>На главный экран</strong>.</li><li>Подтвердите имя <strong>AI Router</strong> и добавление.</li></ol>
-      <p class="install-note">Названия пунктов и режим открытия зависят от версии Huawei Browser и HarmonyOS / EMUI.</p>
-      <details><summary>Другой браузер</summary><p>Chrome / Edge: меню → «Установить приложение» или «Добавить на главный экран». iPhone / iPad: Safari → «Поделиться» → «На экран Домой».</p></details>
-      <a href="https://consumer.huawei.com/cn/support/content/zh-cn00448896/" target="_blank" rel="noopener noreferrer">Инструкция Huawei ↗</a>
+      <ol><li>Open your browser menu <strong>⋮ / ∷</strong>.</li><li>Select <strong>Add to → Desktop</strong> or <strong>Add to home screen</strong>.</li><li>Confirm the name <strong>AI Router</strong> and add the app.</li></ol>
+      <p class="install-note">Menu labels and opening behavior vary by Huawei Browser and HarmonyOS / EMUI version.</p>
+      <details><summary>Another browser</summary><p>Chrome / Edge: menu → Install app or Add to home screen. iPhone / iPad: Safari → Share → Add to Home Screen.</p></details>
+      <a href="https://consumer.huawei.com/cn/support/content/zh-cn00448896/" target="_blank" rel="noopener noreferrer">Huawei instructions ↗</a>
     </dialog>
   `,
   styles: [`

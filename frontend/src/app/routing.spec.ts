@@ -41,6 +41,7 @@ describe('Workspace routing', () => {
       ['/models', 'app-models-page', 'providers'],
       ['/runners', 'app-runners-page', 'runners'],
       ['/sites', 'app-sites-page', 'sites'],
+      ['/github', 'app-github-page', 'github'],
       ['/notifications', 'app-notifications-page', 'notifications'],
       ['/users', 'app-users-page', 'users'],
     ]) {

@@ -42,6 +42,22 @@ describe('Composer action', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves typed text during dictation and blocks Enter until dictation finishes', async () => {
+    const { fixture, vm, button } = setup();
+    const component = fixture.componentInstance;
+    vm.chatService.draft = 'Задача:';
+    spyOn(component.voice, 'start').and.callFake(async commit => { commit('проверь сборку'); });
+    component.toggleVoice();
+    expect(vm.chatService.draft).toBe('Задача: проверь сборку');
+    component.voice.active.set(true);
+    expect(button().disabled).toBeTrue();
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    component.composerKey(enter);
+    expect(enter.defaultPrevented).toBeTrue();
+    component.voice.active.set(false);
+    fixture.destroy();
+  });
+
   it('allows stop during upload and treats whitespace as an empty draft', () => {
     const { vm, button } = setup();
     vm.chatService.running.set(true);

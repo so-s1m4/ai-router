@@ -217,6 +217,7 @@
       >
         <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites & previews</span>
       </button>
+      <button [class.active]="vm.page() === 'github'" [attr.aria-current]="vm.page() === 'github' ? 'page' : null" (click)="vm.showPage('github')" title="GitHub Actions"><svg lucideTerminal [size]="18" aria-hidden="true"></svg><span>GitHub Actions</span></button>
       <span class="nav-group-label">Settings</span>
       <button
         [class.active]="vm.page() === 'providers'"

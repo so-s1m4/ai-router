@@ -1,9 +1,10 @@
+import { VoiceInputService } from '../core/voice-input.service';
 import { CommonModule } from '@angular/common';
 import { Component,ElementRef,inject,Input,OnDestroy,ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ModelControlsComponent } from '../shared/model-controls';
 
-import { LucideArrowUp,LucidePlus,LucideSquare } from '@lucide/angular';
+import { LucideArrowUp,LucidePlus,LucideSquare,LucideMic } from '@lucide/angular';
 import { WorkspaceStore } from '../core/workspace.store';
 @Component({
   selector: 'app-chat-composer',
@@ -13,14 +14,17 @@ import { WorkspaceStore } from '../core/workspace.store';
     CommonModule,
     FormsModule,
     LucidePlus,
+    LucideMic,
     LucideSquare,
     LucideArrowUp,
   ],
   templateUrl: './chat-composer.html',
+  providers: [VoiceInputService],
   host: { style: 'display:contents' },
 })
 export class ChatComposerComponent implements OnDestroy {
   readonly vm = inject(WorkspaceStore);
+  readonly voice = inject(VoiceInputService);
   @Input() hero = false;
   @ViewChild('textarea') set textarea(ref: ElementRef<HTMLTextAreaElement> | undefined) {
     if (this.hero) this.vm.chatViewService.heroComposerTextareaRef = ref;
@@ -43,7 +47,7 @@ export class ChatComposerComponent implements OnDestroy {
   }
   get actionDisabled(): boolean {
     const chat = this.vm.chatService;
-    if (chat.canceling()) return true;
+    if (chat.canceling() || this.voice.busy) return true;
     if (this.stopAction) return false;
     return !chat.draft.trim() || this.vm.filesService.uploading() ||
       chat.taskSubmitting() || chat.steeringSending() ||
@@ -54,11 +58,24 @@ export class ChatComposerComponent implements OnDestroy {
     if (this.stopAction) void this.vm.chatService.cancel();
     else void this.vm.chatService.send();
   }
+  toggleVoice() {
+    if (this.voice.busy) { void this.voice.stop(); return; }
+    void this.voice.start(text => {
+      const draft = this.vm.chatService.draft;
+      this.vm.chatService.draft = draft + (draft && !/\s$/.test(draft) ? ' ' : '') + text;
+      setTimeout(() => this.resize());
+    });
+  }
+  composerKey(event: KeyboardEvent) {
+    if (this.voice.busy && event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); return; }
+    this.vm.chatService.onComposerEnter(event);
+  }
   resize() {
     if (this.hero) this.vm.chatViewService.adjustHeroTextareaHeight();
     else this.vm.chatViewService.adjustTextareaHeight();
   }
   ngOnDestroy() {
+    this.voice.cancel();
     if (this.hero) this.vm.chatViewService.heroComposerTextareaRef = undefined;
     else this.vm.chatViewService.composerTextareaRef = undefined;
   }

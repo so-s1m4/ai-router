@@ -44,8 +44,8 @@ for (const configured of [false, true]) test(`app opens one window (${configured
     const local = windows.find(window => window.file), source = {sender:local.webContents,senderFrame:local.webContents.mainFrame};
     const invoke = (name,...args) => handlers.get('desktop:'+name)(source,...args);
     assert.equal((await invoke('state')).mode,'off');
-    await assert.rejects(handlers.get('desktop:save')({sender:{},senderFrame:{}},{server:'https://evil.example',mode:'full'}),/источник/);
-    await assert.rejects(handlers.get('desktop:save')({...source,senderFrame:{}},{server:'https://evil.example',mode:'full'}),/источник/);
+    await assert.rejects(handlers.get('desktop:save')({sender:{},senderFrame:{}},{server:'https://evil.example',mode:'full'}),/source/);
+    await assert.rejects(handlers.get('desktop:save')({...source,senderFrame:{}},{server:'https://evil.example',mode:'full'}),/source/);
     await invoke('save',{server:'https://router.example',mode:'off'});
     await invoke('site');
     const remote = windows.find(window => window.url);
@@ -66,7 +66,12 @@ for (const configured of [false, true]) test(`app opens one window (${configured
     assert.equal(remote.options.webPreferences.nodeIntegration,false);
     assert.equal(remote.options.webPreferences.sandbox,true);
     assert.equal(remote.options.webPreferences.contextIsolation,true);
-    assert.equal(remote.options.webPreferences.preload,undefined);
+    assert.ok(remote.options.webPreferences.preload.endsWith('voice-preload.cjs'));
+    await assert.rejects(handlers.get('desktop:state')({sender:remote.webContents,senderFrame:remote.webContents.mainFrame}),/source/);
+    remote.webContents.mainFrame.url = 'https://evil.example';
+    assert.throws(() => handlers.get('voice:start')({sender:remote.webContents,senderFrame:remote.webContents.mainFrame}),/source/);
+    remote.webContents.mainFrame.url = 'https://router.example/chats';
+    handlers.get('voice:stop')({sender:remote.webContents,senderFrame:remote.webContents.mainFrame});
     let blocked = false;
     remote.webContents.emit('will-navigate',{preventDefault:() => {blocked=true;}},'file:///etc/passwd');
     assert.equal(blocked,true); assert.deepEqual(external,[]);

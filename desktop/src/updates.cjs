@@ -13,9 +13,9 @@ function newer(candidate, current) {
 function createUpdates({ app, dialog, openExternal, fetchRelease = fetch, platform = process.platform, arch = process.arch, schedule = setInterval, cancel = clearInterval }) {
   let timer, checking = false, notified;
   const enabled = app.isPackaged && platform === 'darwin';
-  const notify = message => dialog.showMessageBox({ type: 'info', title: 'AI Router · Обновления', message });
+  const notify = message => dialog.showMessageBox({ type: 'info', title: 'AI Router · Updates', message });
   async function check(manual = false) {
-    if (!enabled) { if (manual) await notify('Проверка обновлений доступна в установленном приложении для macOS.'); return; }
+    if (!enabled) { if (manual) await notify('Update checks are available in the installed macOS app.'); return; }
     if (checking) return;
     checking = true;
     try {
@@ -36,16 +36,16 @@ function createUpdates({ app, dialog, openExternal, fetchRelease = fetch, platfo
           available = { number, url }; break;
         }
       }
-      if (!available) { if (manual) await notify('Установлена последняя доступная версия.'); return; }
+      if (!available) { if (manual) await notify('You are running the latest version.'); return; }
       if (!manual && notified === available.number) return;
       notified = available.number;
-      const result = await dialog.showMessageBox({ type: 'info', title: 'AI Router · Обновления',
-        message: `Доступна версия ${available.number}`,
-        detail: 'Скачайте DMG, откройте его и замените AI Router в папке «Программы». Перед заменой завершите приложение через Cmd+Q.',
-        buttons: ['Скачать DMG', 'Позже'], defaultId: 1, cancelId: 1 });
+      const result = await dialog.showMessageBox({ type: 'info', title: 'AI Router · Updates',
+        message: `Version available: ${available.number}`,
+        detail: 'Download and open the DMG, then replace AI Router in Applications. Quit the app with Cmd+Q before replacing it.',
+        buttons: ['Download DMG', 'Later'], defaultId: 1, cancelId: 1 });
       if (result.response === 0) await openExternal(available.url);
     } catch {
-      if (manual) await notify('Не удалось проверить обновления. Проверьте интернет и повторите попытку.');
+      if (manual) await notify('Unable to check for updates. Check your internet connection and try again.');
     } finally { checking = false; }
   }
   return {

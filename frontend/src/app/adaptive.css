@@ -286,3 +286,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
   .sidebar.collapsed { width: 0; flex-basis: 0; }
 }
 @media (min-width: 821px) and (max-width: 1100px) { .sidebar { width: 190px; flex-basis: 190px; } }
+
+.pill-input-wrap { position: relative; display: block; padding-right: 40px !important; }
+.voice-button { position: absolute; right: 0; top: 2px; width: 36px; height: 40px; }
+.voice-button.listening { color: #ff7c86; background: #ff7c8618; }
+.voice-preview, .voice-error, .voice-hint { display: block; font-size: 12px; line-height: 1.5; padding: 4px 0; overflow-wrap: anywhere; }
+.voice-preview, .voice-hint { color: var(--text-secondary); }
+.voice-error { color: #ff7c86; }

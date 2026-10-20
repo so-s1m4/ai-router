@@ -20,3 +20,6 @@ download-test.txt
 desktop/runtime/
 desktop/release/
 desktop/release-*/
+.playwright-mcp/
+/IMG_3749.png
+/ccc-2026.zip

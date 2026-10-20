@@ -32,12 +32,12 @@ export class CccAutoPageComponent implements OnInit {
   useGoogleFlex(c:CccCandidate){c.openRouterRouting={only:['google-ai-studio/flex'],allowFallbacks:false};}
   addCandidate(index:number){const row=this.settings.levels[index];if(row.candidates.length>=8)return;row.candidates.push({id:'candidate-'+Date.now().toString(36),enabled:true,provider:'codex',model:'gpt-6.1-sol',reasoning:'high',delaySeconds:30,mode:'python',fast:true});}
   removeCandidate(index:number,id:string){const row=this.settings.levels[index];if(row.candidates.length>1)row.candidates=row.candidates.filter(c=>c.id!==id);}
-  copyCandidates(index:number){const candidates=this.settings.levels[index].candidates;for(const row of this.settings.levels)row.candidates=structuredClone(candidates);this.notice='Состав участников скопирован на все диапазоны. Нажмите «Сохранить».';}
+  copyCandidates(index:number){const candidates=this.settings.levels[index].candidates;for(const row of this.settings.levels)row.candidates=structuredClone(candidates);this.notice='Candidates copied to all level ranges. Click Save to apply.';}
   splitLast(){const last=this.settings.levels.at(-1)!;if(last.from>=100||this.settings.levels.length>=20)return;last.to=last.from;this.settings.levels.push({from:last.from+1,to:null,candidates:structuredClone(last.candidates)});}
   removeLast(){if(this.settings.levels.length<=1)return;this.settings.levels.pop();this.settings.levels.at(-1)!.to=null;}
   normalizeRanges(){let from=1;for(const rule of this.settings.levels){rule.from=from;from=(rule.to??100)+1;}}
-  reset(){this.settings=defaultCccAutoSettings();this.notice='Стандартные настройки восстановлены в форме. Нажмите «Сохранить».';this.error='';}
+  reset(){this.settings=defaultCccAutoSettings();this.notice='Defaults restored in the form. Click Save to apply.';this.error='';}
   exportJson(){this.jsonDraft=JSON.stringify(this.settings,null,2);}
-  async importJson(){try{this.settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings/validate',{method:'POST',body:JSON.stringify(JSON.parse(this.jsonDraft))});this.notice='JSON загружен в форму. Проверка выполнится при сохранении.';this.error='';}catch(error){this.error=error instanceof SyntaxError?'Некорректный JSON':(error as Error).message;}}
-  async save(){this.saving=true;this.error='';this.notice='';try{this.settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings',{method:'PUT',body:JSON.stringify(this.settings)});this.notice='Сохранено. Новые задачи CCC-Auto используют эти настройки.';}catch(error){this.error=(error as Error).message;}finally{this.saving=false;}}
+  async importJson(){try{this.settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings/validate',{method:'POST',body:JSON.stringify(JSON.parse(this.jsonDraft))});this.notice='JSON imported into the form. Settings will be checked when you save.';this.error='';}catch(error){this.error=error instanceof SyntaxError?'Invalid JSON':(error as Error).message;}}
+  async save(){this.saving=true;this.error='';this.notice='';try{this.settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings',{method:'PUT',body:JSON.stringify(this.settings)});this.notice='Saved. New CCC-Auto tasks will use these settings.';}catch(error){this.error=(error as Error).message;}finally{this.saving=false;}}
 }
