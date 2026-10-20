@@ -270,14 +270,14 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
   .sidebar { top: var(--app-top, 0px); height: var(--app-height, 100dvh); }
 }
 
-/* Destination labels and consistent groups on desktop and mobile. */
+/* Group labels with icon-only desktop navigation. */
 .nav-group-label { display: block; padding: 12px 10px 6px; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 @media (min-width: 821px) {
-  .app-rail { width: 184px; flex: 0 0 184px; padding: 12px 8px; gap: 8px; overflow-y: auto; }
-  .rail-group { align-items: stretch; gap: 2px; }
-  .rail-btn { width: 100%; min-height: 36px; height: auto; padding: 9px 10px; justify-content: flex-start; gap: 10px; text-align: left; font-size: 12px; line-height: 1.4; }
-  .rail-btn > span { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal; }
-  .app-rail .nav-group-label { display: block; padding: 8px 10px 6px; font-size: 10px; }
+  .app-rail { width: 104px; flex: 0 0 104px; padding: 12px 8px; gap: 8px; overflow-y: auto; }
+  .rail-group { align-items: center; gap: 2px; }
+  .rail-btn { width: 36px; min-height: 36px; height: 36px; padding: 9px; justify-content: center; }
+  .rail-btn > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .app-rail .nav-group-label { display: block; padding: 8px 0 6px; font-size: 10px; text-align: center; }
   .rail-btn svg { flex-shrink: 0; width: 17px; height: 17px; }
   .rail-btn.active { color: var(--text-main); background: var(--bg-surface-active); font-weight: 600; }
   .rail-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
