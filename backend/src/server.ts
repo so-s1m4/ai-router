@@ -225,6 +225,20 @@ app.post('/api/runners/:id/management/action',requireAuth,async(req,res)=>{
  try{const result=await socket.timeout(120000).emitWithAck('manage:action',parsed.data);res.status(result?.ok?200:400).json(result);}catch{res.status(504).json({error:'Runner didn’t answer'});}
 });
 app.get('/api/projects',requireAuth,async(req,res)=>res.json(await listProjects(req.session.userId!)));
+// Upload workspaces belong to the requester; shared tokens only supply execution.
+app.post('/api/projects/attachments',requireAuth,async(req,res)=>{
+ const userId=req.session.userId!;
+ const accounts=await accessibleAccounts(userId);
+ const candidates=accounts.filter(a=>a.runnerId&&runnerSocket(a.runnerId)&&(!a.grant||a.grant.usedTokens<a.grant.budget&&accessibleModels(a).length>0));
+ candidates.sort((a,b)=>Number(!!a.grant)-Number(!!b.grant));
+ let target:AccessibleAccount|undefined;
+ for(const account of candidates)if(await ownsRunner(account.ownerId,account.runnerId!)){target=account;break;}
+ if(!target)return res.status(409).json({error:'No online connection available for file uploads. Connect a runner or accept shared model access.'});
+ // No members: neither the token owner nor other users gain project access.
+ const project=await createProject(userId,'Chat files',target.runnerId!,true);
+ const updated=await updateSharedProject(userId,project.id,{runnerOwnerId:target.ownerId});
+ res.status(201).json(updated);
+});
 app.post('/api/projects',requireAuth,async(req,res)=>{
  const p=z.object({name:z.string().trim().min(1).max(80),runnerId:z.string().uuid(),shared:z.boolean().default(false),members:z.array(z.string().trim().min(3).max(40)).max(30).default([])}).safeParse(req.body);
  if(!p.success)return res.status(400).json({error:'Specify a project name and runner'});

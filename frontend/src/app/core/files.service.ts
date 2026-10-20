@@ -9,7 +9,6 @@ import { FileLibraryService } from './file-library.service';
 import { ChatSession, FileGroup, Project, sortSessions } from './models';
 import { NavigationService } from './navigation.service';
 import { ProjectsService } from './projects.service';
-import { RunnersService } from './runners.service';
 import { SessionsService } from './sessions.service';
 import { TaskFilesService } from './task-files.service';
 @Injectable({ providedIn: 'root' })
@@ -22,7 +21,6 @@ export class FilesService {
   private readonly libraryService = inject(FileLibraryService);
   private readonly sessionService = inject(SessionsService);
   private readonly projectService = inject(ProjectsService);
-  private readonly runnerService = inject(RunnersService);
   private readonly clipboardService = inject(ClipboardService);
   private readonly taskFilesService = inject(TaskFilesService);
   private readonly chatViewService = inject(ChatViewService);
@@ -349,13 +347,9 @@ export class FilesService {
     }
 
     if (!projectId) {
-      const activeRunner = this.runnerService.runners().find((r) => !r.revokedAt);
-      if (!activeRunner) {
-        throw new Error('Connect a runner to upload files');
-      }
-      const newProj = await this.http.request<Project>('/projects', {
+      const newProj = await this.http.request<Project>('/projects/attachments', {
         method: 'POST',
-        body: JSON.stringify({ name: 'Main project', runnerId: activeRunner.id }),
+        body: JSON.stringify({}),
       });
       this.projectService.projects.update((list) => [newProj, ...list]);
       projectId = newProj.id;

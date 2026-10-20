@@ -24,10 +24,23 @@ describe('Floating GitHub run', () => {
     void widget.refresh(); flushMicrotasks(); fixture.detectChanges();
     expect(widget.run()?.id).toBe(2);
     expect(fixture.nativeElement.textContent).toContain('Newest active');
-    expect(fixture.nativeElement.textContent).toContain('Compile');
-    fixture.nativeElement.querySelector('button').click(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain('Compile');
+    fixture.nativeElement.querySelector('.summary-toggle').click(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Compile');
     expect(fixture.nativeElement.querySelector('.run-title').target).toBe('_blank');
+    fixture.destroy();
+  }));
+  it('keeps a dismissed run hidden on refresh and shows a new run collapsed', fakeAsync(() => {
+    const { fixture, widget, state } = setup();
+    fixture.nativeElement.querySelector('[aria-label="Dismiss active run"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('aside')).toBeNull();
+    tick(30000); flushMicrotasks(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('aside')).toBeNull();
+    state.runs = [{ ...run, id: 2 }];
+    tick(30000); flushMicrotasks(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('aside')).not.toBeNull();
+    expect(widget.collapsed()).toBeTrue();
     fixture.destroy();
   }));
   it('switches to another active run then hides when all runs finish', fakeAsync(() => {

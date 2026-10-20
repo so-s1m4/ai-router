@@ -30,7 +30,7 @@ export async function steerJob(taskId:string,text:string){
 
 export async function dispatch(runnerId:string,payload:Parameters<typeof dispatchBase>[1],signal:AbortSignal,onEvent:(e:RunnerEvent)=>void):Promise<string> {
  const {macUserId,...job}=payload;
- const lease=macUserId && payload.mode==='task' && !payload.sharedExecution && !payload.cccAuto && ['codex','openrouter','cerebras'].includes(payload.provider) ? macLease(macUserId,signal) : null;
+ const lease=macUserId && payload.mode==='task' && !payload.cccAuto && ['codex','openrouter','cerebras'].includes(payload.provider) ? macLease(macUserId,signal) : null;
  if(lease){
   job.macAccess=lease.access;
   job.prompt+='\n\nThe user has connected their Mac. For work on their local files or terminal use mac_run_command on the connected Mac. For Mac app interaction use mac_computer when available: inspect the target, act, then verify. If inspect is truncated, inspect a subtree by element_id; never bring a window forward to find hidden controls. If mac_computer is missing, check /Applications/AI Router.app/Contents/Resources/runner/computer-use through mac_run_command and pass the same JSON operations on stdin when locally enabled. Keep work in the background; never activate apps or fall back to global input. Server tools run on a different machine. Do not substitute server files when Mac access fails.';

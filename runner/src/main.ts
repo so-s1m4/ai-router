@@ -41,7 +41,7 @@ async function start(){
   const parsed=jobSchema.safeParse(raw);
   if(!parsed.success)return ack?.({ok:false,error:'Invalid job'});
   const job=parsed.data as Job;
-  if(process.env.DESKTOP_ACCESS_ROOT && job.mode==='task')job.prompt+='\n\nLocal Mac access granted by the user: '+JSON.stringify(process.env.DESKTOP_ACCESS_ROOT)+'. Work with the user’s existing files there when requested. Access mode: '+process.env.DESKTOP_ACCESS_MODE+'. The working directory below is a separate per-chat workspace for generated files.';
+  if(process.env.DESKTOP_ACCESS_ROOT && job.mode==='task' && !job.sharedExecution && !job.macAccess)job.prompt+='\n\nLocal Mac access granted by the user: '+JSON.stringify(process.env.DESKTOP_ACCESS_ROOT)+'. Work with the user’s existing files there when requested. Access mode: '+process.env.DESKTOP_ACCESS_MODE+'. The working directory below is a separate per-chat workspace for generated files.';
   if(job.cccAuto?.levels.some(r=>r.candidates.some(c=>c.enabled&&(!c.accountId||accounts.get(c.accountId)?.provider!==c.provider))))return ack?.({ok:false,error:'CCC candidate connection is not assigned to this runner'});
   if(active.has(job.jobId))return ack?.({ok:false,error:'Duplicate job'});
   if(busySessions.has(job.sessionId))return ack?.({ok:false,error:'This chat is still running or stopping its previous task'});

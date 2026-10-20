@@ -22,7 +22,8 @@ export class GithubRunWidgetComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   readonly run = signal<Run | null>(null);
   readonly jobs = signal<Job[]>([]);
-  readonly collapsed = signal(false);
+  readonly collapsed = signal(true);
+  readonly dismissedRunId = signal<number | null>(null);
   readonly stale = signal(false);
   private timer?: ReturnType<typeof setInterval>;
   private disposed = false;
@@ -47,7 +48,7 @@ export class GithubRunWidgetComponent implements OnInit, OnDestroy {
       if (this.disposed) return;
       const latest = data.runs.filter(run => run.status !== 'completed')
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id - a.id)[0] ?? null;
-      if (this.run()?.id !== latest?.id) { this.jobs.set([]); this.collapsed.set(false); }
+      if (this.run()?.id !== latest?.id) { this.jobs.set([]); this.collapsed.set(true); }
       this.run.set(latest);
       this.stale.set(false);
       if (!latest) return;
