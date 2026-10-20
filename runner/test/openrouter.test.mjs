@@ -79,3 +79,23 @@ test('large tool output retains beginning, end and reasoning tool history', asyn
     assert.equal(await executeOpenRouter({...job,mode:'task'},dir,dir,new AbortController().signal,()=>{}),'Done');
   }finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
 });
+
+test('Mac computer discovery and screenshots reach the model as images',async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'openrouter-mac-'));const original=globalThis.fetch;let calls=0;
+  globalThis.fetch=async(url,options)=>{
+    if(url.endsWith('/key'))return Response.json({data:{}});
+    const body=JSON.parse(options.body);
+    if(url==='https://mac.test/mcp') {
+      assert.equal(options.headers.Authorization,'Bearer test-lease');
+      if(body.method==='tools/list')return Response.json({result:{tools:[{name:'mac_computer',description:'Mac control',inputSchema:{type:'object'}}]}});
+      assert.equal(body.params.name,'mac_computer');
+      return Response.json({result:{content:[{type:'text',text:'{"width":1}'},{type:'image',mimeType:'image/jpeg',data:'aGVsbG8='}]}});
+    }
+    if(++calls===1){assert.ok(body.tools.some(t=>t.function.name==='mac_computer'));return Response.json({choices:[{message:{role:'assistant',content:null,tool_calls:[{id:'screen',type:'function',function:{name:'mac_computer',arguments:JSON.stringify({operation:'screenshot',pid:123,bundle_id:'test.app',window_id:42})}}]}}]});}
+    assert.equal(body.messages.at(-2).role,'tool');assert.equal(body.messages.at(-2).tool_call_id,'screen');
+    assert.equal(body.messages.at(-1).content[1].image_url.url,'data:image/jpeg;base64,aGVsbG8=');
+    return Response.json({choices:[{message:{content:'Verified'},finish_reason:'stop'}]});
+  };
+  try{await saveOpenRouterKey(dir,'sk-or-test-12345678901234567890');assert.equal(await executeOpenRouter({...job,mode:'task',macAccess:{url:'https://mac.test/mcp',token:'test-lease'}},dir,dir,new AbortController().signal,()=>{}),'Verified');}
+  finally{globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
+});

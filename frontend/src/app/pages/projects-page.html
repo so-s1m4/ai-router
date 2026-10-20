@@ -1,9 +1,8 @@
-<div class="page-content">
-  <div class="section-hero">
+<div class="page-content projects-page">
+  <div class="projects-heading">
     <div>
-      <span class="section-tag">WORK FOLDERS</span>
-      <h2>Your projects</h2>
-      <p>Tasks, files and chats - all in one place.</p>
+      <h2>Your projects <span class="projects-count">{{ vm.projectService.projects().length }}</span></h2>
+      <p>Pick up where you left off.</p>
     </div>
   </div>
 
@@ -38,68 +37,94 @@
     </div>
   }
 
-  <div class="cards-grid">
-    @for (project of vm.projectService.projects(); track project.id) {
-      <div class="card project-card">
-        <div class="project-header">
-          <div class="project-avatar">
-            <svg lucideFolder [size]="22"></svg>
-          </div>
-          <span
-            class="badge"
-            [class.badge-ready]="vm.chatsFor(project.id).length > 0"
-            [class.badge-neutral]="vm.chatsFor(project.id).length === 0"
-            >{{ vm.formatChatsCount(vm.chatsFor(project.id).length) }}</span
-          >
-        </div>
-        <h3>{{ project.name }}</h3>
-        @if (project.shared) {
-          <span class="badge badge-ready">Shared project</span>
-        }
-        <div class="project-meta">
-          <svg lucideServer [size]="14"></svg>
-          <span>{{ vm.runnerService.projectRunner(project) }}</span>
-        </div>
-        <div class="card-actions">
-          <button class="btn btn-outline btn-sm" (click)="vm.selectProject(project.id)">
-            Open
-          </button>
-          @if (project.shared) {
-            <button
-              class="btn btn-outline btn-sm"
-              (click)="vm.projectService.showProjectMembers(project)"
-            >
-              Members
+  @if (vm.projectService.projects().length) {
+    <div class="projects-toolbar">
+      <label class="projects-search">
+        <svg lucideSearch [size]="16" aria-hidden="true"></svg>
+        <input type="search" placeholder="Search projects…" aria-label="Search projects"
+          [value]="query()" (input)="query.set($any($event.target).value)" />
+      </label>
+      <label class="projects-sort">
+        <span>Sort by</span>
+        <select aria-label="Sort projects" [value]="sort()" (change)="sort.set($any($event.target).value)">
+          <option value="recent">Recent activity</option>
+          <option value="name">Name</option>
+        </select>
+      </label>
+    </div>
+    <div class="projects-grid">
+      @for (project of projects(); track project.id) {
+        @let chats = vm.chatsFor(project.id);
+        <article class="project-tile">
+          <div class="project-tile-heading">
+            <span class="project-tile-icon"><svg lucideFolder [size]="20" aria-hidden="true"></svg></span>
+            <div class="project-tile-name">
+              <h3><button type="button" (click)="vm.selectProject(project.id)" [title]="project.name">{{ project.name }}</button></h3>
+              <span>{{ vm.formatChatsCount(chats.length) }}</span>
+            </div>
+            @if (project.shared) { <span class="project-shared">Shared</span> }
+            <button type="button" class="project-open" (click)="vm.selectProject(project.id)"
+              [attr.aria-label]="'Open ' + project.name" title="Open project">
+              <svg lucideArrowUpRight [size]="18" aria-hidden="true"></svg>
             </button>
-          }
-          <button class="btn btn-primary btn-sm" (click)="vm.newSessionFor(project.id)">
-            <svg lucidePlus [size]="14"></svg>
-            <span>New chat</span>
-          </button>
-        </div>
-        @if (vm.chatsFor(project.id).length) {
-          <div class="project-chats-list">
-            <details>
-              <summary class="project-chats-title">
-                Project chats · {{ vm.chatsFor(project.id).length }}
-              </summary>
-              @for (s of vm.chatsFor(project.id); track s.id) {
-                <div class="chat-list-row">
-<button class="project-chat-item" (click)="vm.chatService.openSession(s.id)">
-                  <svg lucideMessageSquare [size]="14"></svg>
-                  <span class="truncate">{{ s.title }}</span>
-                </button>
-<button class="chat-delete-btn" (click)="vm.chatService.deleteSession(s.id)"
-  [disabled]="vm.chatService.deletingSessions().has(s.id)"
-  [attr.aria-label]="'Delete chat: ' + s.title" title="Delete chat">
-  <svg lucideTrash2 [size]="15"></svg>
-</button>
-</div>
-              }
-            </details>
           </div>
-        }
-      </div>
-    }
-  </div>
+          <div class="project-recent">
+            @for (chat of chats.slice(0, 3); track chat.id) {
+              <div class="chat-list-row">
+<button type="button" class="project-recent-chat" (click)="vm.chatService.openSession(chat.id)" [title]="chat.title">
+                <svg lucideMessageSquare [size]="14" aria-hidden="true"></svg>
+                <span>{{ chat.title || 'Untitled chat' }}</span>
+              </button>
+                <button type="button" class="chat-delete-btn" (click)="vm.chatService.deleteSession(chat.id)"
+                  [disabled]="vm.chatService.deletingSessions().has(chat.id)"
+                  [attr.aria-label]="'Delete chat: ' + chat.title" title="Delete chat">
+                  <svg lucideTrash2 [size]="15"></svg>
+                </button>
+              </div>
+            } @empty {
+              <div class="project-no-chats">A fresh space for your next idea.</div>
+            }
+          </div>
+          <footer class="project-tile-footer">
+            <span class="project-runner" [title]="vm.runnerService.projectRunner(project)">
+              <svg lucideServer [size]="13" aria-hidden="true"></svg>
+              <span>{{ vm.runnerService.projectRunner(project) }}</span>
+            </span>
+            @if (project.shared) {
+              <button type="button" class="project-text-action" (click)="vm.projectService.showProjectMembers(project)">Members</button>
+            }
+            <button type="button" class="project-text-action project-new-chat" (click)="vm.newSessionFor(project.id)">
+              <svg lucidePlus [size]="14" aria-hidden="true"></svg> New chat
+            </button>
+          </footer>
+          @if (chats.length > 3) {
+            <details class="project-more-chats">
+              <summary>Show {{ chats.length - 3 }} more chats</summary>
+              <div class="project-more-list">
+                @for (chat of chats.slice(3); track chat.id) {
+                  <div class="chat-list-row">
+<button type="button" class="project-recent-chat" (click)="vm.chatService.openSession(chat.id)" [title]="chat.title">
+                    <svg lucideMessageSquare [size]="14" aria-hidden="true"></svg>
+                    <span>{{ chat.title || 'Untitled chat' }}</span>
+                  </button>
+                <button type="button" class="chat-delete-btn" (click)="vm.chatService.deleteSession(chat.id)"
+                  [disabled]="vm.chatService.deletingSessions().has(chat.id)"
+                  [attr.aria-label]="'Delete chat: ' + chat.title" title="Delete chat">
+                  <svg lucideTrash2 [size]="15"></svg>
+                </button>
+              </div>
+                }
+              </div>
+            </details>
+          }
+        </article>
+      } @empty {
+        <div class="projects-no-results">
+          <svg lucideSearch [size]="24" aria-hidden="true"></svg>
+          <h3>No projects found</h3>
+          <p>Try another name or <button type="button" (click)="query.set('')">clear search</button>.</p>
+        </div>
+      }
+    </div>
+  }
 </div>

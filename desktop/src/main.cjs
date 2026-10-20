@@ -8,9 +8,10 @@ const { killTree } = require('./process.cjs');
 const { createUpdates } = require('./updates.cjs');
 const { createVoice, allowedVoiceSender } = require('./voice.cjs');
 let voice, voiceContents;
+const { computerPermissions } = require('./permissions.cjs');
 let updates;
 let settingsWindow, siteWindow, runner, quitting = false;
-let config = { server: '', mode: 'off', folder: '' }, status = 'Access is off', runnerError = '';
+let config = { server: '', mode: 'off', folder: '', computerUse: false }, status = 'Access is off', runnerError = '';
 let configFile, data, temporary, runtime;
 const state = () => ({ ...config, status, runnerError });
 function changed(message) { if (message) status = message; settingsWindow?.webContents.send('desktop:changed', state()); }
@@ -51,6 +52,7 @@ async function disable() { await stopProcesses(); config.mode = 'off'; await per
 async function environment() {
   return {PATH:'/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin',LANG:process.env.LANG || 'en_US.UTF-8',HOME:app.getPath('home'),TMPDIR:temporary,
     MAC_BRIDGE_MODULE:path.join(runtime,'node_modules/socket.io-client'),ELECTRON_RUN_AS_NODE:'1',NODE_ENV:'production',RUNNER_DATA_DIR:data,ROUTER_SERVER_URL:config.server,
+    MAC_COMPUTER_HELPER_ROOT:runtime,DESKTOP_COMPUTER_USE:config.computerUse && config.mode === 'full' ? '1' : '0',
     DESKTOP_ACCESS_MODE:config.mode,DESKTOP_ACCESS_ROOT:config.mode === 'folder' ? config.folder : app.getPath('home')};
 }
 async function launch(command,args,env) {
@@ -112,7 +114,7 @@ app.whenReady().then(async () => {
   runtime = app.isPackaged ? path.join(process.resourcesPath,'runner') : path.join(__dirname,'../runtime/runner');
   await fs.mkdir(temporary,{recursive:true,mode:0o700});
   data = await fs.realpath(data); temporary = await fs.realpath(temporary); runtime = await fs.realpath(runtime).catch(() => runtime);
-  try { const saved = JSON.parse(await fs.readFile(configFile,'utf8')); config = {server:serverUrl(saved.server),mode:['off','folder','full'].includes(saved.mode)?saved.mode:'off',folder:typeof saved.folder === 'string'?saved.folder:''}; } catch {}
+  try { const saved = JSON.parse(await fs.readFile(configFile,'utf8')); config = {server:serverUrl(saved.server),mode:['off','folder','full'].includes(saved.mode)?saved.mode:'off',folder:typeof saved.folder === 'string'?saved.folder:'',computerUse:saved.computerUse === true && saved.mode === 'full'}; } catch {}
   const handle = (channel,fn) => ipcMain.handle(channel,async (event,...args) => {
     if (event.sender !== settingsWindow?.webContents || event.senderFrame !== settingsWindow?.webContents.mainFrame) throw new Error('Invalid request source.');
     return fn(...args);
@@ -125,10 +127,14 @@ app.whenReady().then(async () => {
     if (options.mode === 'folder' && (folder === '/' || !(await fs.stat(folder)).isDirectory())) throw new Error('Choose a specific folder.');
     await stopProcesses();
     if (config.server && config.server !== server) { await fs.rm(path.join(data,'device.json'),{force:true}); siteWindow?.close(); }
-    config = {server,mode:options.mode,folder}; await persist(); changed('Settings saved. Click Connect Mac.');
+    config = {server,mode:options.mode,folder,computerUse:options.computerUse === true && options.mode === 'full'}; await persist(); changed('Settings saved. Click Connect Mac.');
   });
   handle('desktop:folder',async () => { const result = await dialog.showOpenDialog(settingsWindow,{properties:['openDirectory'],title:'AI Router folder'}); return result.canceled ? null : fs.realpath(result.filePaths[0]); });
   handle('desktop:start',start); handle('desktop:stop',disable); handle('desktop:site',openSite);
+  handle('desktop:computer-permissions', async (target = 'accessibility') => {
+    if (config.mode !== 'full' || !config.computerUse) throw new Error('Save extended access with app control enabled first.');
+    return computerPermissions(target, {runtime, openExternal: url => shell.openExternal(url)});
+  });
   handle('desktop:disk',() => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'));
   updates = createUpdates({ app, dialog, openExternal: url => shell.openExternal(url) });
   Menu.setApplicationMenu(Menu.buildFromTemplate([

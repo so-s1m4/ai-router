@@ -393,7 +393,7 @@ app.get('/api/providers',requireAuth,async(req,res)=>{const userId=req.session.u
 app.post('/api/providers/refresh',requireAuth,async(req,res)=>{const userId=req.session.userId!;const accounts=await listAccounts(userId);const runnerIds=new Set(accounts.map(a=>a.runnerId).filter((id):id is string=>Boolean(id)));let requested=0;for(const runnerId of runnerIds){if(runnerSocket(runnerId)){await pushRunnerAccounts(userId,runnerId);requested++;}}res.json({requested});});
 app.get('/api/health',(_req,res)=>res.json({ok:true,revision:process.env.APP_REVISION||'local'}));
 
-const http=createServer(app),io=new Server(http,{path:'/socket.io',cors:{origin:false}});io.engine.use(sessionMiddleware);
+const http=createServer(app),io=new Server(http,{maxHttpBufferSize:4_000_000,path:'/socket.io',cors:{origin:false}});io.engine.use(sessionMiddleware);
 attachMacBridge(io.of('/mac'));
 const runnerNs=io.of('/runner');
 runnerNs.use(async(socket,next)=>{const {runnerId,secret}=socket.handshake.auth||{};if(typeof runnerId!=='string'||typeof secret!=='string')return next(new Error('unauthorized'));const record=await verifyRunner(runnerId,secret);if(!record)return next(new Error('unauthorized'));socket.data.runnerId=record.id;socket.data.userId=record.userId;next();});

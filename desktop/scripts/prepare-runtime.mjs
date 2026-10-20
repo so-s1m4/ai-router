@@ -16,3 +16,13 @@ if (process.platform === 'darwin') {
     execFileSync('xcrun', ['swiftc', '-swift-version', '5', '-O', '-target', target, path.join(desktop,'src/voice.swift'), '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist', '-Xlinker', path.join(desktop,'src/voice-info.plist'), '-o', path.join(speech,'speech-' + arch)], { stdio: 'inherit' });
   }
 }
+
+// Universal helper: the same runtime is packaged for arm64 and x64.
+if (process.platform === 'darwin') {
+  const source = path.join(desktop, 'native/ComputerUse.swift');
+  for (const arch of ['arm64','x86_64']) {
+    execFileSync('xcrun', ['swiftc','-parse-as-library','-O','-target',arch+'-apple-macos14.0',source,'-o',path.join(runtime,'computer-use-'+arch)], {stdio:'inherit'});
+  }
+  execFileSync('xcrun', ['lipo','-create',path.join(runtime,'computer-use-arm64'),path.join(runtime,'computer-use-x86_64'),'-output',path.join(runtime,'computer-use')], {stdio:'inherit'});
+  await Promise.all(['arm64','x86_64'].map(arch => rm(path.join(runtime,'computer-use-'+arch))));
+}
