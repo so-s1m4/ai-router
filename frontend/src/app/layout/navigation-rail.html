@@ -8,7 +8,7 @@
       (click)="vm.showPage('chat')"
       title="Chats"
     >
-      <svg lucideMessageSquare [size]="18" aria-hidden="true"></svg><span>Chats</span>
+      <svg lucideMessageSquare [size]="24" aria-hidden="true"></svg><span>Chats</span>
     </button>
     <button
       class="rail-btn"
@@ -17,7 +17,7 @@
       (click)="vm.showPage('projects')"
       title="Projects"
     >
-      <svg lucideFolder [size]="18" aria-hidden="true"></svg><span>Projects</span>
+      <svg lucideFolder [size]="24" aria-hidden="true"></svg><span>Projects</span>
     </button>
     <button
       class="rail-btn"
@@ -26,7 +26,7 @@
       (click)="vm.showPage('operations')"
       title="Usage"
     >
-      <svg lucideChartColumn [size]="18" aria-hidden="true"></svg><span>Usage</span>
+      <svg lucideChartColumn [size]="24" aria-hidden="true"></svg><span>Usage</span>
     </button>
     <button
       class="rail-btn"
@@ -35,7 +35,7 @@
       (click)="vm.showPage('files')"
       title="Files"
     >
-      <svg lucideFile [size]="18" aria-hidden="true"></svg><span>Files</span>
+      <svg lucideFile [size]="24" aria-hidden="true"></svg><span>Files</span>
     </button>
     <button
       class="rail-btn"
@@ -44,13 +44,13 @@
       (click)="vm.showPage('sites')"
       title="Websites & previews"
     >
-      <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites</span>
+      <svg lucideGlobe2 [size]="24" aria-hidden="true"></svg><span>Websites</span>
     </button>
   </div>
   <div class="rail-group">
     <span class="nav-group-label">Automation</span>
-    <button class="rail-btn" [class.active]="vm.page() === 'github'" [attr.aria-current]="vm.page() === 'github' ? 'page' : null" (click)="vm.showPage('github')" title="GitHub Actions"><svg lucideGitBranch [size]="18" aria-hidden="true"></svg><span>GitHub Actions</span></button>
-    <button class="rail-btn" [class.active]="vm.page() === 'cccAuto'" [attr.aria-current]="vm.page() === 'cccAuto' ? 'page' : null" (click)="vm.showPage('cccAuto')" title="CCC-Auto"><svg lucideSettings2 [size]="18"></svg><span>CCC-Auto</span></button>
+    <button class="rail-btn" [class.active]="vm.page() === 'github'" [attr.aria-current]="vm.page() === 'github' ? 'page' : null" (click)="vm.showPage('github')" title="GitHub Actions"><svg lucideGitBranch [size]="24" aria-hidden="true"></svg><span>GitHub Actions</span></button>
+    <button class="rail-btn" [class.active]="vm.page() === 'cccAuto'" [attr.aria-current]="vm.page() === 'cccAuto' ? 'page' : null" (click)="vm.showPage('cccAuto')" title="CCC-Auto"><svg lucideSettings2 [size]="24"></svg><span>CCC-Auto</span></button>
   </div>
   <div class="rail-group">
     <span class="nav-group-label">Settings</span>
@@ -61,7 +61,7 @@
       (click)="vm.showPage('providers')"
       title="Models"
     >
-      <svg lucideBot [size]="18" aria-hidden="true"></svg><span>Models</span>
+      <svg lucideBot [size]="24" aria-hidden="true"></svg><span>Models</span>
     </button>
     <button
       class="rail-btn"
@@ -70,7 +70,7 @@
       (click)="vm.showPage('connections')"
       title="Accounts & connections"
     >
-      <svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Connections</span>
+      <svg lucidePlugZap [size]="24" aria-hidden="true"></svg><span>Connections</span>
     </button>
     <button
       class="rail-btn"
@@ -79,7 +79,7 @@
       (click)="vm.showPage('runners')"
       title="Runners"
     >
-      <svg lucideServer [size]="18" aria-hidden="true"></svg><span>Runners</span>
+      <svg lucideServer [size]="24" aria-hidden="true"></svg><span>Runners</span>
     </button>
     <button
       class="rail-btn"
@@ -88,7 +88,7 @@
       (click)="vm.showPage('notifications')"
       title="Notifications & Telegram"
     >
-      <svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications</span>
+      <svg lucideBell [size]="24" aria-hidden="true"></svg><span>Notifications</span>
     </button>
   </div>
   @if (vm.isOwner()) {
@@ -99,7 +99,7 @@
         (click)="vm.showPage('users')"
         title="Users"
       >
-        <svg lucideUsers [size]="18" aria-hidden="true"></svg><span>Users</span>
+        <svg lucideUsers [size]="24" aria-hidden="true"></svg><span>Users</span>
       </button>
     </div>
   }
@@ -111,7 +111,7 @@
       (click)="vm.layoutService.helpModalOpen.set(!vm.layoutService.helpModalOpen())"
       title="Help"
     >
-      <svg lucideCircleQuestionMark [size]="18" aria-hidden="true"></svg><span>Help</span>
+      <svg lucideCircleQuestionMark [size]="24" aria-hidden="true"></svg><span>Help</span>
     </button>
 
     <div class="rail-avatar-wrapper">

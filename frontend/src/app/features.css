@@ -660,3 +660,17 @@
   .account-details-dialog .account-card { padding: 16px; }
   .account-details-dialog .account-api-input-group { flex-wrap: wrap; }
 }
+
+.history-activity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-left: 52px;
+  padding: 4px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.history-activity time { flex-shrink: 0; }
+.history-activity .chat-activity-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.activity-row + .activity-row { margin-top: -20px; }

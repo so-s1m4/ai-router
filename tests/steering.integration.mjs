@@ -52,8 +52,8 @@ test('steering checks ownership, preserves accepted refinements and completion h
   const registered=await fetch(base+'/api/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'other-steerer',password:'steering-test-password'})});other=await connect(base,{extraHeaders:{cookie:registered.headers.get('set-cookie').split(';')[0]}});
   const account=await api('/accounts','POST',{provider:'codex',name:'Codex',runnerId:device.id}),chat=await api('/sessions','POST',{});
   let job;
-  runner.on('job:start',(value,ack)=>{job=value;ack({ok:true});runner.emit('job:event',{jobId:job.jobId,type:'status',data:{steeringAvailable:true}});});
-  runner.on('job:steer',(value,ack)=>{assert.equal(value.jobId,job.jobId);if(value.text==='reject')return ack({ok:false,error:'Turn completed'});ack({ok:true});runner.emit('job:result',{jobId:job.jobId,ok:true,text:'Refined answer'});});
+  runner.on('job:start',(value,ack)=>{job=value;ack({ok:true});runner.emit('job:event',{jobId:job.jobId,type:'delta',text:'Before clarification'});runner.emit('job:event',{jobId:job.jobId,type:'tool',message:'Inspecting files'});runner.emit('job:event',{jobId:job.jobId,type:'status',data:{steeringAvailable:true}});});
+  runner.on('job:steer',(value,ack)=>{assert.equal(value.jobId,job.jobId);if(value.text==='reject')return ack({ok:false,error:'Turn completed'});ack({ok:true});runner.emit('job:event',{jobId:job.jobId,type:'delta',text:'After clarification'});runner.emit('job:result',{jobId:job.jobId,ok:true,text:'Refined answer'});});
   const available=new Promise(resolve=>browser.on('ai:event',e=>{if(e.data?.steeringAvailable)resolve();}));
   const run=await browser.timeout(3000).emitWithAck('run',{sessionId:chat.id,prompt:'Original task',accountId:account.id,model:'default'});assert.equal(run.ok,true);await available;
   const foreign=await other.timeout(3000).emitWithAck('steer',{runId:run.runId,prompt:'foreign'});assert.equal(foreign.ok,false);
@@ -61,6 +61,12 @@ test('steering checks ownership, preserves accepted refinements and completion h
   const completed=new Promise(resolve=>browser.on('ai:event',e=>{if(e.type==='completed')resolve();}));
   assert.equal((await browser.timeout(3000).emitWithAck('steer',{runId:run.runId,prompt:'Focus on tests'})).ok,true);await completed;
   assert.deepEqual((await api('/sessions/'+chat.id)).messages.map(m=>m.text),['Original task','Focus on tests','Refined answer']);
+  const saved=await api('/sessions/'+chat.id);
+  assert.deepEqual(saved.timeline.map(m=>m.text),['Original task','Request accepted','Codex: sent to runner','Before clarification','Inspecting files','Focus on tests','After clarification','Refined answer']);
+  assert.ok(saved.timelineVersion>0);
+  const state=await browser.timeout(3000).emitWithAck('run:state',chat.id);
+  assert.equal(state.type,'completed');
+  assert.deepEqual((await api('/sessions/'+chat.id)).timeline,saved.timeline,'history survives reopening the session');
   assert.equal((await browser.timeout(3000).emitWithAck('steer',{runId:run.runId,prompt:'late'})).ok,false);
  }finally{runner?.disconnect();browser?.disconnect();other?.disconnect();backend.kill('SIGTERM');await new Promise(resolve=>backend.once('exit',resolve));await rm(root,{recursive:true,force:true});}
 });

@@ -6,6 +6,7 @@ import { WorkspaceStore } from '../core/workspace.store';
 import { ChatSidebarComponent } from '../layout/chat-sidebar';
 import { NavigationRailComponent } from '../layout/navigation-rail';
 import { PageHeaderComponent } from '../layout/page-header';
+import { GithubRunWidgetComponent } from '../shared/github-run-widget';
 @Component({
   selector: 'app-workspace-shell',
   standalone: true,
@@ -19,6 +20,7 @@ import { PageHeaderComponent } from '../layout/page-header';
     NavigationRailComponent,
     ChatSidebarComponent,
     PageHeaderComponent,
+    GithubRunWidgetComponent,
   ],
   templateUrl: './workspace-shell.html',
   host: { style: 'display: contents' },

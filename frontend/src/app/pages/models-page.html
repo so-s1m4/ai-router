@@ -181,7 +181,7 @@
       </div>
 
       <div class="models-list">
-        @for (m of vm.modelService.filteredGeminiModels(); track m.id) {
+        @for (m of visibleModels('antigravity', vm.modelService.filteredGeminiModels()); track m.id) {
           <div
             class="model-row"
             [class.model-disabled]="!vm.modelService.isModelEnabled(m.id)"
@@ -233,6 +233,16 @@
               </button>
             </div>
           </div>
+        }
+        @if (vm.modelService.filteredGeminiModels().length > 5 && !vm.modelService.providerModelSearch().trim() && vm.modelService.providerModelFilter() === 'all') {
+          <button
+            type="button"
+            class="btn btn-outline btn-sm models-expand"
+            [attr.aria-expanded]="expandedProviders().has('antigravity')"
+            (click)="toggleProvider('antigravity')"
+          >
+            {{ expandedProviders().has('antigravity') ? 'Show fewer' : 'Show all (' + vm.modelService.filteredGeminiModels().length + ')' }}
+          </button>
         }
         @if (!vm.modelService.filteredGeminiModels().length) {
           <div class="models-empty-notice">
@@ -294,7 +304,7 @@
       </div>
 
       <div class="models-list">
-        @for (m of vm.modelService.filteredCodexModels(); track m.id) {
+        @for (m of visibleModels('codex', vm.modelService.filteredCodexModels()); track m.id) {
           <div
             class="model-row"
             [class.model-disabled]="!vm.modelService.isModelEnabled(m.id)"
@@ -346,6 +356,16 @@
               </button>
             </div>
           </div>
+        }
+        @if (vm.modelService.filteredCodexModels().length > 5 && !vm.modelService.providerModelSearch().trim() && vm.modelService.providerModelFilter() === 'all') {
+          <button
+            type="button"
+            class="btn btn-outline btn-sm models-expand"
+            [attr.aria-expanded]="expandedProviders().has('codex')"
+            (click)="toggleProvider('codex')"
+          >
+            {{ expandedProviders().has('codex') ? 'Show fewer' : 'Show all (' + vm.modelService.filteredCodexModels().length + ')' }}
+          </button>
         }
         @if (!vm.modelService.filteredCodexModels().length) {
           <div class="models-empty-notice">
@@ -407,7 +427,7 @@
       </div>
 
       <div class="models-list">
-        @for (m of vm.modelService.filteredChatGPTModels(); track m.id) {
+        @for (m of visibleModels('chatgpt', vm.modelService.filteredChatGPTModels()); track m.id) {
           <div
             class="model-row"
             [class.model-disabled]="!vm.modelService.isModelEnabled(m.id)"
@@ -459,6 +479,16 @@
               </button>
             </div>
           </div>
+        }
+        @if (vm.modelService.filteredChatGPTModels().length > 5 && !vm.modelService.providerModelSearch().trim() && vm.modelService.providerModelFilter() === 'all') {
+          <button
+            type="button"
+            class="btn btn-outline btn-sm models-expand"
+            [attr.aria-expanded]="expandedProviders().has('chatgpt')"
+            (click)="toggleProvider('chatgpt')"
+          >
+            {{ expandedProviders().has('chatgpt') ? 'Show fewer' : 'Show all (' + vm.modelService.filteredChatGPTModels().length + ')' }}
+          </button>
         }
         @if (!vm.modelService.filteredChatGPTModels().length) {
           <div class="models-empty-notice">
@@ -519,7 +549,7 @@
       </div>
 
       <div class="models-list">
-        @for (m of vm.modelService.filteredOpenRouterModels(); track m.id) {
+        @for (m of visibleModels('openrouter', vm.modelService.filteredOpenRouterModels()); track m.id) {
           <div
             class="model-row"
             [class.model-disabled]="!vm.modelService.isModelEnabled(m.id)"
@@ -571,6 +601,16 @@
               </button>
             </div>
           </div>
+        }
+        @if (vm.modelService.filteredOpenRouterModels().length > 5 && !vm.modelService.providerModelSearch().trim() && vm.modelService.providerModelFilter() === 'all') {
+          <button
+            type="button"
+            class="btn btn-outline btn-sm models-expand"
+            [attr.aria-expanded]="expandedProviders().has('openrouter')"
+            (click)="toggleProvider('openrouter')"
+          >
+            {{ expandedProviders().has('openrouter') ? 'Show fewer' : 'Show all (' + vm.modelService.filteredOpenRouterModels().length + ')' }}
+          </button>
         }
         @if (!vm.modelService.filteredOpenRouterModels().length) {
           <div class="models-empty-notice">
@@ -630,7 +670,7 @@
       </div>
 
       <div class="models-list">
-        @for (m of vm.modelService.filteredCerebrasModels(); track m.id) {
+        @for (m of visibleModels('cerebras', vm.modelService.filteredCerebrasModels()); track m.id) {
           <div
             class="model-row"
             [class.model-disabled]="!vm.modelService.isModelEnabled(m.id)"
@@ -682,6 +722,16 @@
               </button>
             </div>
           </div>
+        }
+        @if (vm.modelService.filteredCerebrasModels().length > 5 && !vm.modelService.providerModelSearch().trim() && vm.modelService.providerModelFilter() === 'all') {
+          <button
+            type="button"
+            class="btn btn-outline btn-sm models-expand"
+            [attr.aria-expanded]="expandedProviders().has('cerebras')"
+            (click)="toggleProvider('cerebras')"
+          >
+            {{ expandedProviders().has('cerebras') ? 'Show fewer' : 'Show all (' + vm.modelService.filteredCerebrasModels().length + ')' }}
+          </button>
         }
         @if (!vm.modelService.filteredCerebrasModels().length) {
           <div class="models-empty-notice">

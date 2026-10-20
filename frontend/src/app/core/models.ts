@@ -126,6 +126,7 @@ export type TokenUsage = {
   reasoningOutputTokens?: number;
 };
 export type Message = {
+  kind?: 'activity';
   id: string;
   role: 'user' | 'assistant' | 'system';
   text: string;
@@ -140,6 +141,8 @@ export type ChatSession = {
   title: string;
   updatedAt: string;
   messages: Message[];
+  timeline?: Message[];
+  timelineVersion?: number;
   projectId?: string;
 };
 
@@ -184,6 +187,9 @@ export type AIEvent = {
     state?: string;
     steeringAvailable?: boolean;
     steeringMessage?: Message;
+    timelineEntry?: Message;
+    timeline?: Message[];
+    timelineVersion?: number;
   };
 };
 export type RunActivity = {
@@ -205,6 +211,8 @@ export type RunState =
       stream: string;
       activity: RunActivity[];
       steeringAvailable?: boolean;
+      timeline?: Message[];
+      timelineVersion?: number;
     }
   | {
       runId: string;

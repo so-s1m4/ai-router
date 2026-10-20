@@ -115,6 +115,10 @@ export class ChatService {
           ),
       ),
   );
+  readonly history = computed(() => {
+    const session = this.sessionService.current();
+    return session?.timeline ?? session?.messages ?? [];
+  });
   socket?: Socket;
   newSession() {
     this.layoutService.mobileMenu.set(false);
@@ -241,6 +245,8 @@ export class ChatService {
         void this.reloadCurrent();
         return;
       }
+      if (state.timeline) this.sessionService.current.update(s => s && (s.timelineVersion || 0) <= (state.timelineVersion || 0)
+        ? { ...s, timeline: state.timeline, timelineVersion: state.timelineVersion } : s);
       this.steeringAvailable.set(state.steeringAvailable === true);
       this.runId.set(state.runId);
       this.running.set(true);
@@ -289,6 +295,20 @@ export class ChatService {
           ? { ...s, messages: [...s.messages, message], updatedAt: message.at || s.updatedAt }
           : s,
       );
+    }
+    if (e.data?.timelineEntry || e.data?.timeline || e.data?.steeringMessage) {
+      this.sessionService.current.update(s => {
+        if (!s || (s.timelineVersion || 0) > (e.data?.timelineVersion || 0)) return s;
+        const timeline = [...(e.data?.timeline || s.timeline || s.messages)];
+        for (const row of [e.data?.steeringMessage, e.data?.timelineEntry]) {
+          if (!row) continue;
+          const index = timeline.findIndex(m => m.id === row.id);
+          if (index < 0) timeline.push(row);
+          else timeline[index] = row;
+        }
+        return { ...s, timeline, timelineVersion: e.data?.timelineVersion };
+      });
+      this.chatViewService.requestScrollToBottom();
     }
     if (e.provider) this.activeProvider.set(e.provider as ProviderId);
     if (e.type === 'started') {
@@ -352,6 +372,11 @@ export class ChatService {
       return;
     }
     if (this.sessionService.current()?.id !== id || this.deletedSessions.has(id)) return;
+    const current = this.sessionService.current();
+    if ((current?.timelineVersion || 0) > (s.timelineVersion || 0)) {
+      s = { ...s, timeline: current!.timeline, timelineVersion: current!.timelineVersion,
+        messages: [...s.messages, ...current!.messages.filter(m => !s.messages.some(saved => saved.id === m.id))] };
+    }
     this.sessionService.current.set(s);
     this.sessionService.sessions.update((list) => {
       const next = list.map((x) => (x.id === s.id ? s : x));

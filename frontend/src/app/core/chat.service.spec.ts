@@ -26,6 +26,31 @@ describe('Chat task controls', () => {
     usage.tasks.set([interrupted]);
   });
 
+  it('places refinements between saved activity and the continuing response', () => {
+    const base = { sessionId: 'chat', runId: 'run', at: '2026-10-01T10:02:00.000Z', type: 'status' };
+    chat.onEvent({ ...base, id: 'event1', data: { timelineVersion: 1,
+      timelineEntry: { id: 'action', role: 'assistant', kind: 'activity', text: 'Read file', at: base.at } } });
+    chat.onEvent({ ...base, id: 'event2', data: { timelineVersion: 2,
+      steeringMessage: { id: 'clarification', role: 'user', text: 'Change direction', at: base.at } } });
+    chat.onEvent({ ...base, type: 'delta', id: 'event3', text: 'Continuing', data: { timelineVersion: 3,
+      timelineEntry: { id: 'reply', role: 'assistant', text: 'Continuing', at: base.at } } });
+    expect(chat.history().map(m => m.text)).toEqual(['Old request', 'Read file', 'Change direction', 'Continuing']);
+    chat.resetRun();
+    expect(chat.history().length).toBe(4);
+  });
+
+  it('preserves newer history when an older session reload finishes after a live event', async () => {
+    const old = sessions.current()!;
+    let finish!: (value: unknown) => void;
+    spyOn(TestBed.inject(ApiService), 'request').and.returnValue(new Promise(resolve => finish = resolve));
+    const pending = chat.reloadCurrent();
+    chat.onEvent({ id: 'event', type: 'tool', sessionId: 'chat', runId: 'run', data: { timelineVersion: 1,
+      timelineEntry: { id: 'action', role: 'assistant', kind: 'activity', text: 'Read file' } } });
+    finish(old);
+    await pending;
+    expect(chat.history().map(m => m.text)).toEqual(['Old request', 'Read file']);
+  });
+
   it('cancels through HTTP even without a connected realtime socket and prevents duplicate requests', async () => {
     let finish!: (value: unknown) => void;
     const request = spyOn(TestBed.inject(ApiService), 'request').and.returnValue(new Promise(resolve => finish = resolve));

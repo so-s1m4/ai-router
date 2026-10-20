@@ -90,11 +90,17 @@
       </div>
     } @else {
       <div #messageFeed class="message-feed" (click)="vm.clipboardService.handleChatClick($event)">
-        @for (m of vm.sessionService.current()?.messages || []; track m.id) {
-          <div class="message-row" [class.user-row]="m.role === 'user'">
+        @for (m of vm.chatService.history(); track m.id) {
+          <div class="message-row" [class.user-row]="m.role === 'user'" [class.activity-row]="m.kind === 'activity'">
             @if (m.role === 'user') {
               <div class="user-bubble">
                 <div class="message-text">{{ m.text }}</div>
+              </div>
+            } @else if (m.kind === 'activity') {
+              <div class="history-activity">
+                <time class="message-time" [attr.datetime]="m.at">{{ m.at | date: 'HH:mm:ss' }}</time>
+                <span class="chat-activity-chevron" aria-hidden="true">›</span>
+                <span class="chat-activity-text">{{ m.text }}</span>
               </div>
             } @else {
               <div class="assistant-row">
@@ -160,28 +166,30 @@
                   </div>
                 }
 
-                <p class="task-last-activity">
-                  Last activity {{ vm.durationSince(vm.chatService.lastActivityAt()) }} ago
-                </p>
-                @if (vm.chatService.activity().length > 1) {
-                  <div class="chat-activity-feed">
-                    @for (row of vm.chatService.activity(); track $index) {
-                      <div class="chat-activity-item">
-                        <span class="chat-activity-chevron">›</span>
-                        <span class="chat-activity-text">{{ row.message }}</span>
-                      </div>
-                    }
-                  </div>
-                }
+                @if (!vm.sessionService.current()?.timeline) {
+                  <p class="task-last-activity">
+                    Last activity {{ vm.durationSince(vm.chatService.lastActivityAt()) }} ago
+                  </p>
+                  @if (vm.chatService.activity().length > 1) {
+                    <div class="chat-activity-feed">
+                      @for (row of vm.chatService.activity(); track $index) {
+                        <div class="chat-activity-item">
+                          <span class="chat-activity-chevron">›</span>
+                          <span class="chat-activity-text">{{ row.message }}</span>
+                        </div>
+                      }
+                    </div>
+                  }
 
-                @if (vm.chatService.stream()) {
-                  <div class="message-text markdown-body streaming-wrapper">
-                    <div
-                      class="streaming-content"
-                      [innerHTML]="vm.chatService.stream() | markdown"
-                    ></div>
-                    <span class="typing-cursor"></span>
-                  </div>
+                  @if (vm.chatService.stream()) {
+                    <div class="message-text markdown-body streaming-wrapper">
+                      <div
+                        class="streaming-content"
+                        [innerHTML]="vm.chatService.stream() | markdown"
+                      ></div>
+                      <span class="typing-cursor"></span>
+                    </div>
+                  }
                 }
               </div>
             </div>

@@ -67,7 +67,8 @@
               <svg lucideCheck [size]="18" class="model-picker-check"></svg>
             }
           </button>
-        } @empty {
+        }
+        @if (!vm.filteredPickerModels().length) {
           <p class="model-picker-empty" role="status">No models found</p>
         }
       </div>

@@ -1,0 +1,23 @@
+@if (run(); as active) {
+  <aside class="github-run-widget" aria-label="Latest active GitHub Actions run">
+    <header>
+      <a routerLink="/github"><span class="activity-dot" aria-hidden="true"></span>GitHub Actions</a>
+      <button type="button" (click)="collapsed.set(!collapsed())" [attr.aria-expanded]="!collapsed()" [attr.aria-label]="collapsed() ? 'Expand active run' : 'Collapse active run'">{{ collapsed() ? '+' : '−' }}</button>
+    </header>
+    <a class="run-title" [href]="active.url" target="_blank" rel="noopener noreferrer">{{ active.title }}</a>
+    <p class="run-status" role="status">{{ label(active.status) }}@if(stale()){ · Reconnecting…}</p>
+    @if (!collapsed()) {
+      <p class="run-meta">{{ active.repository }} · {{ active.branch }}</p>
+      <p class="workflow">{{ active.name }}</p>
+      @for (job of jobs(); track job.id) {
+        @if (job.status === 'in_progress') {
+          <div class="current-job"><strong>{{ job.name }}</strong>
+            @for (step of job.steps; track step.number) {
+              @if (step.status === 'in_progress') { <span>{{ step.name }}</span> }
+            }
+          </div>
+        }
+      }
+    }
+  </aside>
+}

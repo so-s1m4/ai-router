@@ -331,9 +331,9 @@ export class WorkspaceStore {
     const dialog = event.currentTarget as HTMLElement;
     const focusable = Array.from(
       dialog.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]',
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [tabindex="0"]',
       ),
-    );
+    ).filter(element => element.getClientRects().length > 0);
     const first = focusable[0],
       last = focusable[focusable.length - 1];
     if (keyboard.shiftKey && document.activeElement === first) {

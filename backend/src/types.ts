@@ -5,8 +5,8 @@ export type Model = { id: string; label: string; reasoning?: ReasoningEffort[]; 
 export type AIEventType = 'started' | 'status' | 'delta' | 'tool' | 'fallback' | 'checkpoint' | 'handoff_started' | 'handoff_ready' | 'usage' | 'completed' | 'error';
 export interface AIEvent { id: string; sessionId: string; runId: string; at: string; type: AIEventType; provider?: ProviderId; message?: string; text?: string; data?: Record<string, unknown>; }
 export interface TokenUsage { totalTokens: number; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningOutputTokens?: number; }
-export interface Message { id: string; role: 'user' | 'assistant'; text: string; at: string; provider?: ProviderId; tokenUsage?: TokenUsage; runId?: string; model?: string; accountId?: string; }
-export interface ChatSession { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[]; projectId?: string; runnerId?: string; sharedAccessId?: string; }
+export interface Message { kind?: 'activity'; id: string; role: 'user' | 'assistant'; text: string; at: string; provider?: ProviderId; tokenUsage?: TokenUsage; runId?: string; model?: string; accountId?: string; }
+export interface ChatSession { id: string; title: string; createdAt: string; updatedAt: string; messages: Message[]; timeline?: Message[]; timelineVersion?: number; projectId?: string; runnerId?: string; sharedAccessId?: string; }
 
 export const DEFAULT_CODEX_MODELS: Model[] = [
   { id: 'default', label: 'Codex default' }
