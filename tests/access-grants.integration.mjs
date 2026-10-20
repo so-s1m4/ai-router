@@ -57,8 +57,12 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   const backup=await api('/accounts','POST',{provider:'codex',name:'Private backup',runnerId:device.id});
   runner.emit('account:status',{accountId:backup.id,provider:'codex',models:[{id:'other',label:'Other'}]});
   await waitFor(async()=> (await api('/accounts')).some(a=>a.models.some(m=>m.id==='other')));
+  friend=await connect(base,{extraHeaders:{cookie:friendCookie}});
+  const grantEvents=[];friend.on('access-grants:changed',event=>grantEvents.push(event));
   const created=await api('/access-grants','POST',{username:'friend',budget:100,period:'once',models:['allowed','other']});
   const grantId=created.id;
+  await waitFor(()=>grantEvents.some(g=>g.id===grantId&&g.state==='pending'));
+  assert.equal(grantEvents[0].direction,'incoming');assert.equal(grantEvents[0].ownerId,undefined);assert.equal(grantEvents[0].recipientId,undefined);
   assert.equal((await request(strangerCookie,'/access-grants')).body.length,0);
   assert.equal((await request(friendCookie,'/accounts')).body.length,0);
   assert.equal((await request(strangerCookie,'/access-grants/'+grantId,'PATCH',{state:'active'})).status,404);
@@ -68,10 +72,18 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   const shared=sharedAccounts[0];
   assert.equal(shared.id,grantId+':codex');assert.deepEqual(shared.models.map(m=>m.id).sort(),['allowed','other']);assert.equal(shared.runnerId,undefined);assert.equal(shared.importKey,undefined);
   assert.equal((await request(friendCookie,'/accounts/'+account.id+'/priority','PATCH',{priority:2})).status,404);
+  const unrelated=await api('/accounts','POST',{provider:'cerebras',name:'Unshared model connection',runnerId:device.id,authType:'api_key'});
+  runner.emit('account:status',{accountId:unrelated.id,provider:'cerebras',models:[{id:'unshared-only',label:'Not allowed'}]});
+  await waitFor(async()=> (await api('/accounts')).some(a=>a.models.some(m=>m.id==='unshared-only')));
+  assert.equal((await request(friendCookie,'/accounts')).body.some(a=>a.provider==='cerebras'),false);
+  // A failed member must not add its models to an otherwise online pool.
+  runner.emit('account:status',{accountId:backup.id,provider:'codex',models:[{id:'other',label:'Other'}],error:'Unavailable'});
+  await waitFor(async()=> !(await request(friendCookie,'/accounts')).body[0].models.some(m=>m.id==='other'));
+  runner.emit('account:status',{accountId:backup.id,provider:'codex',models:[{id:'other',label:'Other'}]});
+  await waitFor(async()=> (await request(friendCookie,'/accounts')).body[0].models.some(m=>m.id==='other'));
   const ownSession=await api('/sessions','POST',{});
   assert.equal((await request(friendCookie,'/sessions/'+ownSession.id)).status,404);
   const session=(await request(friendCookie,'/sessions','POST',{})).body;
-  friend=await connect(base,{extraHeaders:{cookie:friendCookie}});
   let hold=false,lastJob,jobCount=0,gemini;
   runner.on('job:start',(job,ack)=>{ack({ok:true});jobCount++;lastJob=job;if(hold)return;assert.equal(job.accountId,job.provider==='antigravity'?gemini.id:job.model==='other'?backup.id:account.id);assert.ok(['allowed','other'].includes(job.model));runner.emit('job:event',{jobId:job.jobId,type:'usage',data:{totalTokens:70}});runner.emit('job:event',{jobId:job.jobId,type:'usage',data:{totalTokens:120}});runner.emit('job:event',{jobId:job.jobId,type:'usage',data:{totalTokens:120}});runner.emit('job:result',{jobId:job.jobId,ok:true,text:'Shared answer'});});
   function finished(sessionId){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('No terminal event: '+log)),7000);const handler=e=>{if(e.sessionId===sessionId&&['completed','error'].includes(e.type)){clearTimeout(timer);friend.off('ai:event',handler);resolve(e);}};friend.on('ai:event',handler);});}
@@ -80,6 +92,9 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   let terminal=finished(session.id);assert.equal((await send()).ok,true);assert.equal((await terminal).type,'completed');
   const spent=(await request(friendCookie,'/access-grants')).body[0];assert.equal(spent.usedTokens,120);assert.equal(Object.values(spent.usageByModel).reduce((sum,n)=>sum+n,0),120);
   assert.equal((await send()).ok,false);assert.equal(jobCount,1);
+  await waitFor(()=>grantEvents.some(g=>g.id===grantId&&g.usedTokens===120));
+  const summary=(await request(friendCookie,'/usage-summary')).body;
+  assert.equal(JSON.stringify(summary).includes(account.id),false);
   await api('/access-grants/'+grantId,'PATCH',{budget:500});
   // The same grant spans accounts and providers, including connections added later.
   terminal=finished(session.id);assert.equal((await send('other',shared.id)).ok,true);assert.equal((await terminal).type,'completed');
@@ -107,6 +122,10 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   await waitFor(async()=> (await api('/accounts')).some(a=>a.models.some(m=>m.id==='catalogue-249')));
   const largeGrant=await api('/access-grants','POST',{username:'friend',budget:1000000,period:'monthly',models:catalogue.map(m=>m.id)});
   assert.equal((await api('/access-grants')).find(g=>g.id===largeGrant.id).models.length,250);
+  const declined=await api('/access-grants','POST',{username:'friend',budget:100,period:'once',models:['allowed']});
+  assert.equal((await request(friendCookie,'/access-grants/'+declined.id,'PATCH',{state:'revoked',budget:1000})).status,403);
+  assert.equal((await request(friendCookie,'/access-grants/'+declined.id,'PATCH',{state:'revoked'})).status,200);
+  assert.equal((await request(friendCookie,'/access-grants/'+declined.id,'PATCH',{state:'active'})).status,403);
   await api('/access-grants/'+largeGrant.id,'PATCH',{models:catalogue.map(m=>m.id)});
   // CCC Auto resolves shared pool IDs to private accounts and charges every candidate.
   await request(friendCookie,'/access-grants/'+largeGrant.id,'PATCH',{state:'active'});

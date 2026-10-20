@@ -51,7 +51,7 @@ export function updateGrant(userId: string, id: string, change: { budget?: numbe
     if (index < 0) return null;
     const grant = grantSnapshot(rows[index]);
     const accepting = change.state === 'active';
-    if (accepting ? grant.recipientId !== userId || grant.state !== 'pending' || change.budget !== undefined || change.models !== undefined : grant.ownerId !== userId || grant.state === 'revoked') return null;
+    if (accepting ? grant.recipientId !== userId || grant.state !== 'pending' || change.budget !== undefined || change.models !== undefined : (grant.ownerId !== userId && !(grant.recipientId === userId && change.state === 'revoked' && change.budget === undefined && change.models === undefined)) || grant.state === 'revoked') return null;
     Object.assign(grant, change); rows[index] = grant; await save(rows); return grant;
   });
 }

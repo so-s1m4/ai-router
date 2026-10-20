@@ -35,6 +35,8 @@ test('CCC uses the requesting user MCP credentials without changing the runner d
   assert.equal(cccServer(config),owner);
   assert.equal(cccServer({},[friend]),friend);
   assert.equal(config.mcpServers[name],owner);
+  assert.throws(()=>cccServer(config,[],true),error=>error.code==='ccc_mcp'&&/personal MCP/.test(error.message));
+  assert.equal(cccServer(config,[friend],true),friend);
 });
 
 test('tool validation and authentication failures stop without reconnecting', async () => {

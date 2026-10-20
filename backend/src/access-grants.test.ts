@@ -30,6 +30,14 @@ test('grant budgets, permissions, monthly reset, concurrent leases and durable c
     await updateGrant('owner',grant.id,{budget:200});assert.ok(await acquireGrant('friend',grant.id,'allowed'));releaseGrant(grant.id);
     await updateGrant('owner',grant.id,{state:'revoked'});assert.equal(await acquireGrant('friend',grant.id,'allowed'),null);
     assert.equal((await listGrants('stranger')).length,0);
+    const declined=await createGrant({ownerId:'owner',ownerName:'admin',recipientId:'friend',recipientName:'friend',models:['allowed'],budget:100,period:'once'});
+    assert.equal(await updateGrant('friend',declined.id,{state:'revoked',budget:999}),null);
+    assert.equal((await updateGrant('friend',declined.id,{state:'revoked'}))?.state,'revoked');
+    assert.equal(await updateGrant('friend',declined.id,{state:'active'}),null);
+    const returned=await createGrant({ownerId:'owner',ownerName:'admin',recipientId:'friend',recipientName:'friend',models:['allowed'],budget:100,period:'once'});
+    await updateGrant('friend',returned.id,{state:'active'});
+    assert.equal((await updateGrant('friend',returned.id,{state:'revoked'}))?.state,'revoked');
+    assert.equal(await acquireGrant('friend',returned.id,'allowed'),null);
     await writeFile(path.join(root,'access-grants.json'),JSON.stringify([{...saved,accountId:'old-account',accountName:'Private name'}]));
     const migrated=(await listGrants('owner'))[0];
     assert.equal('accountId' in migrated,false);assert.equal('accountName' in migrated,false);

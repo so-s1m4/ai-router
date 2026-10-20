@@ -7,6 +7,7 @@ import { FeedbackService } from './feedback.service';
 import { LayoutService } from './layout.service';
 import {
   Account,
+  AccessGrant,
   AIEvent,
   ChatSession,
   ProviderId,
@@ -21,6 +22,7 @@ import { ProjectsService } from './projects.service';
 import { RealtimeService } from './realtime.service';
 import { SessionsService } from './sessions.service';
 import { TaskFilesService } from './task-files.service';
+import { SharedAccessService } from './shared-access.service';
 import { UsageService } from './usage.service';
 @Injectable({ providedIn: 'root' })
 export class ChatService {
@@ -39,6 +41,7 @@ export class ChatService {
   private readonly sessionService = inject(SessionsService);
   private readonly projectService = inject(ProjectsService);
   private readonly notificationsService = inject(NotificationsService);
+  private readonly sharingService = inject(SharedAccessService);
   private readonly usageService = inject(UsageService);
   private readonly taskFilesService = inject(TaskFilesService);
   private readonly chatViewService = inject(ChatViewService);
@@ -190,6 +193,8 @@ export class ChatService {
     this.socket.on('connect', () => {
       if (this.error() === 'The connection to the server is lost') this.error.set('');
       void this.usageService.refreshTasks();
+      void this.sharingService.refreshGrants();
+      void this.accountService.refreshAccounts();
       const id = this.sessionService.current()?.id;
       if (id) this.syncRun(id);
     });
@@ -199,6 +204,10 @@ export class ChatService {
       if (this.running()) this.notice.set('Connection lost. Restoring the task status...');
     });
     this.socket.on('ai:event', (e: AIEvent) => this.onEvent(e));
+    this.socket.on('access-grants:changed', (grant: AccessGrant) => {
+      this.sharingService.grants.update(grants => [...grants.filter(g => g.id !== grant.id), grant]);
+      void this.accountService.refreshAccounts();
+    });
     this.socket.on('accounts:changed', (a: Account[]) => {
       this.accountService.accounts.set(a);
       const available = this.modelService.models();

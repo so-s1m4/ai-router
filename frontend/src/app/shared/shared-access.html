@@ -132,6 +132,11 @@
               Accept access
             </button>
           }
+          @if (g.direction === 'incoming' && g.state !== 'revoked') {
+            <button class="btn btn-danger-outline" (click)="vm.sharingService.setGrantState(g, 'revoked')" [disabled]="vm.sharingService.grantBusy()">
+              {{ g.state === 'pending' ? 'Decline invitation' : 'Stop using access' }}
+            </button>
+          }
           @if (g.direction === 'outgoing' && g.state !== 'revoked') {
             <button class="btn btn-outline" (click)="vm.sharingService.openGrantEditor(g)">
               Change limit and models</button

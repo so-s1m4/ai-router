@@ -53,18 +53,19 @@ export function toolData(result: any): any {
   return value.data ?? value;
 }
 
-export function cccServer(config: any, personalMcp: PersonalMcp[] = []) {
+export function cccServer(config: any, personalMcp: PersonalMcp[] = [], personalOnly = false) {
   const name = process.env.CCC_AUTO_MCP_NAME || 'ccc';
   const personal = personalMcp.find(server => server.name === name);
+  if(personalOnly&&!personal)throw new CccConnectionError(`Configure ${name} in your personal MCP settings to use shared tokens with CCC авто`);
   const server = personal || config.mcpServers?.[name];
   if (!server || server.enabled === false || server.disabled === true) throw new CccConnectionError(`Configure the ${name} MCP server on this runner or in your personal MCP settings to use CCC авто`);
   return server;
 }
 
-async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[]): Promise<CccClient> {
+async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[], personalOnly: boolean): Promise<CccClient> {
   const root = process.env.RUNNER_DATA_DIR || '/runner-data';
   const config = JSON.parse(await readFile(path.join(root, 'global-mcp/.gemini/config/mcp_config.json'), 'utf8').catch(() => '{"mcpServers":{}}'));
-  const server = cccServer(config, personalMcp);
+  const server = cccServer(config, personalMcp, personalOnly);
   const client = new Client({ name: 'ai-router-ccc-auto', version: '1.0.0' });
   const headers = server.headers || {};
   const url = server.serverUrl || server.url;
@@ -169,6 +170,6 @@ function retryReason(error: unknown): string {
   if (/timeout|timed out/i.test(value?.message || '')) return 'request timed out';
   return 'connection interrupted';
 }
-export async function connectCcc(signal: AbortSignal, onRetry?: (attempt: number, operation: string, reason: string) => void, personalMcp: PersonalMcp[] = []): Promise<CccClient> {
-  return recoveringCcc(() => connectOnce(signal, personalMcp), signal, onRetry);
+export async function connectCcc(signal: AbortSignal, onRetry?: (attempt: number, operation: string, reason: string) => void, personalMcp: PersonalMcp[] = [], personalOnly = false): Promise<CccClient> {
+  return recoveringCcc(() => connectOnce(signal, personalMcp, personalOnly), signal, onRetry);
 }

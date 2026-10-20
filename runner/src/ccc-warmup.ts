@@ -20,7 +20,7 @@ export function isCccPreparation(prompt: string): boolean {
 async function warmKey(job: Job) {
   const root = process.env.RUNNER_DATA_DIR || '/runner-data';
   const config = await readFile(path.join(root, 'global-mcp/.gemini/config/mcp_config.json'), 'utf8').catch(() => '');
-  return createHash('sha256').update(JSON.stringify([job.sessionId, job.projectId, job.cccAuto ? undefined : job.accountId, job.cccAuto, job.personalMcp, config])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([job.sessionId, job.projectId, job.cccAuto ? undefined : job.accountId, job.cccAuto, job.personalMcp, job.sharedExecution, config])).digest('hex');
 }
 
 function command(binary: string, args: string[], cwd: string, signal: AbortSignal): Promise<void> {
@@ -57,7 +57,7 @@ export async function prepareCcc(job: Job, cwd: string, solve: Solver, signal: A
   const stop = () => controller.abort(signal.reason);
   signal.addEventListener('abort', stop, { once: true });
   if (signal.aborted) stop();
-  const client = await (options.connect || connectCcc)(controller.signal, undefined, job.personalMcp);
+  const client = await (options.connect || connectCcc)(controller.signal, undefined, job.personalMcp, job.sharedExecution);
   const usage = new Map<string, { accountId: string; provider: string; model: string; usage: Record<string, number> }>();
   try {
     emit({ type: 'status', message: 'CCC прогрев: MCP, C++17, Python, Node.js и модели' });

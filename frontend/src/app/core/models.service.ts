@@ -124,7 +124,7 @@ export class ModelsService {
         .filter((a) => a.provider === 'antigravity')
         .flatMap((a) => a.models || []);
       const map = new Map<string, Model>();
-      for (const m of DEFAULT_GEMINI_MODELS) map.set(m.id, { ...m });
+      for (const m of scoped.some(a=>a.provider==='antigravity'&&!a.shared)?DEFAULT_GEMINI_MODELS:[]) map.set(m.id, { ...m });
       for (const m of accModels) if (m.id !== 'default') map.set(m.id, m);
       map.set('default', { id: 'default', label: 'Gemini default' });
       return [autoModel, ...map.values()].filter(
@@ -135,7 +135,7 @@ export class ModelsService {
     if (service === 'codex') {
       const accModels = scoped.filter((a) => a.provider === 'codex').flatMap((a) => a.models || []);
       const map = new Map<string, Model>();
-      for (const m of DEFAULT_CODEX_MODELS) map.set(m.id, { ...m });
+      for (const m of scoped.some(a=>a.provider==='codex'&&!a.shared)?DEFAULT_CODEX_MODELS:[]) map.set(m.id, { ...m });
       for (const m of accModels) if (m.id !== 'default') map.set(m.id, m);
       map.set('default', { id: 'default', label: 'Codex default' });
       return [autoModel, ...map.values()].filter(
@@ -148,7 +148,7 @@ export class ModelsService {
         .filter((a) => a.provider === 'chatgpt')
         .flatMap((a) => a.models || []);
       const map = new Map<string, Model>();
-      for (const m of DEFAULT_CHATGPT_MODELS) map.set(m.id, { ...m });
+      for (const m of scoped.some(a=>a.provider==='chatgpt'&&!a.shared)?DEFAULT_CHATGPT_MODELS:[]) map.set(m.id, { ...m });
       for (const m of accModels) if (m.id !== 'default') map.set(m.id, m);
       map.set('default', { id: 'default', label: 'ChatGPT default' });
       return [autoModel, ...map.values()].filter(
@@ -158,21 +158,21 @@ export class ModelsService {
 
     const map = new Map<string, Model>();
     map.set('default', { id: 'default', label: 'Default (Auto)' });
-    for (const m of DEFAULT_GEMINI_MODELS)
+    for (const m of scoped.some(a=>a.provider==='antigravity'&&!a.shared)?DEFAULT_GEMINI_MODELS:[])
       if (m.id !== 'default') map.set(m.id, { ...m, label: `${m.label} · Gemini` });
     for (const a of scoped.filter((x) => x.provider === 'antigravity')) {
       for (const m of a.models || [])
         if (m.id !== 'default' && !map.has(m.id))
           map.set(m.id, { ...m, label: `${m.label} · Gemini` });
     }
-    for (const m of DEFAULT_CODEX_MODELS)
+    for (const m of scoped.some(a=>a.provider==='codex'&&!a.shared)?DEFAULT_CODEX_MODELS:[])
       if (m.id !== 'default') map.set(m.id, { ...m, label: `${m.label} · Codex` });
     for (const a of scoped.filter((x) => x.provider === 'codex')) {
       for (const m of a.models || [])
         if (m.id !== 'default' && !map.has(m.id))
           map.set(m.id, { ...m, label: `${m.label} · Codex` });
     }
-    for (const m of DEFAULT_CHATGPT_MODELS)
+    for (const m of scoped.some(a=>a.provider==='chatgpt'&&!a.shared)?DEFAULT_CHATGPT_MODELS:[])
       if (m.id !== 'default') map.set(m.id, { ...m, label: `${m.label} · ChatGPT` });
     for (const a of scoped.filter((x) => x.provider === 'chatgpt')) {
       for (const m of a.models || [])
@@ -191,7 +191,7 @@ export class ModelsService {
       .filter((a) => a.provider === 'antigravity')
       .flatMap((a) => a.models || []);
     const map = new Map<string, Model>();
-    for (const m of DEFAULT_GEMINI_MODELS) if (m.id !== 'default') map.set(m.id, { ...m });
+    for (const m of accounts.some(a=>a.provider==='antigravity'&&!a.shared)?DEFAULT_GEMINI_MODELS:[]) if (m.id !== 'default') map.set(m.id, { ...m });
     for (const m of accModels) if (m.id !== 'default' && !map.has(m.id)) map.set(m.id, m);
     return [...map.values()];
   });
@@ -199,7 +199,7 @@ export class ModelsService {
     const accounts = Array.isArray(this.accounts()) ? this.accounts() : [];
     const accModels = accounts.filter((a) => a.provider === 'codex').flatMap((a) => a.models || []);
     const map = new Map<string, Model>();
-    for (const m of DEFAULT_CODEX_MODELS) if (m.id !== 'default') map.set(m.id, { ...m });
+    for (const m of accounts.some(a=>a.provider==='codex'&&!a.shared)?DEFAULT_CODEX_MODELS:[]) if (m.id !== 'default') map.set(m.id, { ...m });
     for (const m of accModels) if (m.id !== 'default' && !map.has(m.id)) map.set(m.id, m);
     return [...map.values()];
   });
@@ -209,7 +209,7 @@ export class ModelsService {
       .filter((a) => a.provider === 'chatgpt')
       .flatMap((a) => a.models || []);
     const map = new Map<string, Model>();
-    for (const m of DEFAULT_CHATGPT_MODELS) if (m.id !== 'default') map.set(m.id, { ...m });
+    for (const m of accounts.some(a=>a.provider==='chatgpt'&&!a.shared)?DEFAULT_CHATGPT_MODELS:[]) if (m.id !== 'default') map.set(m.id, { ...m });
     for (const m of accModels) if (m.id !== 'default' && !map.has(m.id)) map.set(m.id, m);
     return [...map.values()];
   });
