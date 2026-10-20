@@ -1,59 +1,20 @@
 <div class="desktop-model-controls">
-<div class="pill-select-wrapper" title="Execution mode">
-  <select [ngModel]="vm.modelService.workflow()"
-    (ngModelChange)="vm.modelService.workflow.set($event)"
-    class="pill-select-overlay" aria-label="Execution mode">
-    <option value="standard">Standard</option>
-    <option value="ccc-auto">CCC Auto</option>
-  </select>
-  <button class="pill-model-badge" type="button" tabindex="-1">
-    <span>{{ vm.modelService.workflow() === 'ccc-auto' ? 'CCC Auto' : 'Standard' }}</span>
-    <svg lucideChevronDown [size]="12"></svg>
-  </button>
-</div>
-
 @if (vm.modelService.workflow() === 'ccc-auto') {
-  <span class="pill-model-badge" title="Send a CCC game link to automatically download files, solve, submit and verify answers."><button type="button" class="btn" (click)="vm.showPage('cccAuto')">Configure CCC-Auto</button></span>
+  <button type="button" class="pill-model-badge model-picker-trigger" title="CCC settings" (click)="vm.showPage('cccAuto')">Configure CCC</button>
 } @else {
-<!-- SERVICE / PROVIDER PILL -->
-
-<div class="pill-select-wrapper" title="AI Provider">
-  <select
-    [ngModel]="vm.modelService.selectedService()"
-    (ngModelChange)="vm.modelService.selectService($event)"
-    class="pill-select-overlay"
-    aria-label="Provider"
-  >
-    <option value="auto">Auto</option>
-    <option value="cerebras">Cerebras{{ vm.modelService.hasAccountsFor('cerebras') ? '' : ' (!)' }}</option>
-    <option value="openrouter">OpenRouter{{ vm.modelService.hasAccountsFor('openrouter') ? '' : ' (!)' }}</option>
-    <option value="gemini">
-      Gemini{{ vm.modelService.hasAccountsFor('gemini') ? '' : ' (!)' }}
-    </option>
-    <option value="codex">Codex{{ vm.modelService.hasAccountsFor('codex') ? '' : ' (!)' }}</option>
-    <option value="chatgpt">
-      ChatGPT{{ vm.modelService.hasAccountsFor('chatgpt') ? '' : ' (!)' }}
-    </option>
-  </select>
-  <button class="pill-model-badge" type="button" tabindex="-1">
-    <span>{{ vm.modelService.currentServiceLabel() }}</span>
-    <svg lucideChevronDown [size]="12"></svg>
-  </button>
-</div>
-
 <!-- MODEL PILL -->
 <div class="pill-select-wrapper" title="Model">
   <button
     class="pill-model-badge pill-model-highlight model-picker-trigger"
-    [title]="vm.modelService.currentModelBadgeLabel()"
-    [attr.aria-label]="'Select model: ' + vm.modelService.currentModelBadgeLabel()"
+    [title]="modelLabel()"
+    [attr.aria-label]="'Select model: ' + modelLabel()"
     [class.pill-model-active]="vm.modelService.selectedModel() !== 'default'"
     type="button"
     aria-haspopup="dialog"
     [attr.aria-expanded]="vm.modelMenuOpen()"
     (click)="vm.openModelPicker($event)"
   >
-    <span class="truncate-badge">{{ vm.modelService.currentModelBadgeLabel() }}</span>
+    <span class="truncate-badge">{{ modelLabel() }}</span>
     <svg lucideChevronDown [size]="12"></svg>
   </button>
 </div>
@@ -96,16 +57,20 @@
 </div>
 <button class="mobile-config-trigger" type="button" aria-haspopup="dialog" (click)="openConfiguration()" aria-label="Configure model">
   <svg lucideSlidersHorizontal [size]="16"></svg>
-  <span>{{ vm.modelService.currentModelBadgeLabel() }}</span>
+  <span>{{ vm.modelService.workflow() === 'ccc-auto' ? 'CCC settings' : modelLabel() }}</span>
   <svg lucideChevronDown [size]="12"></svg>
 </button>
 <dialog #configuration class="mobile-config-sheet" aria-labelledby="configure-title" (click)="closeOnBackdrop($event)">
   <div class="config-grabber" aria-hidden="true"></div>
   <h2 id="configure-title" tabindex="-1">Configure</h2>
+  @if (vm.modelService.workflow() === 'ccc-auto') {
+    <button class="config-workflow-link" type="button" (click)="configuration.close(); vm.showPage('cccAuto')">Configure CCC</button>
+  } @else {
   <div class="config-options">
     <label class="config-row"><span>Model</span>
       <select aria-label="Model" [ngModel]="vm.modelService.selectedModel()" (ngModelChange)="vm.modelService.selectModel($event)">
-        @for (model of vm.modelService.models(); track model.id) { <option [value]="model.id">{{ model.id === 'auto' ? 'Auto' : model.label }}</option> }
+        @if (['auto', 'default'].includes(vm.modelService.selectedModel())) { <option [value]="vm.modelService.selectedModel()" disabled>Choose model</option> }
+        @for (model of vm.modelService.pickerModels(); track model.id) { <option [value]="model.id">{{ model.label }}</option> }
       </select>
     </label>
     <label class="config-row"><span>Effort</span>
@@ -116,25 +81,11 @@
     </label>
     <label class="config-row"><span>Speed</span>
       <select aria-label="Speed" [disabled]="vm.modelService.selectedService() !== 'codex'" [ngModel]="vm.modelService.codexFast() && vm.modelService.selectedService() === 'codex' ? 'fast' : 'standard'" (ngModelChange)="vm.modelService.codexFast.set($event === 'fast')">
-        <option value="standard">Standard</option><option value="fast">Fast</option>
+        <option value="standard">Normal</option><option value="fast">Fast</option>
       </select>
     </label>
   </div>
-  <details class="config-more"><summary>More options</summary>
-    <div class="config-options">
-      <label class="config-row"><span>Provider</span>
-        <select aria-label="AI provider" [ngModel]="vm.modelService.selectedService()" (ngModelChange)="vm.modelService.selectService($event)">
-          <option value="auto">Auto</option><option value="codex">Codex</option><option value="gemini">Gemini</option><option value="openrouter">OpenRouter</option><option value="cerebras">Cerebras</option><option value="chatgpt">ChatGPT</option>
-        </select>
-      </label>
-      <label class="config-row"><span>Workflow</span>
-        <select aria-label="Workflow" [ngModel]="vm.modelService.workflow()" (ngModelChange)="vm.modelService.workflow.set($event)"><option value="standard">Standard</option><option value="ccc-auto">CCC-Auto</option></select>
-      </label>
-      @if (vm.modelService.workflow() === 'ccc-auto') {
-        <button class="config-workflow-link" type="button" (click)="configuration.close(); vm.showPage('cccAuto')">Configure CCC-Auto</button>
-      }
-    </div>
-  </details>
+  }
   <button class="config-reset" type="button" (click)="resetConfiguration()">Reset to default</button>
   <button class="config-done" type="button" (click)="configuration.close()">Done</button>
 </dialog>

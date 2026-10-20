@@ -94,7 +94,9 @@ export class ModelsService {
   selectedReasoning = signal<string>('default');
   codexFast = signal(false);
   workflow = signal<'standard' | 'ccc-auto'>('standard');
-  models = computed(() => {
+  models = computed(() => this.modelsForService(this.selectedService()));
+  pickerModels = computed(() => this.modelsForService('auto').filter(m => m.id !== 'auto' && m.id !== 'default'));
+  private modelsForService(service: ServiceId): Model[] {
     const autoModel: Model = { id: 'auto', label: 'Auto · by task complexity' };
     const blacklist = new Set(this.modelBlacklist());
     const allAccounts = Array.isArray(this.accounts()) ? this.accounts() : [];
@@ -104,8 +106,6 @@ export class ModelsService {
       project && !project.shared
         ? allAccounts.filter((a) => a.runnerId === project.runnerId)
         : allAccounts;
-
-    const service = this.selectedService();
 
     if (service === 'cerebras') {
       const map = new Map<string,Model>();
@@ -184,7 +184,7 @@ export class ModelsService {
     return [autoModel, ...map.values()].filter(
       (m) => m.id === 'auto' || m.id === 'default' || !blacklist.has(m.id),
     );
-  });
+  }
   allGeminiModels = computed(() => {
     const accounts = Array.isArray(this.accounts()) ? this.accounts() : [];
     const accModels = accounts

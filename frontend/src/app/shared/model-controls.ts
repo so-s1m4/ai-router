@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, inject, ViewChild } from '@angular/core';
+import { computed, Component, ElementRef, inject, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { LucideChevronDown, LucideSlidersHorizontal } from '@lucide/angular';
@@ -13,6 +13,8 @@ import { WorkspaceStore } from '../core/workspace.store';
 })
 export class ModelControlsComponent {
   readonly vm = inject(WorkspaceStore);
+  readonly modelLabel = computed(() => ['auto', 'default'].includes(this.vm.modelService.selectedModel())
+    ? 'Choose model' : this.vm.modelService.currentModelBadgeLabel());
   @ViewChild('configuration') configuration!: ElementRef<HTMLDialogElement>;
   openConfiguration() {
     const dialog = this.configuration.nativeElement;

@@ -19,6 +19,7 @@ import { WorkspaceStore } from '../core/workspace.store';
     LucideArrowUp,
   ],
   templateUrl: './chat-composer.html',
+  styleUrl: './chat-composer.css',
   providers: [VoiceInputService],
   host: { style: 'display:contents' },
 })

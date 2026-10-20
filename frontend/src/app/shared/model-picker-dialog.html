@@ -17,8 +17,8 @@
         <div>
           <h2 id="model-picker-title">Select model</h2>
           <p>
-            {{ vm.modelService.currentServiceLabel() }} · {{ vm.modelService.models().length }}
-            {{ vm.modelService.models().length === 1 ? 'model' : 'models' }}
+            Available · {{ vm.modelService.pickerModels().length }}
+            {{ vm.modelService.pickerModels().length === 1 ? 'model' : 'models' }}
           </p>
         </div>
         <button
@@ -53,15 +53,6 @@
             <svg lucideBot [size]="20"></svg>
             <span
               >{{ m.label }}
-              @if (m.id === 'auto') {
-                <small
-                  >Simple tasks use economical models; complex tasks use stronger models. Switches
-                  on failure.</small
-                >
-              }
-              @if (m.id === 'default') {
-                <small>Provider default</small>
-              }
             </span>
             @if (vm.modelService.selectedModel() === m.id) {
               <svg lucideCheck [size]="18" class="model-picker-check"></svg>

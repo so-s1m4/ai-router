@@ -90,17 +90,12 @@
       </div>
     } @else {
       <div #messageFeed class="message-feed" (click)="vm.clipboardService.handleChatClick($event)">
-        @for (m of vm.chatService.history(); track m.id) {
+        @for (turn of turns(); track turn.id) {
+          @let m = turn.message;
           <div class="message-row" [class.user-row]="m.role === 'user'" [class.activity-row]="m.kind === 'activity'">
             @if (m.role === 'user') {
               <div class="user-bubble">
                 <div class="message-text">{{ m.text }}</div>
-              </div>
-            } @else if (m.kind === 'activity') {
-              <div class="history-activity">
-                <time class="message-time" [attr.datetime]="m.at">{{ m.at | date: 'HH:mm:ss' }}</time>
-                <span class="chat-activity-chevron" aria-hidden="true">›</span>
-                <span class="chat-activity-text">{{ m.text }}</span>
               </div>
             } @else {
               <div class="assistant-row">
@@ -113,12 +108,30 @@
                       vm.providerLabel(m.provider) || 'Assistant'
                     }}</span>
                     <span class="message-time">{{ m.at | date: 'HH:mm' }}</span>
-                    <span class="message-tokens" [title]="vm.tokenTitle(m.tokenUsage)">{{
+                    @if (m.tokenUsage) {<span class="message-tokens" [title]="vm.tokenTitle(m.tokenUsage)">{{
                       vm.tokenLabel(m.tokenUsage)
-                    }}</span>
+                    }}</span>}
                   </div>
-                  <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
-                  <div class="assistant-actions">
+                  @if (turn.progress.length || m.kind === 'activity') {
+                    <details class="turn-progress">
+                      <summary>Ход работы <span>{{ turn.progress.length + (m.kind === 'activity' ? 1 : 0) }}</span></summary>
+                      @for (entry of turn.progress; track entry.id) {
+                        <div class="turn-progress-entry" [class.turn-progress-activity]="entry.kind === 'activity'">
+                          <time [attr.datetime]="entry.at">{{ entry.at | date: 'HH:mm:ss' }}</time>
+                          @if (entry.kind === 'activity') { <span>{{ entry.text }}</span> }
+                          @else { <div class="markdown-body" [innerHTML]="entry.text | markdown"></div> }
+                        </div>
+                      }
+                      @if (m.kind === 'activity') { <div class="turn-progress-entry turn-progress-activity"><span>{{ m.text }}</span></div> }
+                    </details>
+                  }
+                  @if (m.kind !== 'activity') {
+                    <div class="message-text markdown-body" [innerHTML]="m.text | markdown"></div>
+                  }
+                  @if (turn === liveTurn()) {
+                    <div class="turn-live-status" role="status"><span class="run-pulse" aria-hidden="true"></span><span>{{ vm.chatService.elapsed() }} · {{ vm.notice() || 'Working…' }}</span></div>
+                  }
+                  @if (m.kind !== 'activity' && turn !== liveTurn()) {<div class="assistant-actions">
                     <button
                       class="btn-action-icon"
                       (click)="vm.clipboardService.copy(m.text, m.id)"
@@ -133,14 +146,14 @@
                     >
                       <svg lucideRotateCcw [size]="14"></svg>
                     </button>
-                  </div>
+                  </div>}
                 </div>
               </div>
             }
           </div>
         }
 
-        @if (vm.chatService.running()) {
+        @if (vm.chatService.running() && !liveTurn()) {
           <div class="message-row">
             <div class="assistant-row">
               <div class="assistant-avatar stream-avatar">

@@ -126,6 +126,7 @@ export type TokenUsage = {
   reasoningOutputTokens?: number;
 };
 export type Message = {
+  runId?: string;
   kind?: 'activity';
   id: string;
   role: 'user' | 'assistant' | 'system';

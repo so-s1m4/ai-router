@@ -6,8 +6,6 @@ import { WorkspaceStore } from '../core/workspace.store';
 describe('Model picker', () => {
   function setup() {
     const models = signal([
-      { id: 'auto', label: 'Auto' },
-      { id: 'default', label: 'Default' },
       { id: 'gpt-example', label: 'GPT Example · Codex' },
       { id: 'anthropic/claude-example', label: 'Claude Example · OpenRouter' },
     ]);
@@ -15,7 +13,7 @@ describe('Model picker', () => {
     const selectedModel = signal('gpt-example');
     const vm = {
       loggedIn: signal(true), modelMenuOpen: signal(true), modelSearch,
-      modelService: { models, selectedModel, currentServiceLabel: () => 'Auto' },
+      modelService: { pickerModels: models, selectedModel, currentServiceLabel: () => 'Auto' },
       filteredPickerModels: computed(() => models().filter(m =>
         (m.label + ' ' + m.id).toLowerCase().includes(modelSearch().trim().toLowerCase()))),
       closeModelPicker: jasmine.createSpy('closeModelPicker'),
@@ -31,9 +29,9 @@ describe('Model picker', () => {
   it('shows every available model without collapsing and selects a model', () => {
     const { fixture, vm } = setup();
     const options = fixture.nativeElement.querySelectorAll('.model-picker-option');
-    expect(options.length).toBe(4);
+    expect(options.length).toBe(2);
     expect(fixture.nativeElement.querySelector('details')).toBeNull();
-    options[3].click();
+    options[1].click();
     expect(vm.choosePickerModel).toHaveBeenCalledWith('anthropic/claude-example');
   });
 

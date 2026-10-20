@@ -64,7 +64,7 @@ export class WorkspaceStore {
   filteredPickerModels = computed(() => {
     const query = this.modelSearch().trim().toLocaleLowerCase();
     return this.modelService
-      .models()
+      .pickerModels()
       .filter((m) => !query || (m.label + ' ' + m.id).toLocaleLowerCase().includes(query));
   });
   private modelPickerReturnFocus?: HTMLElement;
@@ -94,7 +94,7 @@ export class WorkspaceStore {
     }
   }
   choosePickerModel(id: string) {
-    if (!this.modelService.models().some((m) => m.id === id)) return;
+    if (!this.modelService.pickerModels().some((m) => m.id === id)) return;
     this.modelService.selectModel(id);
     this.closeModelPicker();
   }

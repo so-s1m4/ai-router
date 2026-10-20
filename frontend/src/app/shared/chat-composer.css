@@ -1,0 +1,30 @@
+.composer-mode-switch {
+  display: flex;
+  width: fit-content;
+  margin: 0 auto 16px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+}
+.composer-mode-switch button {
+  min-width: 108px;
+  min-height: 38px;
+  padding: 8px 24px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.composer-mode-switch button.active {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+  color: var(--text-main);
+}
+.composer-mode-switch button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
