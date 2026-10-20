@@ -30,6 +30,22 @@ describe('GitHub Actions page',()=>{
     page.query.set('main');fixture.detectChanges();expect(fixture.nativeElement.querySelector('.run')).not.toBeNull();
     fixture.destroy();
   }));
+  it('collapses successful jobs and opens failed jobs with readable step statuses',fakeAsync(()=>{
+    const {fixture,page}=setup();
+    fixture.nativeElement.querySelector('.run-summary').click();flushMicrotasks();
+    page.jobs.set([
+      {id:1,name:'Build',status:'completed',conclusion:'success',steps:[{number:1,name:'Compile',status:'completed',conclusion:'success'}]},
+      {id:2,name:'Deploy',status:'completed',conclusion:'failure',steps:[{number:1,name:'Upload',status:'completed',conclusion:'failure'}]},
+    ]);
+    fixture.detectChanges();
+    const jobs=fixture.nativeElement.querySelectorAll('details.job');
+    expect(jobs[0].open).toBeFalse();
+    expect(jobs[1].open).toBeTrue();
+    expect(jobs[1].querySelector('.step-failed').textContent).toContain('Failed');
+    jobs[0].querySelector('summary').click();
+    expect(jobs[0].open).toBeTrue();
+    fixture.destroy();
+  }));
   it('shows connection setup and explains required permissions',fakeAsync(()=>{
     const {fixture}=setup(false);
     expect(fixture.nativeElement.querySelector('input[type=password]')).not.toBeNull();

@@ -56,8 +56,8 @@ kbd { font-family: inherit; font-size: 10px; color: var(--text-muted); border: 1
 .drawer-overlay { display: none; }
 .drawer-gesture-hint { display: none; }
 @media (min-width: 821px) {
-  .app-rail { width: 56px; flex-basis: 56px; padding-top: 18px; }
-  .rail-btn { width: 36px; height: 36px; min-height: 36px; }
+  .app-rail { width: 184px; flex-basis: 184px; padding-top: 12px; }
+  .rail-btn { width: 100%; min-height: 36px; }
   .sidebar { width: 252px; flex-basis: 252px; }
   .sidebar.collapsed { width: 0; flex-basis: 0; }
   .main-content { margin: 8px 8px 8px 0; height: calc(100% - 16px); border: 1px solid var(--border-subtle); border-left: 0; border-radius: 0 12px 12px 0; overflow: hidden; }

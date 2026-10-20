@@ -74,6 +74,8 @@ export class GithubPageComponent implements OnInit,OnDestroy {
   status(status:string,conclusion:string|null) {
     return ({in_progress:'In progress',queued:'Queued',waiting:'Waiting',pending:'Waiting',requested:'Requested',success:'Success',failure:'Failed',cancelled:'Cancelled',skipped:'Skipped',timed_out:'Timed out',action_required:'Action required',neutral:'Completed',completed:'Completed'} as Record<string,string>)[conclusion||status]||conclusion||status;
   }
+  needsAttention(job:Job) { return job.status !== 'completed' || ['failure','timed_out','action_required'].includes(job.conclusion || ''); }
+  statusPath(status:string,conclusion:string|null) { return conclusion==='success'?'m5 12 4 4L19 6':conclusion==='failure'||conclusion==='timed_out'?'m6 6 12 12M6 18 18 6':conclusion==='skipped'?'M5 12h14':status==='in_progress'?'M12 3a9 9 0 1 1-9 9':'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18'; }
   completedSteps(job:Job) { return job.steps.filter(s=>s.status==='completed').length; }
   ngOnDestroy() {this.disposed=true;this.generation++;this.detailGeneration++;this.token='';if(this.timer)clearInterval(this.timer);}
 }

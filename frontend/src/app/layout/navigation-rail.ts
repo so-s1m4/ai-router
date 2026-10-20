@@ -13,7 +13,9 @@ LucideMessageSquare,
 LucidePlugZap,
 LucideServer,
 LucideSettings2,
-LucideTerminal,
+LucideChartColumn,
+LucideGitBranch,
+LucideUsers,
 } from '@lucide/angular';
 import { WorkspaceStore } from '../core/workspace.store';
 
@@ -24,7 +26,9 @@ import { WorkspaceStore } from '../core/workspace.store';
     CommonModule,
     LucideMessageSquare,
     LucideFolder,
-    LucideTerminal,
+    LucideChartColumn,
+    LucideGitBranch,
+    LucideUsers,
     LucideFile,
     LucideGlobe2,
     LucideBot,

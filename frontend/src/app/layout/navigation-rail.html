@@ -26,7 +26,7 @@
       (click)="vm.showPage('operations')"
       title="Usage"
     >
-      <svg lucideTerminal [size]="18" aria-hidden="true"></svg><span>Usage</span>
+      <svg lucideChartColumn [size]="18" aria-hidden="true"></svg><span>Usage</span>
     </button>
     <button
       class="rail-btn"
@@ -44,13 +44,16 @@
       (click)="vm.showPage('sites')"
       title="Websites & previews"
     >
-      <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites & previews</span>
+      <svg lucideGlobe2 [size]="18" aria-hidden="true"></svg><span>Websites</span>
     </button>
   </div>
   <div class="rail-group">
-    <span class="nav-group-label">Settings</span>
-    <button class="rail-btn" [class.active]="vm.page() === 'github'" [attr.aria-current]="vm.page() === 'github' ? 'page' : null" (click)="vm.showPage('github')" title="GitHub Actions"><svg lucideTerminal [size]="18"></svg><span>GitHub</span></button>
+    <span class="nav-group-label">Automation</span>
+    <button class="rail-btn" [class.active]="vm.page() === 'github'" [attr.aria-current]="vm.page() === 'github' ? 'page' : null" (click)="vm.showPage('github')" title="GitHub Actions"><svg lucideGitBranch [size]="18" aria-hidden="true"></svg><span>GitHub Actions</span></button>
     <button class="rail-btn" [class.active]="vm.page() === 'cccAuto'" [attr.aria-current]="vm.page() === 'cccAuto' ? 'page' : null" (click)="vm.showPage('cccAuto')" title="CCC-Auto"><svg lucideSettings2 [size]="18"></svg><span>CCC-Auto</span></button>
+  </div>
+  <div class="rail-group">
+    <span class="nav-group-label">Settings</span>
     <button
       class="rail-btn"
       [class.active]="vm.page() === 'providers'"
@@ -67,7 +70,7 @@
       (click)="vm.showPage('connections')"
       title="Accounts & connections"
     >
-      <svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Accounts & connections</span>
+      <svg lucidePlugZap [size]="18" aria-hidden="true"></svg><span>Connections</span>
     </button>
     <button
       class="rail-btn"
@@ -85,7 +88,7 @@
       (click)="vm.showPage('notifications')"
       title="Notifications & Telegram"
     >
-      <svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications & Telegram</span>
+      <svg lucideBell [size]="18" aria-hidden="true"></svg><span>Notifications</span>
     </button>
   </div>
   @if (vm.isOwner()) {
@@ -96,7 +99,7 @@
         (click)="vm.showPage('users')"
         title="Users"
       >
-        <svg lucideSettings2 [size]="18" aria-hidden="true"></svg><span>Users</span>
+        <svg lucideUsers [size]="18" aria-hidden="true"></svg><span>Users</span>
       </button>
     </div>
   }
