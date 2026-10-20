@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Marked } from 'marked';
+import { Lexer, Marked, Tokens } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 
@@ -45,6 +45,31 @@ export class MarkdownService {
     });
 
     this.markedInstance.use({
+      extensions: [{
+        name: 'headerlessTable',
+        level: 'block',
+        start: (src) => src.match(/^ {0,3}\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|[ \t]*(?:\n|$)/m)?.index,
+        tokenizer(src) {
+          const separator = src.match(/^ {0,3}\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|[ \t]*\n/);
+          if (!separator) return;
+
+          // Let the GFM lexer handle cells, escaped pipes, alignment and inline tokens.
+          // A synthetic header lets us reuse its table rules without inventing labels.
+          const columns = separator[0].trim().split('|').length - 2;
+          const header = `|${' |'.repeat(columns)}\n`;
+          const table = Lexer.lex(header + src, { gfm: true, breaks: true })[0];
+          if (table?.type !== 'table' || !(table as Tokens.Table).rows.length) return;
+          return { ...table, type: 'headerlessTable', raw: table.raw.slice(header.length) };
+        },
+        renderer(token) {
+          const table = token as unknown as Tokens.Table;
+          const rows = table.rows.map(row => `<tr>${row.map(cell => {
+            const align = cell.align ? ` align="${cell.align}"` : '';
+            return `<td${align}>${this.parser.parseInline(cell.tokens)}</td>`;
+          }).join('')}</tr>`).join('\n');
+          return `<table>\n<tbody>${rows}</tbody>\n</table>\n`;
+        }
+      }],
       renderer: {
         code: ({ text, lang }) => {
           const cleanLang = (lang || '').trim().toLowerCase();
