@@ -15,7 +15,7 @@ test('permission buttons open the selected pane without waiting for native conse
   }
 });
 test('invalid targets cannot open URLs or start processes',async () => {
-  await assert.rejects(computerPermissions('__proto__',{runtime:'/runtime',openExternal:()=>assert.fail(),run:()=>assert.fail()}),/Неизвестное/);
+  await assert.rejects(computerPermissions('__proto__',{runtime:'/runtime',openExternal:()=>assert.fail(),run:()=>assert.fail()}),/Unknown/);
 });
 test('failed settings opening is surfaced',async () => {
   await assert.rejects(computerPermissions('accessibility',{runtime:'/runtime',openExternal:async()=>{throw new Error('open failed');},run:()=>assert.fail()}),/open failed/);

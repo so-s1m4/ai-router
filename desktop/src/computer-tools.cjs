@@ -3,7 +3,7 @@ function createComputerTools({ enabled, helper, stopTree, spawnProcess = spawn }
   const active = new Map();
   let queue = Promise.resolve();
   async function run(id, args) {
-    if (!enabled) throw new Error('Computer use выключен. Включите его в локальных настройках AI Router (расширенный доступ).');
+    if (!enabled) throw new Error('App control is disabled. Enable it in AI Router settings with extended access.');
     if (typeof id !== 'string' || active.has(id) || active.size >= 4) throw new Error('Too many computer requests or duplicate request');
     const entry = { child: null, canceled: false }; active.set(id, entry);
     const previous = queue;

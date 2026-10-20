@@ -42,10 +42,10 @@ export class InstallService {
       await prompt.prompt();
       const choice = await prompt.userChoice;
       this.message.set(choice.outcome === 'accepted'
-        ? 'Запрос принят. Дождитесь завершения установки в браузере.'
-        : 'Установка отменена. Можно добавить приложение через меню браузера.');
+        ? 'Request accepted. Wait for your browser to finish installing.'
+        : 'Installation cancelled. You can add the app from your browser menu.');
     } catch {
-      this.message.set('Откройте меню браузера и добавьте AI Router на главный экран.');
+      this.message.set('Open your browser menu and add AI Router to your home screen.');
     } finally {
       this.deferred = null;
       this.available.set(false);

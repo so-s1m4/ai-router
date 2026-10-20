@@ -16,7 +16,7 @@ function fixture() {
 }
 test('computer use requires explicit local enablement',async () => {
   const tools=createComputerTools({enabled:false});
-  await assert.rejects(tools.run('1',{operation:'apps'}),/выключен/);
+  await assert.rejects(tools.run('1',{operation:'apps'}),/disabled/);
 });
 test('computer helper transports screenshots and errors',async () => {
   const tools=fixture();

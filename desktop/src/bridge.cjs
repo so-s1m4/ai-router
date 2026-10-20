@@ -13,7 +13,7 @@ async function main() {
   let device;
   try { device = JSON.parse(await fs.readFile(file,'utf8')); } catch {
     const response = await fetch(url.origin+'/api/runner/enroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:process.env.ROUTER_PAIRING_CODE}),signal:AbortSignal.timeout(20000)});
-    if (!response.ok) throw new Error('Не удалось привязать Mac: HTTP '+response.status);
+    if (!response.ok) throw new Error('Unable to pair Mac: HTTP '+response.status);
     device = await response.json();
     await fs.writeFile(file,JSON.stringify(device),{mode:0o600});
   }
@@ -23,7 +23,7 @@ async function main() {
   const computer = createComputerTools({enabled:process.env.DESKTOP_COMPUTER_USE === '1' && env.DESKTOP_ACCESS_MODE === 'full',helper:path.join(process.env.MAC_COMPUTER_HELPER_ROOT,'computer-use'),stopTree:killTree});
   const socket = io(url.origin+'/mac',{transports:['websocket'],auth:{runnerId:device.id,secret:device.secret,computerUse:process.env.DESKTOP_COMPUTER_USE === '1' && env.DESKTOP_ACCESS_MODE === 'full'}});
   socket.on('connect',() => console.log(`Runner ${device.name} connected · Mac bridge`));
-  socket.on('connect_error',error => console.error(error.message === 'Invalid namespace' ? 'Сервер ещё не поддерживает доступ к Mac. Обновите backend AI Router до версии с Mac bridge.' : 'Mac connection failed: '+error.message));
+  socket.on('connect_error',error => console.error(error.message === 'Invalid namespace' ? 'This server does not support Mac access yet. Update the AI Router backend to a version with Mac bridge support.' : 'Mac connection failed: '+error.message));
   socket.on('disconnect',() => { void tools.stop(); void computer.stop(); console.log('Control plane disconnected'); });
   socket.on('mac:command',async (request,ack) => {
     if (typeof ack !== 'function') return;

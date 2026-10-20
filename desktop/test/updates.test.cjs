@@ -35,14 +35,14 @@ test('declining never opens the browser; up-to-date background checks are silent
   await f.controller.check(true); assert.deepEqual(f.opened, []);
   const current = fixture({ releases: [release('0.1.7'), release('0.1.6')] });
   await current.controller.check(); assert.equal(current.messages.length, 0);
-  await current.controller.check(true); assert.match(current.messages[0].message, /последняя/);
+  await current.controller.check(true); assert.match(current.messages[0].message, /latest/);
 });
 test('network failures stay silent in background and manual checks can retry', async () => {
   let fails = true;
   const f = fixture({ fetchRelease: async () => { if (fails) throw Error('offline'); return { ok: true, json: async () => [] }; } });
   await f.controller.check(); assert.equal(f.messages.length, 0);
-  await f.controller.check(true); assert.match(f.messages.at(-1).message, /Не удалось/);
-  fails = false; await f.controller.check(true); assert.match(f.messages.at(-1).message, /последняя/);
+  await f.controller.check(true); assert.match(f.messages.at(-1).message, /Unable/);
+  fails = false; await f.controller.check(true); assert.match(f.messages.at(-1).message, /latest/);
 });
 test('development builds never contact release servers', async () => {
   const f = fixture({ app: { isPackaged: false } });

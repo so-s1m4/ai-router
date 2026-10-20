@@ -11,7 +11,7 @@ test('captures actual stderr through process close and retains the failure reaso
   const code = await new Promise(resolve => child.once('close', resolve));
   assert.equal(code, 1);
   assert.match(log.text(), /Pairing failed: 401/);
-  assert.match(exitMessage(code, null, log.text()), /новый одноразовый код/);
+  assert.match(exitMessage(code, null, log.text()), /new one-time pairing code/);
 });
 
 test('redacts a pairing code split across chunks and common credentials', () => {
@@ -19,7 +19,7 @@ test('redacts a pairing code split across chunks and common credentials', () => 
   log.append('\x1b[31mError: pairing-');
   log.append('value\x1b[0m Authorization: Bearer token-value\n{"secret":"device-value"}');
   assert.doesNotMatch(log.text(), /pairing-value|token-value|device-value|\x1b/);
-  assert.match(log.text(), /Error: \[скрыто\]/);
+  assert.match(log.text(), /Error: \[redacted\]/);
 });
 
 test('bounds logs and distinguishes network errors from unknown failures', () => {
@@ -28,7 +28,7 @@ test('bounds logs and distinguishes network errors from unknown failures', () =>
   log.append('\nError: sandbox initialization failed');
   assert.ok(log.text().length <= 6000);
   assert.match(log.text(), /sandbox initialization failed/);
-  assert.doesNotMatch(exitMessage(1, null, log.text()), /код подключения/);
-  assert.match(exitMessage(1, null, 'fetch failed: ENOTFOUND'), /адрес и сеть/);
+  assert.doesNotMatch(exitMessage(1, null, log.text()), /pairing code/);
+  assert.match(exitMessage(1, null, 'fetch failed: ENOTFOUND'), /URL and network/);
   assert.match(exitMessage(null, 'SIGABRT', ''), /SIGABRT/);
 });

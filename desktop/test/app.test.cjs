@@ -44,8 +44,8 @@ for (const configured of [false, true]) test(`app opens one window (${configured
     const local = windows.find(window => window.file), source = {sender:local.webContents,senderFrame:local.webContents.mainFrame};
     const invoke = (name,...args) => handlers.get('desktop:'+name)(source,...args);
     assert.equal((await invoke('state')).mode,'off');
-    await assert.rejects(handlers.get('desktop:save')({sender:{},senderFrame:{}},{server:'https://evil.example',mode:'full'}),/источник/);
-    await assert.rejects(handlers.get('desktop:save')({...source,senderFrame:{}},{server:'https://evil.example',mode:'full'}),/источник/);
+    await assert.rejects(handlers.get('desktop:save')({sender:{},senderFrame:{}},{server:'https://evil.example',mode:'full'}),/source/);
+    await assert.rejects(handlers.get('desktop:save')({...source,senderFrame:{}},{server:'https://evil.example',mode:'full'}),/source/);
     await invoke('save',{server:'https://router.example',mode:'off'});
     await invoke('site');
     const remote = windows.find(window => window.url);
