@@ -82,3 +82,12 @@ test('CCC defaults to one immediate Python candidate and accepts legacy C++ sett
   }
   assert.equal(cccAutoSchema.safeParse(settings).success,true);
 });
+
+test('Google Cloud settings round-trip without credentials and reject invalid targets',()=>{
+ const settings=defaultCccAutoSettings();
+ settings.gcp={enabled:true,runnerId:'12345678-1234-4234-8234-123456789abc',project:'project-37e84c09-c743-4b4c-8a8',zone:'europe-west3-a',instance:'ccc-compute',workers:8,timeoutSeconds:120,useIap:false};
+ assert.deepEqual(cccAutoSchema.parse(settings).gcp,settings.gcp);
+ for(const invalid of [{workers:0},{workers:65},{timeoutSeconds:0},{zone:'--flag'},{project:'../secret'},{runnerId:'other'},{refreshToken:'secret'}]){
+  assert.equal(cccAutoSchema.safeParse({...settings,gcp:{...settings.gcp,...invalid}}).success,false);
+ }
+});

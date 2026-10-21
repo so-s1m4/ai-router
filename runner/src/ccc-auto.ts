@@ -4,7 +4,7 @@ import { codePrompt, fastLevelLimit, parallelSolverInstructions, prepareFastCode
 import { steerCodexJob } from './app-server.js';
 import { raceLight, raceScheduled } from './ccc-race.js';
 import { prepareSolverTemplate } from './ccc-solver-template.js';
-import { runRecipe, withOptimization, optimizationDelayMs } from './ccc-execution.js';
+import { runScoredRecipe as runRecipe, withOptimization, optimizationDelayMs } from './ccc-execution.js';
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -509,7 +509,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         if (!selected.length) return;
         const task = path.join(dir, `${name}-task.json`), result = path.join(dir, `${name}-answers.json`);
         await atomic(task, { contest, level, files, inputs: selected });
-        await timed('execution', () => runRecipe(dir, task, result, computationSignal), { level, candidate: path.basename(dir), batch: name });
+        await timed('execution', () => runRecipe(dir, task, result, computationSignal, settings?.gcp), { level, candidate: path.basename(dir), batch: name });
         candidateSignal.throwIfAborted();
         const outputs = await timed('answer_validation', () => readAnswers(result, dir, selected.map(input => input.file_id)), { level });
         for (const [id, content] of outputs) answers.set(id, content);

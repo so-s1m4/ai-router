@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
 import { AccountsService } from '../core/accounts.service';
@@ -11,17 +11,57 @@ import { CccAutoSettings, CccCandidate, defaultCccAutoSettings } from '../core/c
   templateUrl:'./ccc-auto-page.html',
   styleUrl:'./ccc-auto-page.css',
 })
-export class CccAutoPageComponent implements OnInit {
+export class CccAutoPageComponent implements OnInit, OnDestroy {
   readonly accounts=inject(AccountsService);
   private readonly api=inject(ApiService);
   settings:CccAutoSettings=defaultCccAutoSettings();
   loading=true; saving=false; error=''; notice=''; jsonDraft='';
+  runners:{id:string;name:string;online:boolean;revokedAt?:string}[]=[];
+  gcpBusy=false; gcpConnected=false; gcpEmail=''; gcpStatus=''; gcpCode='';
+  gcpVmBusy=false; gcpVmStatus='';
+  gcpFlow?:{flowId:string;url:string;expiresAt:number};
+  private authGeneration=0;
+  private destroyed=false;
   readonly reasonings=['default','none','minimal','low','medium','high','xhigh','max'];
   async ngOnInit(){
-    try{const [settings]=await Promise.all([this.api.request<CccAutoSettings>('/ccc-auto/settings'),this.accounts.refreshAccounts()]);this.settings=settings;}
+    try{const [settings,runners]=await Promise.all([this.api.request<CccAutoSettings>('/ccc-auto/settings'),this.api.request<typeof this.runners>('/runners'),this.accounts.refreshAccounts()]);this.settings=settings;this.runners=runners.filter(r=>!r.revokedAt);if(settings.gcp)await this.gcpAuth('status');}
     catch(error){this.error=(error as Error).message;}
     finally{this.loading=false;}
   }
+  addGcp(){this.gcpVmStatus='';this.settings.gcp={machineType:'e2-standard-8',enabled:false,runnerId:this.runners[0]?.id??'',project:'project-37e84c09-c743-4b4c-8a8',zone:'europe-west3-a',instance:'ccc-compute',workers:8,timeoutSeconds:120,useIap:false};}
+  async gcpAuth(action:'status'|'start'|'complete'|'cancel'|'disconnect'){
+    const runnerId=this.settings.gcp?.runnerId;
+    if(!runnerId||this.gcpBusy)return;
+    const generation=this.authGeneration;
+    this.gcpBusy=true;this.error='';
+    try{
+      const result=await this.api.request<{connected?:boolean;email?:string;flowId?:string;url?:string;expiresAt?:number}>('/ccc-auto/gcp/auth',{method:'POST',body:JSON.stringify({runnerId,action,...(action==='complete'?{flowId:this.gcpFlow?.flowId,code:this.gcpCode.trim()}: {})})});
+      if(generation!==this.authGeneration||this.destroyed)return;
+      if(action==='start'&&result.flowId&&result.url&&result.expiresAt){this.gcpFlow={flowId:result.flowId,url:result.url,expiresAt:result.expiresAt};this.gcpStatus='Open Google sign-in and paste the code below. The link expires in 10 minutes.';}
+      if(result.connected!==undefined){this.gcpConnected=result.connected;this.gcpEmail=result.email??'';this.gcpStatus=result.connected?'Google account connected.':'Google account is not connected.';}
+      if(action==='cancel')this.gcpStatus='Google sign-in canceled.';
+      if(action==='complete'||action==='cancel'||action==='disconnect'){this.gcpFlow=undefined;this.gcpCode='';}
+    }catch(error){if(generation===this.authGeneration&&!this.destroyed)this.error=(error as Error).message;}
+    finally{this.gcpCode='';if(generation===this.authGeneration)this.gcpBusy=false;}
+  }
+  async gcpVm(action:'status'|'create'|'start'|'stop'|'resize'){
+    if(!this.settings.gcp||this.gcpVmBusy||this.gcpBusy)return;
+    const settings=structuredClone(this.settings.gcp);
+    this.gcpVmBusy=true;this.gcpVmStatus='';this.error='';
+    try{
+      const result=await this.api.request<{status:string}>('/ccc-auto/gcp/vm',{method:'POST',body:JSON.stringify({action,settings})});
+      if(!this.destroyed&&JSON.stringify(this.settings.gcp)===JSON.stringify(settings))this.gcpVmStatus=result.status;
+    }catch(error){if(!this.destroyed&&JSON.stringify(this.settings.gcp)===JSON.stringify(settings))this.error=(error as Error).message;}
+    finally{this.gcpVmBusy=false;}
+  }
+  gcpRunnerChanged(runnerId:string){this.cancelGcpFlow();if(this.settings.gcp)this.settings.gcp.runnerId=runnerId;this.gcpBusy=false;this.gcpConnected=false;this.gcpEmail='';this.gcpStatus='';this.gcpVmStatus='';void this.gcpAuth('status');}
+  private cancelGcpFlow(){
+    const runnerId=this.settings.gcp?.runnerId;
+    ++this.authGeneration;
+    if((this.gcpFlow||this.gcpBusy)&&runnerId)void this.api.request('/ccc-auto/gcp/auth',{method:'POST',body:JSON.stringify({runnerId,action:'cancel'})}).catch(()=>{});
+    this.gcpFlow=undefined;this.gcpCode='';
+  }
+  ngOnDestroy(){this.destroyed=true;this.cancelGcpFlow();}
   candidateAccounts(c:CccCandidate){return this.accounts.accounts().filter(a=>a.provider===c.provider);}
   models(c:CccCandidate){return [...new Map(this.candidateAccounts(c).filter(a=>!c.accountId||a.id===c.accountId).flatMap(a=>a.models).filter(m=>m.id!=='default').map(m=>[m.id,m])).values()];}
   providerChanged(c:CccCandidate){c.accountId=undefined;c.model=c.provider==='codex'?'gpt-6.1-sol':c.provider==='cerebras'?this.models(c)[0]?.id ?? 'default':c.provider==='openrouter'?'openrouter/auto':this.models(c).find(m=>m.id.startsWith('gemini-'))?.id ?? 'default';if(c.provider!=='codex'){c.fast=false;c.reasoning='default';}delete c.openRouterRouting;}
@@ -36,8 +76,8 @@ export class CccAutoPageComponent implements OnInit {
   splitLast(){const last=this.settings.levels.at(-1)!;if(last.from>=100||this.settings.levels.length>=20)return;last.to=last.from;this.settings.levels.push({from:last.from+1,to:null,candidates:structuredClone(last.candidates)});}
   removeLast(){if(this.settings.levels.length<=1)return;this.settings.levels.pop();this.settings.levels.at(-1)!.to=null;}
   normalizeRanges(){let from=1;for(const rule of this.settings.levels){rule.from=from;from=(rule.to??100)+1;}}
-  reset(){this.settings=defaultCccAutoSettings();this.notice='Defaults restored in the form. Click Save to apply.';this.error='';}
+  reset(){this.gcpVmStatus='';this.cancelGcpFlow();this.gcpBusy=false;this.gcpConnected=false;this.gcpEmail='';this.gcpStatus='';this.settings=defaultCccAutoSettings();this.notice='Defaults restored in the form. Click Save to apply.';this.error='';}
   exportJson(){this.jsonDraft=JSON.stringify(this.settings,null,2);}
-  async importJson(){try{this.settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings/validate',{method:'POST',body:JSON.stringify(JSON.parse(this.jsonDraft))});this.notice='JSON imported into the form. Settings will be checked when you save.';this.error='';}catch(error){this.error=error instanceof SyntaxError?'Invalid JSON':(error as Error).message;}}
+  async importJson(){try{const settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings/validate',{method:'POST',body:JSON.stringify(JSON.parse(this.jsonDraft))});this.cancelGcpFlow();this.gcpVmStatus='';this.gcpBusy=false;this.settings=settings;this.gcpConnected=false;this.gcpEmail='';this.gcpStatus='';if(settings.gcp)await this.gcpAuth('status');this.notice='JSON imported into the form. Settings will be checked when you save.';this.error='';}catch(error){this.error=error instanceof SyntaxError?'Invalid JSON':(error as Error).message;}}
   async save(){this.saving=true;this.error='';this.notice='';try{this.settings=await this.api.request<CccAutoSettings>('/ccc-auto/settings',{method:'PUT',body:JSON.stringify(this.settings)});this.notice='Saved. New CCC-Auto tasks will use these settings.';}catch(error){this.error=(error as Error).message;}finally{this.saving=false;}}
 }

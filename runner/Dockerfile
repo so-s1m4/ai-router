@@ -14,6 +14,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ca-certificates \
        curl \
+       gnupg \
        bash \
        git \
        openssh-client \
@@ -38,6 +39,14 @@ RUN apt-get update \
        && agy --version \
        && dpkg --compare-versions "$(agy --version)" ge "$AGY_CLI_MIN_VERSION"; \
      fi
+# Google Cloud sign-in in CCC Auto needs the CLI on the execution runner.
+RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg -o /tmp/cloud-google-key \
+  && gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg /tmp/cloud-google-key \
+  && echo 'deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' > /etc/apt/sources.list.d/google-cloud-sdk.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends google-cloud-cli \
+  && gcloud --version \
+  && rm -rf /var/lib/apt/lists/* /tmp/cloud-google-key
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

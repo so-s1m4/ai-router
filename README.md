@@ -282,6 +282,30 @@ The script checks only the submission envelope (input IDs, local file paths and 
 Progress and submission evaluations persist under `.ai-router/ccc-auto/` in the chat/project workspace. A submission is recorded before dispatch; after a lost response, continuation checks platform progress and never blindly resends it. Existing checkpoint continuation and account quota handoff keep this state. Model usage is accumulated across solver calls. CCC credentials stay in the runner's MCP settings. The backend, frontend and runner must be updated together; the runner image includes g++ for C++17, Python 3 and Poppler for PDF text and diagrams. Files and outputs are limited to 30 MiB each. This workflow does not create new training sessions automatically.
 
 
+### Google Cloud execution for CCC auto
+
+In **CCC-Auto → Google Cloud computations**, choose your runner, project, VM zone and name. Click **Sign in with Google**, open the link, then paste the authorization code into the settings form and click **Complete sign-in**. This uses Google’s [remote browser sign-in flow](https://docs.cloud.google.com/sdk/gcloud/reference/auth/login). The runner retains the login process for up to ten minutes; restarting the runner or canceling invalidates that attempt. Check connection and Disconnect Google are available in the same form. Enable cloud computations and save settings to apply them to new runs. Selected cloud runs use connections owned by you on that runner. Tokens stay in the private persistent `RUNNER_DATA_DIR/ccc-gcloud` directory and are excluded from settings and JSON exports. Update frontend, backend and runner together.
+
+The Google Cloud section also provides **Create VM**, **Start VM**, **Stop VM**, and **Check VM status**, plus **Apply profile to stopped VM**. Choose 2/4/8/16/32 vCPUs with 8/16/32/64/128 GB RAM. To change an existing VM, stop it, wait for TERMINATED, apply the profile, and start it again. These actions use the current form values and the selected runner's Google credentials; save the form before running CCC auto. Creation enables the Compute Engine API and provisions Debian 12 on the selected E2 standard profile (default `e2-standard-8`) with a 20 GB disk, installs Node.js/Python/C++, and sets a one-hour stop limit. Starting a stopped VM reapplies that limit. Requests return after Google accepts the operation; check status for completion and allow a few minutes for initial tool installation. A running VM and its disk incur Google Cloud charges; stopping interrupts its computations and leaves disk charges. Project billing, Compute Engine permissions, a usable default VPC, and SSH/IAP access must be available. No VM is provisioned just by enabling cloud computations.
+
+Alternatively, set `CCC_EXECUTION=gcp` in the **runner process environment** to execute scored batches on an existing Compute Engine Linux VM. Solver preparation and example checks still run on the runner. This supports the supplied `cpp.cjs` and `python.cjs` recipes; C++ source is recompiled on the VM. Unsupported recipes fail explicitly. Local execution remains the default.
+
+The runner needs Google Cloud CLI (`gcloud`), `scp`, and an authenticated identity with Compute Engine SSH access to the selected project. The VM needs Node.js, Python 3, g++, and util-linux. Google documents [SSH](https://docs.cloud.google.com/sdk/gcloud/reference/compute/ssh) and [file transfer](https://docs.cloud.google.com/sdk/gcloud/reference/compute/scp) access. Authentication belongs on the runner; no credentials are copied to the VM.
+
+After authenticating with `gcloud auth login --no-launch-browser`, `bash ops/ccc-gcp-create.sh` creates `ccc-compute` in project `project-37e84c09-c743-4b4c-8a8`, zone `europe-west3-a`, with 8 vCPUs and a 20 GB boot disk. Its startup script installs dependencies; confirm `/var/lib/ccc-compute-ready` exists over SSH before running a contest. This command provisions a billable VM. It uses Google's [runtime limit](https://docs.cloud.google.com/compute/docs/instances/limit-vm-runtime) to stop the VM after one hour on each start; storage remains allocated after stopping. Start it again with `gcloud compute instances start ccc-compute --project=project-37e84c09-c743-4b4c-8a8 --zone=europe-west3-a`.
+
+```bash
+export CCC_EXECUTION=gcp
+export CCC_GCP_PROJECT=project-37e84c09-c743-4b4c-8a8
+export CCC_GCP_ZONE=europe-west3-a
+export CCC_GCP_INSTANCE=ccc-compute
+export CCC_GCP_WORKERS=8
+export CCC_GCP_TIMEOUT_SECONDS=120
+# Start/restart the runner with this environment.
+```
+
+`CCC_GCP_USE_IAP=true` adds IAP tunneling when configured in the project. Each batch uploads only solver source and selected inputs, uses an isolated temporary directory, downloads answer files and execution logs, then removes the remote directory. Cancellation attempts to kill the remote process group; a remote timeout (1–3600 seconds, default 120) bounds compilation and execution even if the connection is lost. Cleanup failures are logged. VM lifetime is independent of batch lifetime. The Docker runner image includes Google Cloud CLI using Google’s [official Debian package repository](https://docs.cloud.google.com/sdk/docs/install-sdk). For a runner outside Docker, install the CLI separately (or set `CCC_GCLOUD_BIN` to its executable). The settings flow uses its own credentials; legacy environment-based execution uses the runner’s default gcloud credentials. Root `.env` values are not automatically forwarded to the runner; supply these variables explicitly in its service environment.
+
 ## OpenRouter API и настройки CCC-Auto
 
 В **Accounts & connections → Add connection** выберите **OpenRouter API - Key**, назначьте runner и откройте настройки подключения. Введите ключ `sk-or-…`: runner проверяет его через OpenRouter `/api/v1/key`, сохраняет с правами `0600` и загружает каталог текстовых моделей. В обычном чате выберите провайдер OpenRouter и модель. В режиме задачи модели с поддержкой tool calling могут выполнять команды в рабочей папке runner; в чате инструменты не предоставляются. Codex Fast относится только к Codex.

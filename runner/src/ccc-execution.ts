@@ -1,8 +1,17 @@
+import type { CccGcpSettings } from './ccc-settings.js';
 import { availableParallelism, freemem } from 'node:os';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { runGcpRecipe } from './ccc-gcp.js';
+
+export async function runScoredRecipe(directory: string, taskFile: string, answersFile: string, signal: AbortSignal, settings?: CccGcpSettings): Promise<void> {
+  const backend = settings ? (settings.enabled ? 'gcp' : 'local') : process.env.CCC_EXECUTION || 'local';
+  if (backend === 'gcp') return runGcpRecipe(directory, taskFile, answersFile, signal, settings);
+  if (backend !== 'local') throw new Error('CCC_EXECUTION must be local or gcp');
+  return runRecipe(directory, taskFile, answersFile, signal);
+}
 
 // Shared across racing candidates: bound native processes by CPU and memory.
 const cppMemoryBytes = 512 * 1024 * 1024;

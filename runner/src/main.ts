@@ -1,3 +1,6 @@
+import { CccGcpVm } from './ccc-gcp-vm.js';
+import { cccGcpVmSchema } from './ccc-settings.js';
+import { CccGcpAuth } from './ccc-gcp-auth.js';
 import { cccAutoSchema } from './ccc-settings.js';
 import { CccConnectionError } from './ccc-client.js';
 import { saveCerebrasKey } from './cerebras.js';
@@ -33,6 +36,24 @@ async function start(){
  attachSharedFiles(socket);
  const jobProjects=new Map<string,string>();
  attachProjectSync(socket,root,id=>[...jobProjects.values()].includes(id));
+ const gcpVm = new CccGcpVm();
+ socket.on('ccc:gcp-vm', async (raw: unknown, ack?: (r: unknown) => void) => {
+  const parsed=cccGcpVmSchema.safeParse(raw);
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid VM settings'});
+  try {ack?.({ok:true,...await gcpVm.run(parsed.data.action,parsed.data.settings)});}
+  catch(error){ack?.({ok:false,error:error instanceof Error?error.message:'VM request failed'});}
+ });
+ const gcpAuth = new CccGcpAuth();
+ socket.on('disconnect', () => gcpAuth.cancel());
+ socket.on('ccc:gcp-auth', async (raw: unknown, ack?: (r: unknown) => void) => {
+  const parsed = z.object({action:z.enum(['status','start','complete','cancel','disconnect']),flowId:z.string().uuid().optional(),code:z.string().trim().min(1).max(4096).regex(/^[^\r\n]+$/).optional()}).strict().safeParse(raw);
+  if(!parsed.success)return ack?.({ok:false,error:'Invalid authorization request'});
+  try { const {action,flowId,code}=parsed.data;
+   if(action==='complete'&&(!flowId||!code))throw new Error('Enter the Google authorization code');
+   const result=action==='start'?await gcpAuth.start():action==='complete'?await gcpAuth.complete(flowId!,code!):action==='disconnect'?await gcpAuth.disconnect():action==='cancel'?(gcpAuth.cancel(),{}):await gcpAuth.status();
+   ack?.({ok:true,...result});
+  } catch(error) {ack?.({ok:false,error:error instanceof Error?error.message:'Google authorization failed'});}
+ });
  socket.on('connect',()=>console.log(`Runner ${d.name} connected`));
  socket.on('connect_error',(err)=>console.error('Connection failed:',err.message));
  socket.on('disconnect',()=>{for(const controller of active.values())controller.abort();console.log('Control plane disconnected; active jobs stopped');});

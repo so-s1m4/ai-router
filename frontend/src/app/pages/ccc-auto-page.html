@@ -42,6 +42,49 @@
       }
       <div class="actions"><button class="btn" (click)="splitLast()">+ Separate next level</button><button class="btn" (click)="removeLast()" [disabled]="settings.levels.length <= 1">Merge last range</button></div>
     </section>
+    <section class="card settings-card">
+      <h2>Google Cloud computations</h2>
+      <p class="muted">Connect Google here to run scored inputs on your VM. Sign-in is saved on the selected runner.</p>
+      @if (!settings.gcp) {
+        <button class="btn" (click)="addGcp()">Set up Google Cloud</button>
+      } @else {
+        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.gcp.enabled" />Run computations on Google Cloud</label>
+        <div class="field-grid">
+          <label>Runner<select class="custom-select" [ngModel]="settings.gcp.runnerId" (ngModelChange)="gcpRunnerChanged($event)" [disabled]="gcpVmBusy || gcpBusy"><option value="" disabled>Choose a runner</option>@for (runner of runners; track runner.id) {<option [value]="runner.id">{{ runner.name }}{{ runner.online ? '' : ' (offline)' }}</option>}</select></label>
+          <label>VM profile<select class="custom-select" [ngModel]="settings.gcp.machineType || 'e2-standard-8'" (ngModelChange)="settings.gcp.machineType=$event; gcpVmStatus=''" [disabled]="gcpVmBusy"><option value="e2-standard-2">2 vCPU · 8 GB RAM</option><option value="e2-standard-4">4 vCPU · 16 GB RAM</option><option value="e2-standard-8">8 vCPU · 32 GB RAM</option><option value="e2-standard-16">16 vCPU · 64 GB RAM</option><option value="e2-standard-32">32 vCPU · 128 GB RAM</option></select></label>
+          <label>Google Cloud project<input class="custom-input" [(ngModel)]="settings.gcp.project" [disabled]="gcpVmBusy" (ngModelChange)="gcpVmStatus=''" /></label>
+          <label>VM zone<input class="custom-input" [(ngModel)]="settings.gcp.zone" [disabled]="gcpVmBusy" (ngModelChange)="gcpVmStatus=''" /></label>
+          <label>VM name<input class="custom-input" [(ngModel)]="settings.gcp.instance" [disabled]="gcpVmBusy" (ngModelChange)="gcpVmStatus=''" /></label>
+          <label>Workers<input class="custom-input" type="number" [(ngModel)]="settings.gcp.workers" min="1" max="64" /></label>
+          <label>Computation timeout, seconds<input class="custom-input" type="number" [(ngModel)]="settings.gcp.timeoutSeconds" min="1" max="3600" /></label>
+          <label class="toggle"><input type="checkbox" [(ngModel)]="settings.gcp.useIap" />Connect through IAP</label>
+        </div>
+        <p>New VM: Debian 12 · selected profile · 20 GB disk · automatic stop after 1 hour. Google Cloud billing must be enabled; disk charges continue while stopped.</p>
+        <div class="actions">
+          <button class="btn btn-primary" (click)="gcpVm('create')" [disabled]="gcpVmBusy || gcpBusy || !gcpConnected">Create VM</button>
+          <button class="btn" (click)="gcpVm('start')" [disabled]="gcpVmBusy || gcpBusy || !gcpConnected">Start VM</button>
+          <button class="btn" (click)="gcpVm('stop')" [disabled]="gcpVmBusy || gcpBusy || !gcpConnected">Stop VM</button>
+          <button class="btn" (click)="gcpVm('status')" [disabled]="gcpVmBusy || gcpBusy || !gcpConnected">Check VM status</button>
+        </div>
+        <button class="btn" (click)="gcpVm('resize')" [disabled]="gcpVmBusy || gcpBusy || !gcpConnected">Apply profile to stopped VM</button>
+        <p>To change an existing VM's profile: stop it, check that its status is TERMINATED, apply the profile, then start it. Workers are configured separately.</p>
+        @if (gcpVmBusy) {<p role="status">Sending request to Google Cloud…</p>}
+        @if (gcpVmStatus) {<p role="status">{{ gcpVmStatus }}</p>}
+        <p>VM actions use the fields above. Save settings before starting CCC auto. After creation, allow a few minutes for tools to install before running computations. Stop VM interrupts its computations.</p>
+        @if (gcpStatus) {<p role="status">{{ gcpStatus }} {{ gcpEmail }}</p>}
+        <div class="actions">
+          <button class="btn btn-primary" (click)="gcpAuth('start')" [disabled]="gcpVmBusy || gcpBusy || !settings.gcp.runnerId">{{ gcpBusy ? 'Please wait…' : gcpConnected ? 'Change Google account' : 'Sign in with Google' }}</button>
+          <button class="btn" (click)="gcpAuth('status')" [disabled]="gcpVmBusy || gcpBusy || !settings.gcp.runnerId">Check connection</button>
+          @if (gcpConnected) {<button class="btn" (click)="gcpAuth('disconnect')" [disabled]="gcpVmBusy || gcpBusy">Disconnect Google</button>}
+        </div>
+        @if (gcpFlow) {
+          <p><a [href]="gcpFlow.url" target="_blank" rel="noopener noreferrer">Open Google sign-in</a></p>
+          <label>Google authorization code<input class="custom-input" type="password" [(ngModel)]="gcpCode" autocomplete="off" maxlength="4096" [disabled]="gcpVmBusy || gcpBusy" /></label>
+          <div class="actions"><button class="btn btn-primary" (click)="gcpAuth('complete')" [disabled]="gcpVmBusy || gcpBusy || !gcpCode.trim()">Complete sign-in</button><button class="btn" (click)="gcpAuth('cancel')" [disabled]="gcpVmBusy || gcpBusy">Cancel sign-in</button></div>
+        }
+        <p class="muted">Save settings to apply the execution choice. Create or start the VM above before running computations. Google Cloud CLI must be installed on the runner.</p>
+      }
+    </section>
     <div class="settings-columns">
       <section class="card settings-card"><h2>Submissions and HTTP 429</h2><p class="muted">Completed answers are saved to disk. A longer Retry-After from the platform takes priority.</p><div class="field-grid">
         <label>Submission interval, seconds<input class="custom-input" type="number" [(ngModel)]="settings.submissionIntervalSeconds" min="0" max="300" step="0.1" /></label>

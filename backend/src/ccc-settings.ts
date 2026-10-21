@@ -18,8 +18,26 @@ export const cccCandidateSchema = z.object({
   fast: z.boolean(),
   openRouterRouting: openRouterRoutingSchema.optional(),
 }).strict();
+export const cccGcpSchema = z.object({
+  machineType: z.enum(['e2-standard-2','e2-standard-4','e2-standard-8','e2-standard-16','e2-standard-32']).optional(),
+  enabled: z.boolean(),
+  runnerId: z.string().uuid(),
+  project: z.string().regex(/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/),
+  zone: z.string().regex(/^[a-z]+-[a-z0-9]+[0-9]-[a-z]$/),
+  instance: z.string().regex(/^[a-z][a-z0-9-]{0,61}[a-z0-9]$/),
+  workers: z.number().int().min(1).max(64),
+  timeoutSeconds: z.number().int().min(1).max(3600),
+  useIap: z.boolean(),
+}).strict();
+export const cccGcpVmSchema = z.object({
+  action: z.enum(['status', 'create', 'start', 'stop', 'resize']),
+  settings: cccGcpSchema,
+}).strict();
+export type CccGcpSettings = z.infer<typeof cccGcpSchema>;
+
 export const cccAutoSchema = z.object({
   version: z.literal(1),
+  gcp: cccGcpSchema.optional(),
   submissionIntervalSeconds: z.number().min(0).max(300),
   rateLimitRetries: z.number().int().min(0).max(20),
   rateLimitDelaySeconds: z.number().min(1).max(600),
