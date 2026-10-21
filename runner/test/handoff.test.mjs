@@ -31,6 +31,7 @@ test('Codex App Server reuses a thread and handles completion sent with the turn
   const root = await mkdtemp(path.join(os.tmpdir(), 'router-appserver-'));
   const fake = path.join(root, 'fake-codex');
   await writeFile(fake, `#!/usr/bin/env node
+if (!process.argv.includes('--enable') || !process.argv.includes('fast_mode')) process.exit(1);
 let buffer = '', turns = 0;
 process.stdin.on('data', chunk => {
   buffer += chunk.toString();
@@ -49,8 +50,12 @@ process.stdin.on('data', chunk => {
       turns++;
       const turnId = 'turn_' + turns;
       send({ id: message.id, result: { turn: { id: turnId } } });
-      if (message.params.input[0].text === 'FAST' && (message.params.serviceTierForTurn !== 'fast' || message.params.effort !== 'high')) {
+      if (message.params.input[0].text === 'FAST' && (message.params.serviceTier !== 'fast' || message.params.effort !== 'high')) {
         send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'failed', error: { message: 'Fast mode or reasoning not forwarded' } } } });
+        continue;
+      }
+      if (message.params.input[0].text !== 'FAST' && message.params.serviceTier !== 'default') {
+        send({ method: 'turn/completed', params: { threadId: 'thr_test', turn: { id: turnId, status: 'failed', error: { message: 'Fast mode was not disabled' } } } });
         continue;
       }
       if (message.params.input[0].text === 'LIMIT') {
@@ -92,6 +97,8 @@ process.stdin.on('data', chunk => {
       assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.data.totalTokens), [100, 100, 200, 100, 100, 200], 'continued requests exclude earlier turn usage');
       const fast = await runCodexAppServer({ ...job, prompt: 'FAST', fast: true, reasoning: 'high' }, home, cwd, new AbortController().signal, () => {}, first.threadId);
       assert.equal(fast.text, 'answer 3');
+      const standard = await runCodexAppServer({ ...job, fast: false }, home, cwd, new AbortController().signal, () => {}, first.threadId);
+      assert.equal(standard.text, 'answer 4', 'Fast can be disabled on a loaded thread');
       await assert.rejects(runCodexAppServer({ ...job, prompt: 'LIMIT' }, home, cwd, new AbortController().signal, () => {}, first.threadId), error => error.code === 'rate_limit');
       await mkdir(path.join(home, '.codex'), { recursive: true });
       await writeFile(path.join(home, '.codex', 'config.toml'), '[mcp_servers.browser]\ncommand = "playwright-mcp"\n');

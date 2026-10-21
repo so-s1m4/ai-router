@@ -59,7 +59,7 @@ class AppServerConnection {
   private retired = false;
 
   constructor(private readonly home: string) {
-    this.child = spawn(codexBin, ['app-server', '--listen', 'stdio://', '--disable', 'apps', '--disable', 'enable_mcp_apps'], { env: envFor(home), stdio: ['pipe', 'pipe', 'pipe'] });
+    this.child = spawn(codexBin, ['app-server', '--listen', 'stdio://', '--enable', 'fast_mode', '--disable', 'apps', '--disable', 'enable_mcp_apps'], { env: envFor(home), stdio: ['pipe', 'pipe', 'pipe'] });
     this.child.stdout.on('data', data => this.consume(data.toString()));
     this.child.stderr.on('data', () => undefined);
     this.child.on('error', error => this.fail(new RunnerError(error.message, 'unavailable')));
@@ -231,7 +231,7 @@ class AppServerConnection {
         ...(job.model !== 'default' ? { model: job.model } : {}),
         ...(job.reasoning && job.reasoning !== 'default' ? { effort: job.reasoning } : {}),
         ...(job.solverCodeOnly ? { outputSchema: codeOutputSchema } : {}),
-        serviceTierForTurn: job.fast ? 'fast' : 'default'
+        serviceTier: job.fast ? 'fast' : 'default'
       });
       turnId = String(turn.turn?.id || '');
       if (!turnId) throw new RunnerError('App Server did not return turn', 'unavailable');

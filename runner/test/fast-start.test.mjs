@@ -58,7 +58,7 @@ process.stdin.on('data', chunk => {
     assert.equal(calls[0][0], 'app-server');
     const turns = (await readFile(path.join(root, 'turns'), 'utf8')).trim().split('\n').map(JSON.parse);
     assert.equal(turns.length, 3);
-    assert.ok(turns.every(turn => turn.model === 'gpt-6.1-sol' && turn.effort === 'medium' && turn.serviceTierForTurn === 'fast'));
+    assert.ok(turns.every(turn => turn.model === 'gpt-6.1-sol' && turn.effort === 'medium' && turn.serviceTier === 'fast'));
     assert.ok(turns.every(turn => turn.input[0].text.includes('Batch independent tool calls')));
     const requests = (await readFile(path.join(root, 'requests'), 'utf8')).trim().split('\n');
     assert.equal(requests.filter(method => method === 'thread/start').length, 2);
