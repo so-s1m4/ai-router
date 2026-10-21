@@ -88,3 +88,37 @@ test('real C++17 compilation and Python/Node execution warm successfully', async
   try { await warmRuntimes(cwd, new AbortController().signal); }
   finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+
+test('warmup overlaps distinct models with at most three probes and counts every response', async () => {
+  const job=makeJob(), signal=new AbortController().signal;
+  job.cccAuto.levels.forEach((rule,i)=>{rule.candidates[0].model='model-'+i;});
+  let release, reachedLimit;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const started=new Promise(resolve=>{reachedLimit=resolve;});
+  let active=0, maximum=0, count=0;
+  const events=[];
+  const pending=prepareCcc(job,'/tmp',async (probe,signal,emit)=>{
+    active++; count++; maximum=Math.max(maximum,active);
+    if(count===3)reachedLimit();
+    await gate;
+    emit({type:'usage',data:{input_tokens:2,output_tokens:3}});
+    active--;
+    return '{"source":"ready"}';
+  },signal,event=>events.push(event),{
+    connect:async()=>({ready:async()=>{},call:async()=>{},close:async()=>{}}),
+    runtimes:async()=>{},
+  });
+  let timer;
+  try {
+    await Promise.race([started,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('warmup remained sequential')),2000);})]);
+    assert.equal(count,3);
+    assert.equal(active,3);
+  } finally { clearTimeout(timer); release(); }
+  await pending;
+  assert.equal(maximum,3);
+  assert.equal(count,5);
+  assert.equal(events.at(-1).data.totalTokens,25);
+  const client=await takeWarmCcc(job,signal);
+  await client.close();
+});

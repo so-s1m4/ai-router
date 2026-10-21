@@ -22,6 +22,10 @@ const args = process.argv.slice(2);
 fs.appendFileSync(process.env.GCP_TEST_LOG, JSON.stringify(args)+'\\n');
 if(process.env.GCP_TEST_CONFIG_LOG)fs.appendFileSync(process.env.GCP_TEST_CONFIG_LOG,(process.env.CLOUDSDK_CONFIG||'')+'\\n');
 let result;
+if (args.some(arg=>arg.startsWith('--command=if test -f')) && process.env.GCP_TEST_CLEANUP_RELEASE) {
+ fs.writeFileSync(process.env.GCP_TEST_CLEANUP_MARKER,'pending');
+ spawnSync('/bin/sh',['-c','while [ ! -f "$GCP_TEST_CLEANUP_RELEASE" ]; do sleep 0.02; done']);
+}
 if (args[1] === 'ssh') result = spawnSync('/bin/sh', ['-c', args.find(a=>a.startsWith('--command=')).slice(10)], {stdio:'inherit'});
 else {
  const files = args.slice(2).filter(a=>!a.startsWith('--')).map(a=>a.replace(/^ccc-compute:/,''));
@@ -57,10 +61,36 @@ process.exit(result.status ?? 1);
     const timer = setTimeout(() => cancel.abort(), 1000);
     try { await assert.rejects(run(cancel.signal), /abort/i); }
     finally { clearTimeout(timer); }
+    // Hold the final cleanup SSH open. The verified answer must be usable
+    // before that housekeeping finishes, even when the server wins the race.
+    await writeFile(path.join(root,'solution.py'),'print(int(input()) * 2)\n');
+    process.env.GCP_TEST_CLEANUP_RELEASE=path.join(root,'cleanup-release');
+    process.env.GCP_TEST_CLEANUP_MARKER=path.join(root,'cleanup-marker');
+    let cleanupTimer;
+    try {
+      await Promise.race([run(),new Promise((_,reject)=>{
+        cleanupTimer=setTimeout(()=>reject(new Error('remote answer waited for SSH cleanup')),3000);
+      })]);
+      assert.equal(await readFile(path.join(root,JSON.parse(await readFile(path.join(root,'answers.json'),'utf8')).answers[0].path),'utf8'),'42\n');
+    } finally {
+      clearTimeout(cleanupTimer);
+      await writeFile(process.env.GCP_TEST_CLEANUP_RELEASE,'release');
+      delete process.env.GCP_TEST_CLEANUP_RELEASE;
+      delete process.env.GCP_TEST_CLEANUP_MARKER;
+    }
     const commands = (await readFile(process.env.GCP_TEST_LOG, 'utf8')).trim().split('\n').map(JSON.parse);
     for (const args of commands.filter(args => args[1] === 'ssh')) {
       const remote = args.find(a => a.startsWith('--command=')).match(/\/tmp\/ai-router-ccc-[a-f0-9-]+/)?.[0];
-      if (remote) await assert.rejects(readFile(path.join(remote, 'pid')), { code: 'ENOENT' });
+      if (remote) {
+        // Successful output publication no longer waits for SSH housekeeping.
+        const { setTimeout: delay } = await import('node:timers/promises');
+        for (let retry = 0; retry < 100; retry++) {
+          try { await readFile(path.join(remote, 'pid')); }
+          catch (error) { if (error.code === 'ENOENT') break; throw error; }
+          await delay(20);
+        }
+        await assert.rejects(readFile(path.join(remote, 'pid')), { code: 'ENOENT' });
+      }
     }
     assert.ok(commands.some(args => args.includes('--project=project-37e84c09-c743-4b4c-8a8')));
     process.env.CCC_EXECUTION = 'invalid';

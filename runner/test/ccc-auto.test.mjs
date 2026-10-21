@@ -1220,3 +1220,35 @@ test('insufficient Python context falls back to an agent that writes Python', as
   assert.match(await runAuto({...job, cccAuto:settings}, f.cwd, f.client, solve, f.controller.signal, e=>f.events.push(e)), /Accepted 2 new outputs/);
   assert.equal(seen.length, 2);
 }, {levels:[1]}));
+
+for (const corrupt of [false, true]) test(`resuming reuses verified artifacts and replaces corrupted files (corrupt=${corrupt})`, async () => fixture(async f => {
+  const originalCall = f.client.call;
+  const digest = createHash('sha256').update('1\nexample\n').digest('hex');
+  f.client.call = async (name,args) => {
+    const result = await originalCall(name,args);
+    if (name === 'prepare_level') for (const entry of result.files.entries) entry.sha256 = digest;
+    if (name === 'get_level_input') result.sha256 = digest;
+    return result;
+  };
+  await assert.rejects(runAuto(job,f.cwd,f.client,async () => { throw new Error('preparation interrupted'); },
+    f.controller.signal,()=>{}), /preparation interrupted/);
+  const before = f.calls.filter(c=>c.name==='get_artifact_download_url').length;
+  assert.equal(before,3);
+  if (corrupt) {
+    // Locate the persisted statement independently of the internal directory key.
+    const {readdir}=await import('node:fs/promises');
+    const root=path.join(f.cwd,'.ai-router/ccc-auto');
+    const [contestDir]=await readdir(root);
+    await writeFile(path.join(root,contestDir,'level-1','0-level.pdf'),'corrupted!');
+  }
+  await runAuto(job,f.cwd,f.client,async solverJob => {
+    const match=solverJob.prompt.match(/directly write (.*?) with JSON/);
+    assert.ok(match,solverJob.prompt);
+    const ids=JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
+    await writeFile(match[1],JSON.stringify({answers:ids.map(file_id=>({file_id,solution:'42\n'}))}));
+    return 'ready';
+  },f.controller.signal,()=>{});
+  // Level 2 is new; only a corrupt level-1 artifact requires another transfer.
+  const after=f.calls.filter(c=>c.name==='get_artifact_download_url').length;
+  assert.equal(after-before,3 + Number(corrupt));
+}));

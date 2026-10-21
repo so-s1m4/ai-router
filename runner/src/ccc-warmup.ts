@@ -65,39 +65,48 @@ export async function prepareCcc(job: Job, cwd: string, solve: Solver, signal: A
       [{ accountId: job.accountId, provider: job.provider, model: 'gpt-6.1-sol', reasoning: 'low', fast: true, openRouterRouting: undefined }];
     // One real inference per connection/model/routing warms all candidates using it.
     const unique = [...new Map(models.map(c => [JSON.stringify([c.accountId, c.provider, c.model, c.openRouterRouting]), c])).values()];
+    const probe = async (candidate: (typeof unique)[number]) => {
+      controller.signal.throwIfAborted();
+      const accountId = candidate.accountId || job.accountId;
+      emit({ type: 'status', message: `CCC прогрев: ${candidate.provider} / ${candidate.model}` });
+      const id = randomUUID();
+      const response = await solve({ ...job, jobId: id, taskId: id, workflow: 'standard', cccAuto: undefined,
+        provider: candidate.provider, accountId, model: candidate.model, reasoning: candidate.reasoning,
+        openRouterRouting: candidate.openRouterRouting, fast: candidate.fast, solverOnly: true, solverCodeOnly: true,
+        previousThreadId: undefined, personalMcp: candidate.provider === 'codex' ? job.personalMcp : [],
+        prompt: 'Connection readiness check. No tools. Return exactly {"source":"ready","outputMode":"exact"}.', mode: 'task',
+      }, AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]), event => {
+        if (event.type !== 'usage' || !event.data || event.data.limits) return;
+        const latest: Record<string, number> = {};
+        for (const [field, snake] of [['inputTokens','input_tokens'],['outputTokens','output_tokens'],['totalTokens','total_tokens'],['cachedInputTokens','cached_input_tokens'],['reasoningOutputTokens','reasoning_output_tokens']]) {
+          const value = event.data[field] ?? event.data[snake];
+          if (typeof value === 'number') latest[field] = value;
+        }
+        latest.totalTokens ??= (latest.inputTokens || 0) + (latest.outputTokens || 0);
+        usage.set(id, { accountId, provider: candidate.provider, model: candidate.model, usage: latest });
+        const total: Record<string, number> = {};
+        const groups = new Map<string, typeof usage extends Map<string, infer V> ? V : never>();
+        for (const row of usage.values()) for (const [field, value] of Object.entries(row.usage)) total[field] = (total[field] || 0) + value;
+        for (const row of usage.values()) {
+          const key = `${row.accountId}:${row.provider}:${row.model}`;
+          const group = groups.get(key) ?? { ...row, usage: {} };
+          for (const [field, value] of Object.entries(row.usage)) group.usage[field] = (group.usage[field] || 0) + value;
+          groups.set(key, group);
+        }
+        emit({ type: 'usage', data: { ...total, cccUsage: [...groups.values()] } });
+      });
+      if (JSON.parse(response).source !== 'ready') throw new Error(`CCC прогрев: ${candidate.provider} / ${candidate.model} did not confirm readiness`);
+    };
     const probes = async () => {
-      for (const candidate of unique) {
-        controller.signal.throwIfAborted();
-        const accountId = candidate.accountId || job.accountId;
-        emit({ type: 'status', message: `CCC прогрев: ${candidate.provider} / ${candidate.model}` });
-        const id = randomUUID();
-        const response = await solve({ ...job, jobId: id, taskId: id, workflow: 'standard', cccAuto: undefined,
-          provider: candidate.provider, accountId, model: candidate.model, reasoning: candidate.reasoning,
-          openRouterRouting: candidate.openRouterRouting, fast: candidate.fast, solverOnly: true, solverCodeOnly: true,
-          previousThreadId: undefined, personalMcp: candidate.provider === 'codex' ? job.personalMcp : [],
-          prompt: 'Connection readiness check. No tools. Return exactly {"source":"ready","outputMode":"exact"}.', mode: 'task',
-        }, AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]), event => {
-          if (event.type !== 'usage' || !event.data || event.data.limits) return;
-          const latest: Record<string, number> = {};
-          for (const [field, snake] of [['inputTokens','input_tokens'],['outputTokens','output_tokens'],['totalTokens','total_tokens'],['cachedInputTokens','cached_input_tokens'],['reasoningOutputTokens','reasoning_output_tokens']]) {
-            const value = event.data[field] ?? event.data[snake];
-            if (typeof value === 'number') latest[field] = value;
-          }
-          latest.totalTokens ??= (latest.inputTokens || 0) + (latest.outputTokens || 0);
-          usage.set(id, { accountId, provider: candidate.provider, model: candidate.model, usage: latest });
-          const total: Record<string, number> = {};
-          const groups = new Map<string, typeof usage extends Map<string, infer V> ? V : never>();
-          for (const row of usage.values()) for (const [field, value] of Object.entries(row.usage)) total[field] = (total[field] || 0) + value;
-          for (const row of usage.values()) {
-            const key = `${row.accountId}:${row.provider}:${row.model}`;
-            const group = groups.get(key) ?? { ...row, usage: {} };
-            for (const [field, value] of Object.entries(row.usage)) group.usage[field] = (group.usage[field] || 0) + value;
-            groups.set(key, group);
-          }
-          emit({ type: 'usage', data: { ...total, cccUsage: [...groups.values()] } });
-        });
-        if (JSON.parse(response).source !== 'ready') throw new Error(`CCC прогрев: ${candidate.provider} / ${candidate.model} did not confirm readiness`);
-      }
+      let next = 0, failed = false;
+      const results = await Promise.allSettled(Array.from({ length: Math.min(3, unique.length) }, async () => {
+        while (!failed && next < unique.length) {
+          const candidate = unique[next++];
+          try { await probe(candidate); }
+          catch (error) { failed = true; throw error; }
+        }
+      }));
+      for (const result of results) if (result.status === 'rejected') throw result.reason;
     };
     const results = await Promise.allSettled([client.ready!(), (options.runtimes || warmRuntimes)(cwd, controller.signal), probes()]);
     controller.signal.throwIfAborted();

@@ -186,3 +186,29 @@ test('user stop cancels both sides and pre-canceled jobs start neither', async (
   await assert.rejects(withParallelExecution(run, run, controller.signal), /abort/i);
   assert.equal(signals.length, 2);
 });
+
+test('winning computation is returned while slow SSH cleanup drains in the background', { timeout: 3000 }, async () => {
+  const { withParallelExecution } = await import('../dist/ccc-execution.js');
+  let release, stopped = false, drained = false;
+  const cleanup = new Promise(resolve => { release = resolve; });
+  let timeout;
+  try {
+    const result = withParallelExecution(async () => {
+      await delay(10);
+      return 'ready';
+    }, async signal => {
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+      stopped = true;
+      await cleanup;
+      drained = true;
+      throw new Error('canceled');
+    }, new AbortController().signal);
+    assert.equal(await Promise.race([result, new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('answer blocked by SSH cleanup')), 1000);
+    })]), 'ready');
+    assert.equal(stopped, true);
+    assert.equal(drained, false);
+  } finally { clearTimeout(timeout); release(); }
+  await delay(0);
+  assert.equal(drained, true);
+});

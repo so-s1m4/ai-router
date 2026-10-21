@@ -116,7 +116,14 @@ export async function withParallelExecution<T>(
   } finally {
     signal.removeEventListener('abort', abort);
     controller.abort(new Error('CCC parallel execution finished'));
-    await Promise.allSettled(runs);
+    // Abort reaches both process trees immediately. SSH cleanup can take 15s;
+    // let it finish in the background without holding back the winning output.
+    let cleanupTimer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled(runs),
+      new Promise<void>(resolve => { cleanupTimer = setTimeout(resolve, 100); }),
+    ]);
+    clearTimeout(cleanupTimer);
   }
 }
 
@@ -172,7 +179,7 @@ export async function runRecipe(directory: string, taskFile: string, answersFile
   const root = await realpath(directory), script = await realpath(path.resolve(directory, recipe.script));
   if (!script.startsWith(root + path.sep)) throw new Error('CCC solver source must stay inside its candidate folder');
   const binary = recipe.runtime === 'node' ? process.execPath : 'python3';
-  const workers = recipe.runtime === 'node' && path.basename(script) === 'cpp.cjs' ? await reserveWorkers(signal) : undefined;
+  const workers = recipe.runtime === 'node' && ['cpp.cjs', 'python.cjs'].includes(path.basename(script)) ? await reserveWorkers(signal) : undefined;
   try {
     await new Promise<void>((resolve, reject) => {
       let log = '', canceled = false;

@@ -47,6 +47,7 @@ export async function runGcpRecipe(directory: string, taskFile: string, answersF
   const payload = path.join(staging, 'payload');
   const result = path.join(payload, 'results');
   let remoteCreated = false;
+  let completed = false;
   try {
     await mkdir(result, { recursive: true, mode: 0o700 });
     const task = JSON.parse(await readFile(taskFile, 'utf8'));
@@ -65,11 +66,10 @@ export async function runGcpRecipe(directory: string, taskFile: string, answersF
     // A remote hard timeout also bounds computation if the runner loses its
     // network connection. Each batch has an independent process group.
     const solve = `${recipe.script === 'cpp.cjs' ? 'g++ -std=c++17 -O2 -pipe -pthread solution.cpp -o solution && ' : ''}CCC_CPP_WORKERS=${workers} CCC_CPP_MEMORY_BYTES=536870912 node ${recipe.script} task.json answers.json`;
-    await waitForGcpReady(readySignal => command(['compute', 'ssh', instance,
-      `--command=${gcpReadinessCommand}`,
-    ], readySignal), signal);
-    await command(['compute', 'ssh', instance, `--command=umask 077; mkdir ${remote}`], signal);
     remoteCreated = true;
+    await waitForGcpReady(readySignal => command(['compute', 'ssh', instance,
+      `--command=${gcpReadinessCommand}; umask 077; mkdir ${remote}`,
+    ], readySignal), signal);
     await command(['compute', 'scp', '--recurse', payload, `${instance}:${remote}/`], signal);
     await command(['compute', 'ssh', instance, `--command=cd ${remote}/payload/results || exit 1; setsid timeout --kill-after=5s ${seconds}s sh -c '${solve}' >execution.log 2>&1 & pid=$!; echo $pid > ${remote}/pid; wait $pid; status=$?; cat execution.log; rm -rf .results solution solution.cpp solution.py cpp.cjs python.cjs batch.cjs task.json; exit $status`], signal);
     await command(['compute', 'scp', '--recurse', `${instance}:${remote}/payload/results`, path.join(staging, 'download')], signal);
@@ -89,13 +89,17 @@ export async function runGcpRecipe(directory: string, taskFile: string, answersF
     }
     await copyFile(path.join(download, 'execution.log'), path.join(directory, 'execution-gcp.log'));
     await writeFile(answersFile, JSON.stringify({ answers }), { mode: 0o600 });
+    completed = true;
   } finally {
     if (remoteCreated) {
       // Independent from the canceled candidate signal; cancel the remote
       // process group before deleting its inputs and outputs.
-      await command(['compute', 'ssh', instance, `--command=if test -f ${remote}/pid; then /bin/kill -KILL -- -$(cat ${remote}/pid) 2>/dev/null || true; fi; rm -rf ${remote}`], AbortSignal.timeout(15_000)).catch(error => {
+      const cleanup = command(['compute', 'ssh', instance, `--command=if test -f ${remote}/pid; then /bin/kill -KILL -- -$(cat ${remote}/pid) 2>/dev/null || true; fi; rm -rf ${remote}`], AbortSignal.timeout(15_000)).catch(error => {
         console.warn(`CCC Google Cloud cleanup failed for ${remote}: ${String(error)}`);
       });
+      // A finished remote batch has no live solver. Its output is already local;
+      // removing the private remote directory must not delay publication.
+      if (!completed) await cleanup;
     }
     await rm(staging, { recursive: true, force: true });
   }

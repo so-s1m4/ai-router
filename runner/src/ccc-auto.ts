@@ -109,6 +109,18 @@ function filename(value: unknown): string {
 async function artifact(client: CccClient, item: any, target: string, signal: AbortSignal) {
   if (!item?.artifact_id) throw new Error('CCC returned no artifact ID');
   if (item.bytes > maxBytes) throw new Error('CCC file exceeds the 30 MiB limit');
+  // Reuse only content authenticated by this freshly fetched artifact digest.
+  // Resuming a level should not download the same statement and inputs again.
+  if (typeof item.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(item.sha256)) {
+    const existing = await stat(target).catch(error => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+    if (existing && existing.size <= maxBytes && (typeof item.bytes !== 'number' || existing.size === item.bytes)) {
+      const digest = createHash('sha256').update(await readFile(target)).digest('hex');
+      if (digest === item.sha256.toLowerCase()) return;
+    }
+  }
   const link = await client.call('get_artifact_download_url', { artifact_id: item.artifact_id, filename: filename(item.filename || path.basename(target)) });
   if (typeof link.url !== 'string' || !link.url.startsWith('https://')) throw new Error('CCC returned an invalid download URL');
   const response = await fetch(link.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
