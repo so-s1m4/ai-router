@@ -7,6 +7,7 @@ import { ClipboardService } from './clipboard.service';
 import { FeedbackService } from './feedback.service';
 import { FileLibraryService } from './file-library.service';
 import { ChatSession, FileGroup, Project, sortSessions } from './models';
+import { ModelsService } from './models.service';
 import { NavigationService } from './navigation.service';
 import { ProjectsService } from './projects.service';
 import { SessionsService } from './sessions.service';
@@ -14,6 +15,7 @@ import { TaskFilesService } from './task-files.service';
 @Injectable({ providedIn: 'root' })
 export class FilesService {
   private readonly http = inject(ApiService);
+  private readonly modelService = inject(ModelsService);
   private readonly feedback = inject(FeedbackService);
   readonly error = this.feedback.error;
   readonly notice = this.feedback.notice;
@@ -335,7 +337,7 @@ export class FilesService {
       const projectId = this.projectService.selectedProjectId() || undefined;
       currentSession = await this.http.request<ChatSession>('/sessions', {
         method: 'POST',
-        body: JSON.stringify(projectId ? { projectId } : {}),
+        body: JSON.stringify({ projectId, workflow: this.modelService.workflow() }),
       });
       this.sessionService.current.set(currentSession);
     }

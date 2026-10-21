@@ -101,7 +101,7 @@
         <details class="candidate-options"><summary>Change VM profile</summary>
         <button class="btn" (click)="gcpVm('resize')" [disabled]="gcpVmBusy || gcpBusy || !gcpConnected">Apply profile to stopped VM</button>
         <p>To change an existing VM's profile: stop it, check that its status is TERMINATED, apply the profile, then start it. Workers are configured separately.</p></details>
-        @if (gcpVmBusy) {<p role="status">Sending request to Google Cloud…</p>}
+        @if (gcpVmBusy) {<p role="status">Applying VM action and checking readiness…</p>}
         @if (gcpVmStatus) {<p role="status">{{ gcpVmStatus }}</p>}
         <p>VM actions use the fields above. Save settings before starting CCC auto. After creation, allow a few minutes for tools to install before running computations. Stop VM interrupts its computations.</p>
         <p class="muted">Save settings to apply the execution choice. Create or start the VM above before running computations. Google Cloud CLI must be installed on the runner.</p>

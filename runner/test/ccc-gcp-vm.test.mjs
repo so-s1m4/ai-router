@@ -14,7 +14,7 @@ async function fixture(t){
 const fs=require('node:fs');
 const args=process.argv.slice(2);
 fs.appendFileSync(process.env.CLOUDSDK_CONFIG+'/calls',JSON.stringify(args)+'\\n');
-if(args.includes('create')){
+if(args.includes('create')||args.includes('add-metadata')){
  const file=args.find(x=>x.startsWith('--metadata-from-file=')).split('startup-script=')[1];
  fs.writeFileSync(process.env.CLOUDSDK_CONFIG+'/startup',fs.readFileSync(file));
 }
@@ -28,17 +28,22 @@ test('VM lifecycle uses isolated credentials, provisions tools, and reapplies st
  assert.match((await f.vm.run('status',settings)).status,/RUNNING/);
  const pending=f.vm.run('create',{...settings,machineType:'e2-standard-32'});
  await assert.rejects(f.vm.run('start',settings),/already in progress/);
- await pending;
- await f.vm.run('start',settings);
+ assert.match((await pending).status,/ready/);
+ assert.match((await f.vm.run('start',settings)).status,/ready/);
  await f.vm.run('stop',settings);
  await f.vm.run('resize',{...settings,machineType:'e2-standard-16'});
  const calls=await f.calls();
+ const probes=calls.filter(x=>x.includes('ssh'));
+ assert.equal(probes.length,2);
+ assert.ok(probes.every(x=>x.some(arg=>arg.includes('google-startup-scripts.service')&&arg.includes('node --version'))));
  assert.deepEqual(calls[1],['services','enable','compute.googleapis.com','--project=test-project','--quiet']);
  const create=calls.find(x=>x.includes('create'));
  for(const flag of ['--machine-type=e2-standard-32','--max-run-duration=3600s','--instance-termination-action=STOP','--no-service-account','--async'])assert.ok(create.includes(flag));
  assert.match(await readFile(path.join(f.root,'startup'),'utf8'),/nodejs python3 g\+\+ util-linux/);
  const script=create.find(x=>x.startsWith('--metadata-from-file=')).split('startup-script=')[1];
  await assert.rejects(readFile(script),{code:'ENOENT'});
+ assert.ok(calls.findIndex(x=>x.includes('add-metadata'))<calls.findIndex(x=>x.includes('start')));
+ assert.match(await readFile(path.join(f.root,'startup'),'utf8'),/probe/);
  assert.ok(calls.findIndex(x=>x.includes('set-scheduling'))<calls.findIndex(x=>x.includes('start')));
  assert.ok(calls.find(x=>x.includes('stop')).includes('--async'));
  assert.ok(calls.find(x=>x.includes('set-machine-type')).includes('--machine-type=e2-standard-16'));

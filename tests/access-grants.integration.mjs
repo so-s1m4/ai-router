@@ -144,16 +144,18 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   assert.equal((await request(friendCookie,'/ccc-auto/settings','PUT',denied)).status,400);
   const privateId=structuredClone(ccc);privateId.levels[0].candidates[0].accountId=backup.id;
   assert.equal((await request(friendCookie,'/ccc-auto/settings','PUT',privateId)).status,400);
+  const cccSession=(await request(friendCookie,'/sessions','POST',{workflow:'ccc-auto'})).body;
+  const secondCccSession=(await request(friendCookie,'/sessions','POST',{workflow:'ccc-auto'})).body;
   let cccJob;
   runner.removeAllListeners('job:start');
   runner.on('job:start',(job,ack)=>{ack({ok:true});cccJob=job;});
-  const sendCcc=(sessionId=session.id)=>friend.timeout(5000).emitWithAck('run',{sessionId,prompt:'Solve CCC',workflow:'ccc-auto',model:'default',mode:'task'});
+  const sendCcc=(sessionId=cccSession.id)=>friend.timeout(5000).emitWithAck('run',{sessionId,prompt:'Solve CCC',workflow:'ccc-auto',model:'default',mode:'task'});
   const report=(codex,router)=>runner.emit('job:event',{jobId:cccJob.jobId,type:'usage',data:{totalTokens:codex+router,cccUsage:[
     {accountId:backup.id,provider:'codex',model:'catalogue-0',usage:{totalTokens:codex}},
     {accountId:openrouter.id,provider:'openrouter',model:'catalogue-1',usage:{totalTokens:router}},
     {accountId:account.id,provider:'codex',model:'forbidden',usage:{totalTokens:999}},
   ]}});
-  terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
+  terminal=finished(cccSession.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
   assert.equal(cccJob.sharedExecution,true);
   assert.deepEqual(cccJob.personalMcp,[personalCcc]);
   assert.deepEqual(cccJob.cccAuto.levels[0].candidates.map(c=>c.accountId),[backup.id,openrouter.id]);
@@ -165,15 +167,15 @@ test('shared access enforces recipient, models, usage, Auto, account privacy and
   let cccSpent=(await request(friendCookie,'/access-grants')).body.find(g=>g.id===largeGrant.id);
   assert.equal(cccSpent.usedTokens,70);assert.equal(cccSpent.usageByModel['catalogue-0'],40);assert.equal(cccSpent.usageByModel['catalogue-1'],30);
   await api('/access-grants/'+largeGrant.id,'PATCH',{budget:90});cccJob=undefined;
-  terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
-  const firstCcc=cccJob;cccJob=undefined;const secondTerminal=finished(second.id);assert.equal((await sendCcc(second.id)).ok,true);await waitFor(()=>cccJob);cccJob=firstCcc;
+  terminal=finished(cccSession.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
+  const firstCcc=cccJob;cccJob=undefined;const secondTerminal=finished(secondCccSession.id);assert.equal((await sendCcc(secondCccSession.id)).ok,true);await waitFor(()=>cccJob);cccJob=firstCcc;
   report(10,20);assert.equal((await terminal).type,'error');assert.equal((await secondTerminal).type,'error');
   cccSpent=(await request(friendCookie,'/access-grants')).body.find(g=>g.id===largeGrant.id);
   assert.equal(cccSpent.usedTokens,100);
   // Exhaustion rejects dispatch; increasing the budget releases the previous lease.
   assert.equal((await sendCcc()).ok,false);
   await api('/access-grants/'+largeGrant.id,'PATCH',{budget:1000});cccJob=undefined;
-  terminal=finished(session.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
+  terminal=finished(cccSession.id);assert.equal((await sendCcc()).ok,true);await waitFor(()=>cccJob);
   await api('/access-grants/'+largeGrant.id,'PATCH',{state:'revoked'});assert.equal((await terminal).type,'error');
   for(const [change,message] of [[{username:'x'},/username/],[{budget:1.5},/whole number/],[{models:[]},/at least one model/]]){
     const invalid=await request(ownerCookie,'/access-grants','POST',{username:'friend',budget:100,period:'once',models:['allowed'],...change});

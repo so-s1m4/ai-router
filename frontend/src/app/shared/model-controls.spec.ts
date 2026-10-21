@@ -1,5 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { ChatComposerComponent } from './chat-composer';
+import { SessionsService } from '../core/sessions.service';
+import { ChatService } from '../core/chat.service';
+import { NavigationService } from '../core/navigation.service';
 import { AccountsService } from '../core/accounts.service';
 import { WorkspaceStore } from '../core/workspace.store';
 
@@ -28,11 +31,37 @@ describe('CCC execution mode', () => {
     const fixture = TestBed.createComponent(ChatComposerComponent);
     const vm = TestBed.inject(WorkspaceStore);
     for (const workflow of ['standard', 'ccc-auto'] as const) {
-      vm.modelService.workflow.set(workflow);
+      vm.modelService.setWorkflow(workflow);
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('[aria-label="Execution mode"]')).toBeNull();
       expect(vm.modelService.workflow()).toBe(workflow);
     }
+  });
+
+  it('keeps CCC and Normal tied to each chat when navigating and starting another chat', () => {
+    const fixture = TestBed.createComponent(ChatComposerComponent);
+    const vm = TestBed.inject(WorkspaceStore);
+    const sessions = TestBed.inject(SessionsService);
+    const normal = { id: 'normal', title: 'Normal', updatedAt: '', messages: [], workflow: 'standard' as const };
+    const ccc = { ...normal, id: 'ccc', workflow: 'ccc-auto' as const };
+    vm.modelService.setWorkflow('ccc-auto');
+    sessions.current.set(normal);
+    fixture.detectChanges();
+    expect(vm.modelService.workflow()).toBe('standard');
+    expect(fixture.nativeElement.textContent).not.toContain('Configure CCC');
+    sessions.current.set(ccc);
+    fixture.detectChanges();
+    expect(vm.modelService.workflow()).toBe('ccc-auto');
+    expect(fixture.nativeElement.textContent).toContain('Configure CCC');
+    vm.modelService.setWorkflow('standard');
+    expect(vm.modelService.workflow()).toBe('ccc-auto');
+    sessions.current.set(normal);
+    expect(vm.modelService.workflow()).toBe('standard');
+    spyOn(TestBed.inject(NavigationService), 'navigateChat');
+    TestBed.inject(ChatService).newSession();
+    expect(vm.modelService.workflow()).toBe('standard');
+    sessions.current.set(ccc);
+    expect(vm.modelService.workflow()).toBe('ccc-auto');
   });
 
   it('offers all providers after choosing a model, without Auto or Standard controls', () => {

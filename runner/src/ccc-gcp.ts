@@ -2,6 +2,7 @@ import type { CccGcpSettings } from './ccc-settings.js';
 import { cccGcloudBinary, cccGcloudEnv } from './ccc-gcp-auth.js';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { waitForGcpReady, GcpCommandError, gcpReadinessCommand } from './ccc-gcp-ready.js';
 import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -38,7 +39,7 @@ export async function runGcpRecipe(directory: string, taskFile: string, answersF
       const append = (chunk: Buffer) => { log = (log + chunk.toString()).slice(-16000); };
       child.stdout.on('data', append); child.stderr.on('data', append);
       child.on('error', reject);
-      child.on('close', code => code === 0 ? resolve() : reject(new Error(`Google Cloud command failed (${code}): ${log}`)));
+      child.on('close', code => code === 0 ? resolve() : reject(new GcpCommandError(code, log)));
     });
   };
   const remote = `/tmp/ai-router-ccc-${randomUUID()}`;
@@ -64,8 +65,11 @@ export async function runGcpRecipe(directory: string, taskFile: string, answersF
     // A remote hard timeout also bounds computation if the runner loses its
     // network connection. Each batch has an independent process group.
     const solve = `${recipe.script === 'cpp.cjs' ? 'g++ -std=c++17 -O2 -pipe -pthread solution.cpp -o solution && ' : ''}CCC_CPP_WORKERS=${workers} CCC_CPP_MEMORY_BYTES=536870912 node ${recipe.script} task.json answers.json`;
-    remoteCreated = true;
+    await waitForGcpReady(readySignal => command(['compute', 'ssh', instance,
+      `--command=${gcpReadinessCommand}`,
+    ], readySignal), signal);
     await command(['compute', 'ssh', instance, `--command=umask 077; mkdir ${remote}`], signal);
+    remoteCreated = true;
     await command(['compute', 'scp', '--recurse', payload, `${instance}:${remote}/`], signal);
     await command(['compute', 'ssh', instance, `--command=cd ${remote}/payload/results || exit 1; setsid timeout --kill-after=5s ${seconds}s sh -c '${solve}' >execution.log 2>&1 & pid=$!; echo $pid > ${remote}/pid; wait $pid; status=$?; cat execution.log; rm -rf .results solution solution.cpp solution.py cpp.cjs python.cjs batch.cjs task.json; exit $status`], signal);
     await command(['compute', 'scp', '--recurse', `${instance}:${remote}/payload/results`, path.join(staging, 'download')], signal);

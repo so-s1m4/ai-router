@@ -74,9 +74,9 @@ function normalizeSessionTitle(session: ChatSession): ChatSession {
   if (session.title === '\u041d\u043e\u0432\u044b\u0439 \u0447\u0430\u0442') session.title = 'New chat';
   return session;
 }
-export async function createSession(userId: string,projectId?:string): Promise<ChatSession> {
+export async function createSession(userId: string,projectId?:string,workflow: 'standard'|'ccc-auto' = 'standard'): Promise<ChatSession> {
   await prepareUser(userId); const now = new Date().toISOString();
-  const session: ChatSession = {id:randomUUID(),title:'New chat',createdAt:now,updatedAt:now,messages:[],...(projectId?{projectId}: {})};
+  const session: ChatSession = {id:randomUUID(),title:'New chat',workflow,createdAt:now,updatedAt:now,messages:[],...(projectId?{projectId}: {})};
   await saveSession(userId,session); return session;
 }
 const sessionQueues = new Map<string, Promise<void>>();

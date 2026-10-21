@@ -63,7 +63,7 @@ test('API key connections enforce ownership and never persist or return credenti
   assert.deepEqual((await api('/ccc-auto/settings')).body,settings);
   const raceSettings=structuredClone(settings);for(const rule of raceSettings.levels)rule.candidates=[{...rule.candidates[0],provider:'openrouter',accountId:routerAccount.body.id,model:'test/model',fast:false}];
   assert.equal((await api('/ccc-auto/settings','PUT',raceSettings)).status,200);
-  const session=await api('/sessions','POST',{});
+  const session=await api('/sessions','POST',{workflow:'ccc-auto'});
   browser=io(base,{transports:['websocket'],forceNew:true,extraHeaders:{cookie}});
   await new Promise((resolve,reject)=>{browser.once('connect',resolve);browser.once('connect_error',reject);});
   let dispatched;

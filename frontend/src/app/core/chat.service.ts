@@ -126,6 +126,7 @@ export class ChatService {
   newSession() {
     this.layoutService.mobileMenu.set(false);
     this.sessionService.current.set(null);
+    this.modelService.draftWorkflow.set('standard');
     this.taskFilesService.taskFiles.set([]);
     this.taskFilesService.selectedTaskFiles.set(new Set());
     this.taskFilesService.sharedFileLinks.set({});
@@ -414,7 +415,7 @@ export class ChatService {
         const projectId = this.projectService.selectedProjectId() || undefined;
         chat = await this.http.request<ChatSession>('/sessions', {
           method: 'POST',
-          body: JSON.stringify(projectId ? { projectId } : {}),
+          body: JSON.stringify({ projectId, workflow: this.modelService.workflow() }),
         });
         this.sessionService.current.set(chat);
       }

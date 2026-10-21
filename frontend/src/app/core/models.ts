@@ -138,6 +138,7 @@ export type Message = {
   [key: string]: any;
 };
 export type ChatSession = {
+  workflow?: 'standard' | 'ccc-auto';
   id: string;
   title: string;
   updatedAt: string;

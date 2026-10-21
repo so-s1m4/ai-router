@@ -23,7 +23,7 @@ export class ModelControlsComponent {
   }
   resetConfiguration() {
     const models = this.vm.modelService;
-    models.workflow.set('standard');
+    models.setWorkflow('standard');
     models.selectService('auto');
     models.selectModel('auto');
     models.onReasoningChange('default');

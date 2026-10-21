@@ -11,7 +11,9 @@ test('session can be created and updated with projectId', async () => {
     const { createSession, getSession, saveSession, deleteSession, listSessions } = await import('./store.js');
     const user = 'test-user-session';
 
-    const session = await createSession(user);
+    const session = await createSession(user, undefined, 'ccc-auto');
+    assert.equal(session.workflow, 'ccc-auto');
+    assert.equal((await createSession(user)).workflow, 'standard');
     assert.ok(session.id);
     assert.equal(session.projectId, undefined);
 
@@ -28,6 +30,7 @@ test('session can be created and updated with projectId', async () => {
     assert.ok(afterUpdate);
     assert.equal(afterUpdate.projectId, testProjectId);
     assert.equal(afterUpdate.title, 'Updated Title');
+    assert.equal(afterUpdate.workflow, 'ccc-auto');
 
     assert.equal(await deleteSession('another-user', session.id), false);
     assert.ok(await getSession(user, session.id));

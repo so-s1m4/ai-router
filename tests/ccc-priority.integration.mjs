@@ -62,16 +62,27 @@ test('CCC dispatch respects account priorities and skips missing login and exhau
   client=await connect(base,{extraHeaders:{cookie}});
   const jobs=[];
   runner.on('job:start',(job,ack)=>{ack({ok:true});jobs.push(job);runner.emit('job:result',{jobId:job.jobId,ok:true,text:'Done'});});
-  const run=async(expected)=>{
-   const session=await api('/sessions','POST',{});
+  const run=async(expected, session, requestedWorkflow='ccc-auto')=>{
+   session ??= await api('/sessions','POST',{workflow:'ccc-auto'});
    const done=new Promise(resolve=>{const listener=e=>{if(e.sessionId===session.id&&['completed','error'].includes(e.type)){client.off('ai:event',listener);resolve(e);}};client.on('ai:event',listener);});
    const count=jobs.length;
-   const ack=await client.timeout(5000).emitWithAck('run',{sessionId:session.id,prompt:'Solve CCC',workflow:'ccc-auto',model:'default',mode:'task'});
+   const ack=await client.timeout(5000).emitWithAck('run',{sessionId:session.id,prompt:'Solve CCC',workflow:requestedWorkflow,model:'default',mode:'task'});
    assert.equal(ack.ok,true);assert.equal((await done).type,'completed');
    assert.equal(jobs.length,count+1);
+   assert.equal((await api('/sessions/'+session.id)).workflow,'ccc-auto');
    assert.ok(jobs.at(-1).cccAuto.levels.every(rule=>rule.candidates.every(candidate=>!candidate.enabled||candidate.accountId===expected)));
   };
-  await run(accounts[4].id);
+  const cccChat=await api('/sessions','POST',{workflow:'ccc-auto'});
+  await run(accounts[4].id,cccChat,'standard');
+  const normalChat=await api('/sessions','POST',{});
+  assert.equal(normalChat.workflow,'standard');
+  const normalDone=new Promise(resolve=>{const listener=e=>{if(e.sessionId===normalChat.id&&['completed','error'].includes(e.type)){client.off('ai:event',listener);resolve(e);}};client.on('ai:event',listener);});
+  assert.equal((await client.timeout(5000).emitWithAck('run',{sessionId:normalChat.id,prompt:'Ordinary task',workflow:'ccc-auto',model:'default'})).ok,true);
+  assert.equal((await normalDone).type,'completed');
+  assert.equal(jobs.at(-1).workflow,'standard');
+  assert.equal(jobs.at(-1).cccAuto,undefined);
+  assert.equal((await api('/sessions/'+normalChat.id)).workflow,'standard');
+  await run(accounts[4].id,cccChat,'standard');
   runner.emit('account:status',{accountId:accounts[4].id,provider:'codex',error:'Codex login required'});
   await waitFor(async()=> (await api('/accounts')).find(a=>a.id===accounts[4].id)?.detail.includes('login required'));
   await run(accounts[3].id);

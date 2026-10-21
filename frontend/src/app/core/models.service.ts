@@ -93,7 +93,11 @@ export class ModelsService {
   selectedModel = signal<string>('auto');
   selectedReasoning = signal<string>('default');
   codexFast = signal(false);
-  workflow = signal<'standard' | 'ccc-auto'>('standard');
+  readonly draftWorkflow = signal<'standard' | 'ccc-auto'>('standard');
+  readonly workflow = computed(() => this.current() ? this.current()!.workflow ?? 'standard' : this.draftWorkflow());
+  setWorkflow(workflow: 'standard' | 'ccc-auto') {
+    if (!this.current()) this.draftWorkflow.set(workflow);
+  }
   models = computed(() => this.modelsForService(this.selectedService()));
   pickerModels = computed(() => this.modelsForService('auto').filter(m => m.id !== 'auto' && m.id !== 'default'));
   private modelsForService(service: ServiceId): Model[] {
