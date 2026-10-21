@@ -87,7 +87,7 @@ export async function runGcpRecipe(directory: string, taskFile: string, answersF
       await copyFile(output, path.join(directory, localName));
       answers.push({ file_id: answer.file_id, path: localName });
     }
-    await copyFile(path.join(download, 'execution.log'), path.join(directory, 'execution.log'));
+    await copyFile(path.join(download, 'execution.log'), path.join(directory, 'execution-gcp.log'));
     await writeFile(answersFile, JSON.stringify({ answers }), { mode: 0o600 });
   } finally {
     if (remoteCreated) {

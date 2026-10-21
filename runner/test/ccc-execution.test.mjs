@@ -138,46 +138,51 @@ test('native batches overlap with bounded workers and per-process memory', async
   } finally { await rm(root,{recursive:true,force:true}); }
 });
 
-test('server offload only starts after the local limit and local cleanup', async () => {
-  const { withServerOffload } = await import('../dist/ccc-execution.js');
-  let stopped = false, notified = false;
-  const result = await withServerOffload(async signal => {
-    try { await delay(500, undefined, { signal }); }
-    finally { await delay(10); stopped = true; }
-  }, async () => {
-    assert.equal(stopped, true);
-    assert.equal(notified, true);
-    return 'remote';
-  }, new AbortController().signal, () => { notified = true; }, 10);
-  assert.equal(result, 'remote');
+test('local and server start immediately and the first success stops the loser', async () => {
+  const { withParallelExecution } = await import('../dist/ccc-execution.js');
+  for (const winner of ['local', 'remote']) {
+    const started = new Set();
+    let loserSignal;
+    const run = side => async signal => {
+      started.add(side);
+      if (side !== winner) {
+        loserSignal = signal;
+        await delay(500, undefined, { signal });
+      } else {
+        await delay(10);
+        assert.deepEqual([...started].sort(), ['local', 'remote']);
+      }
+      return side;
+    };
+    assert.equal(await withParallelExecution(run('local'), run('remote'), new AbortController().signal), winner);
+    assert.equal(loserSignal.aborted, true);
+  }
 });
 
-test('fast and failed local computations do not use the server', async () => {
-  const { withServerOffload } = await import('../dist/ccc-execution.js');
-  const remote = async () => assert.fail('unexpected server execution');
-  const notify = () => assert.fail('unexpected offload notification');
+test('a failed side leaves the other running in either direction', async () => {
+  const { withParallelExecution } = await import('../dist/ccc-execution.js');
+  const fail = async () => { throw new Error('side failed'); };
+  const succeed = async signal => { await delay(10, undefined, { signal }); return 'ok'; };
   const signal = new AbortController().signal;
-  assert.equal(await withServerOffload(async () => 'local', remote, signal, notify, 20), 'local');
-  await assert.rejects(withServerOffload(async () => { throw new Error('broken solver'); }, remote, signal, notify, 20), /broken solver/);
+  assert.equal(await withParallelExecution(fail, succeed, signal), 'ok');
+  assert.equal(await withParallelExecution(succeed, fail, signal), 'ok');
+  await assert.rejects(withParallelExecution(fail, fail, signal), error => {
+    assert.equal(error.errors.length, 2);
+    assert.ok(error.errors.every(e => e.message === 'side failed'));
+    return true;
+  });
 });
 
-test('user stop cancels local execution without offloading', async () => {
-  const { withServerOffload } = await import('../dist/ccc-execution.js');
-  const controller = new AbortController();
-  const pending = withServerOffload(signal => delay(500, undefined, { signal }), async () => assert.fail('unexpected server execution'), controller.signal, () => assert.fail('unexpected notification'), 100);
+test('user stop cancels both sides and pre-canceled jobs start neither', async () => {
+  const { withParallelExecution } = await import('../dist/ccc-execution.js');
+  const controller = new AbortController(), signals = [];
+  const run = async signal => { signals.push(signal); await delay(500, undefined, { signal }); };
+  const pending = withParallelExecution(run, run, controller.signal);
+  await delay(10);
   controller.abort();
   await assert.rejects(pending, /abort/i);
-});
-
-test('user stop reaches the offloaded computation', async () => {
-  const { withServerOffload } = await import('../dist/ccc-execution.js');
-  const controller = new AbortController();
-  let remoteSignal;
-  const pending = withServerOffload(signal => delay(500, undefined, { signal }), async signal => {
-    remoteSignal = signal;
-    controller.abort();
-    signal.throwIfAborted();
-  }, controller.signal, () => {}, 10);
-  await assert.rejects(pending, /abort/i);
-  assert.equal(remoteSignal.aborted, true);
+  assert.equal(signals.length, 2);
+  assert.ok(signals.every(signal => signal.aborted));
+  await assert.rejects(withParallelExecution(run, run, controller.signal), /abort/i);
+  assert.equal(signals.length, 2);
 });

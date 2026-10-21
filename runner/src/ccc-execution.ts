@@ -2,19 +2,26 @@ import type { CccGcpSettings } from './ccc-settings.js';
 import { availableParallelism, freemem } from 'node:os';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { readFile, realpath, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runGcpRecipe } from './ccc-gcp.js';
 
-export const serverOffloadDelayMs = 10_000;
-
-export async function runScoredRecipe(directory: string, taskFile: string, answersFile: string, signal: AbortSignal, settings?: CccGcpSettings, onOffload: () => void = () => {}): Promise<void> {
+export async function runScoredRecipe(directory: string, taskFile: string, answersFile: string, signal: AbortSignal, settings?: CccGcpSettings, onParallel: () => void = () => {}): Promise<void> {
   const backend = settings ? (settings.enabled ? 'gcp' : 'local') : process.env.CCC_EXECUTION || 'local';
-  if (backend === 'gcp') return withServerOffload(
-    localSignal => runRecipe(directory, taskFile, answersFile, localSignal),
-    remoteSignal => runGcpRecipe(directory, taskFile, answersFile, remoteSignal, settings),
-    signal, onOffload,
-  );
+  if (backend === 'gcp') {
+    // Each side owns its manifest and outputs. Only the winner publishes the
+    // batch manifest, so cancellation cannot overwrite an accepted result.
+    const localAnswers = answersFile + '.local';
+    const remoteAnswers = answersFile + '.gcp';
+    const winner = await withParallelExecution(
+      async localSignal => { await runRecipe(directory, taskFile, localAnswers, localSignal); return localAnswers; },
+      async remoteSignal => { await runGcpRecipe(directory, taskFile, remoteAnswers, remoteSignal, settings); return remoteAnswers; },
+      signal, onParallel,
+    );
+    signal.throwIfAborted();
+    await copyFile(winner, answersFile);
+    return;
+  }
   if (backend !== 'local') throw new Error('CCC_EXECUTION must be local or gcp');
   return runRecipe(directory, taskFile, answersFile, signal);
 }
@@ -79,23 +86,38 @@ export async function withExecutionLimit<T>(
   } finally { clearTimeout(timer); }
 }
 
-// Drain the local process before the remote run can write outputs in the same
-// candidate directory. Only the elapsed local limit triggers offloading.
-export async function withServerOffload<T>(
+// Both sides start immediately. A failure leaves the other running; the
+// first success or user cancellation stops both process trees.
+export async function withParallelExecution<T>(
   local: (signal: AbortSignal) => Promise<T>,
   remote: (signal: AbortSignal) => Promise<T>,
   signal: AbortSignal,
-  onOffload: () => void,
-  delayMs = serverOffloadDelayMs,
+  onParallel: () => void = () => {},
 ): Promise<T> {
-  try { return await withExecutionLimit(local, signal, delayMs); }
-  catch (error) {
-    signal.throwIfAborted();
-    if (!(error instanceof ExecutionLimitError)) throw error;
-  }
-  onOffload();
   signal.throwIfAborted();
-  return remote(signal);
+  const controller = new AbortController();
+  const executionSignal = AbortSignal.any([signal, controller.signal]);
+  let abort: () => void = () => {};
+  let runs: Promise<T>[] = [];
+  try {
+    onParallel();
+    const canceled = new Promise<never>((_, reject) => {
+      abort = () => reject(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    });
+    runs = [local, remote].map(run => Promise.resolve().then(async () => {
+      executionSignal.throwIfAborted();
+      const result = await run(executionSignal);
+      executionSignal.throwIfAborted();
+      return result;
+    }));
+    return await Promise.race([Promise.any(runs), canceled]);
+  } finally {
+    signal.removeEventListener('abort', abort);
+    controller.abort(new Error('CCC parallel execution finished'));
+    await Promise.allSettled(runs);
+  }
 }
 
 export const optimizationDelayMs = 10_000;

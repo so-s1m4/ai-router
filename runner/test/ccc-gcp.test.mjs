@@ -71,22 +71,24 @@ process.exit(result.status ?? 1);
     await writeFile(path.join(root,'solution.py'),'print(int(input()) * 2)\n');
     const settings={enabled:true,runnerId:'12345678-1234-4234-8234-123456789abc',project:'project-from-settings',zone:'europe-west1-b',instance:'ccc-compute',workers:1,timeoutSeconds:10,useIap:true};
     await prepareSolverTemplate(root,'.results');
-    const before = await readFile(process.env.GCP_TEST_LOG,'utf8');
     await runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal,settings);
-    assert.equal(await readFile(process.env.GCP_TEST_LOG,'utf8'),before, 'fast local result must not contact GCP');
+    assert.equal(await readFile(path.join(root,JSON.parse(await readFile(path.join(root,'answers.json'),'utf8')).answers[0].path),'utf8'),'42\n');
     await writeFile(path.join(root,'solution.py'), `import os, time
 if '/payload/results' not in os.getcwd():
     open('local-pid', 'w').write(str(os.getppid()))
     time.sleep(60)
 print(int(input()) * 2)
 `);
-    let offloaded = false;
-    await runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal,settings, () => { offloaded = true; });
-    assert.equal(offloaded,true);
+    let parallel = false;
+    await runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal,settings, () => { parallel = true; });
+    assert.equal(parallel,true);
     const localPid=Number(await readFile(path.join(root,'local-pid'),'utf8'));
     assert.throws(() => process.kill(localPid,0),{code:'ESRCH'});
     const migrated=JSON.parse(await readFile(path.join(root,'answers.json'),'utf8'));
+    assert.match(migrated.answers[0].path, /^gcp-/);
     assert.equal(await readFile(path.join(root,migrated.answers[0].path),'utf8'),'42\n');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.deepEqual(JSON.parse(await readFile(path.join(root,'answers.json'),'utf8')), migrated);
     const configured=(await readFile(process.env.GCP_TEST_LOG,'utf8')).trim().split('\n').map(JSON.parse).filter(args=>args.includes('--project=project-from-settings'));
     assert.ok(configured.length>=5);
     assert.ok(configured.every(args=>args.includes('--zone=europe-west1-b')&&args.includes('--tunnel-through-iap')));
