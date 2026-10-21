@@ -28,6 +28,10 @@ process.stdin.on('data', chunk => {
    fs.appendFileSync(process.env.RUNNER_DATA_DIR + '/turns', JSON.stringify(message.params) + '\\n');
    const turnId = 'turn-' + ++turns;
    send({id:message.id,result:{turn:{id:turnId}}});
+   if(message.params.input[0].text.includes('simulate-missing-bearer')) {
+    send({method:'turn/completed',params:{threadId:'thread',turn:{id:turnId,status:'failed',error:{message:'unexpected status 401 Unauthorized: Missing bearer or basic authentication in header'}}}});
+    continue;
+   }
    send({method:'item/agentMessage/delta',params:{threadId:'thread',turnId,delta:'Done'}});
    send({method:'turn/completed',params:{threadId:'thread',turn:{id:turnId,status:'completed'}}});
   }
@@ -110,5 +114,6 @@ process.stdin.on('data', chunk => {
     const codeTurn = (await readFile(path.join(root,'turns'),'utf8')).trim().split('\n').map(JSON.parse).at(-1);
     assert.equal(codeTurn.effort,'low');
     assert.deepEqual(codeTurn.outputSchema.required,['source','outputMode']);
+    await assert.rejects(execute({...solver,taskId:'auth-error',prompt:'simulate-missing-bearer'},new AbortController().signal,()=>{}),error=>error.code==='auth');
   } finally { closeCodexAppServers(); await rm(root, { recursive:true, force:true }); }
 });

@@ -14,6 +14,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  const message=JSON.parse(line);if(message.id===undefined)return;
  fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(message)+'\\n');
  let result={};
+ if(message.method==='account/read')result={account:fs.existsSync(${JSON.stringify(path.join(root, "signed-out"))})?null:{type:'chatgpt'}};
  if(message.method==='account/rateLimits/read')result={rateLimits:{primary:{usedPercent:75,windowDurationMins:300,resetsAt:1800000000}},rateLimitResetCredits:{availableCount:4,credits:[{id:'bonus',status:'available',expiresAt:1800000000,title:'Bonus'}]}};
  if(message.method==='model/list')result={data:[{model:'test-model',displayName:'Test'}]};
  if(message.method==='account/rateLimitResetCredit/consume')result={outcome:'reset'};
@@ -37,5 +38,7 @@ test('Codex status requests reset details and redemption passes a stable attempt
   assert.equal(messages.find(m=>m.method==='account/rateLimits/read').params.excludeResetCreditDetails,false);
   const attempts=messages.filter(m=>m.method==='account/rateLimitResetCredit/consume');
   assert.deepEqual(attempts.map(m=>m.params),[{idempotencyKey:key},{idempotencyKey:key}]);
+  await writeFile(path.join(root,'signed-out'),'');
+  await assert.rejects(accountStatus('codex',root,signal),error=>error.code==='auth'&&/login required/.test(error.message));
  }finally{await rm(root,{recursive:true,force:true});}
 });

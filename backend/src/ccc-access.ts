@@ -1,12 +1,13 @@
+import { orderAccountsByPriority } from './account-priority.js';
 import type { CccCandidate } from './ccc-settings.js';
 import { acquireGrant, chargeGrant, flushGrantCharges, releaseGrant, type AccessGrant } from './access-grants.js';
 
-export type CccAccount = { id: string; provider: string; runnerId?: string; grant?: AccessGrant };
+export type CccAccount = { id: string; provider: string; runnerId?: string; priority?: 0 | 1 | 2; grant?: AccessGrant };
 export function cccConnectionId(account: CccAccount) {
   return account.grant ? `${account.grant.id}:${account.provider}` : account.id;
 }
-export function cccCandidateAccount<T extends CccAccount>(candidate: CccCandidate, accounts: T[], models: (account: T) => {id: string}[], blacklist: string[], runnerId?: string): T | undefined {
-  return accounts.find(account => account.provider === candidate.provider && (!runnerId || account.runnerId === runnerId)
+export function cccCandidateAccount<T extends CccAccount>(candidate: CccCandidate, accounts: T[], models: (account: T) => {id: string}[], blacklist: string[], runnerId?: string, cursor = 0): T | undefined {
+  return orderAccountsByPriority(accounts, cursor).find(account => account.provider === candidate.provider && (!runnerId || account.runnerId === runnerId)
     && (!candidate.accountId || candidate.accountId === cccConnectionId(account))
     && !blacklist.includes(candidate.model) && models(account).some(model => model.id === candidate.model)
     && (!account.grant || (account.grant.state === 'active' && account.grant.usedTokens < account.grant.budget && account.grant.models.includes(candidate.model))));

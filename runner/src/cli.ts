@@ -9,7 +9,7 @@ import { parseResetCredits, type ResetCredits } from './reset-credits.js';
 import { readApiKey, fetchApiModels } from './openai-key.js';
 import { syncGlobalMcp } from './manager-mcp.js';
 import { executionPrompt } from './execution-prompt.js';
-import { isQuotaError } from './provider-errors.js';
+import { isAuthError, isQuotaError } from './provider-errors.js';
 import { spawn } from 'node:child_process';
 import { access, constants, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -31,7 +31,7 @@ async function exists(command:string){const paths=command.includes('/')?[command
 // The runner itself is production, but agents need development dependencies
 // when they run npm ci in a project workspace.
 function envFor(home:string,provider:ProviderId):NodeJS.ProcessEnv{const env:NodeJS.ProcessEnv={...process.env,HOME:home};if(provider==='codex')env.CODEX_HOME=path.join(home,'.codex');delete env.NODE_ENV;for(const key of ['OPENAI_API_KEY','CODEX_API_KEY','CODEX_ACCESS_TOKEN','GOOGLE_API_KEY','GEMINI_API_KEY','ANTHROPIC_API_KEY','CEREBRAS_API_KEY'])delete env[key];return env;}
-function classify(message:string){const s=message.toLowerCase();if(/transport channel closed|http request failed|rmcp/.test(s))return new RunnerError('Codex was unable to connect to the provider’s MCP service; check container network and CLI version','unavailable');return new RunnerError(message.slice(-700)||'CLI failed with an error',isQuotaError(message)?'rate_limit':/auth|login|sign.in|credential/.test(s)?'auth':'failed');}
+function classify(message:string){const s=message.toLowerCase();if(/transport channel closed|http request failed|rmcp/.test(s))return new RunnerError('Codex was unable to connect to the provider’s MCP service; check container network and CLI version','unavailable');return new RunnerError(message.slice(-700)||'CLI failed with an error',isQuotaError(message)?'rate_limit':isAuthError(message)||/auth|login|sign.in|credential/.test(s)?'auth':'failed');}
 function rateLimits(value:any){
   const event=value?.type==='event_msg'&&value.payload?value.payload:value;
   const raw=event?.rate_limits||event?.rateLimits;
@@ -100,6 +100,8 @@ export async function accountStatus(provider:ProviderId,home:string,signal:Abort
     catch(error) { console.error('Antigravity usage unavailable:',error instanceof Error?error.message:error); return {models}; }
   }
   const responses=await appServerRequest(home,[{id:1,method:'account/read',params:{refreshToken:true}},{id:2,method:'account/rateLimits/read',params:{excludeResetCreditDetails:false}},{id:3,method:'model/list',params:{limit:100,includeHidden:false}}],signal);
+  if(responses[1]?.error)throw new RunnerError('Codex account authorization could not be checked','auth');
+  if(!responses[1]?.result?.account)throw new RunnerError('Codex login required; reconnect this account','auth');
   if(responses[2]?.error)throw new RunnerError(String(responses[2].error.message||'Failed to get account limit'),'unavailable');
   if(responses[3]?.error || !Array.isArray(responses[3]?.result?.data))throw new RunnerError(String(responses[3]?.error?.message||'Failed to get list of Codex models'),'unavailable');
   const rate=responses[2]?.result?.rateLimits||responses[2]?.result?.rate_limits;
