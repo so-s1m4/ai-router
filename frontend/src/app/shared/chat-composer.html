@@ -1,3 +1,4 @@
+@if (hero) {
 <div class="composer-mode-switch" role="group" aria-label="Execution mode">
   <button type="button" [class.active]="vm.modelService.workflow() === 'standard'"
     [attr.aria-pressed]="vm.modelService.workflow() === 'standard'"
@@ -6,6 +7,7 @@
     [attr.aria-pressed]="vm.modelService.workflow() === 'ccc-auto'"
     (click)="vm.modelService.workflow.set('ccc-auto')">CCC</button>
 </div>
+}
 <div
   class="hero-pill-bar"
   [class.bottom-composer-pill]="!hero"
