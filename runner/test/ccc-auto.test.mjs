@@ -160,7 +160,7 @@ test('runner executes generated solver recipes on the full inputs before submitt
 },{recipe:true}));
 test('unknown submission persists before network dispatch and is not repeated after restart',async()=>fixture(async f=>{
   await assert.rejects(f.run(),/Connection lost/);
-  await assert.rejects(f.run(),/previous submission is unresolved/);
+  await assert.rejects(f.run(),error=>error.code==='ccc_unresolved' && /previous submission is unresolved/.test(error.message));
   assert.equal(f.calls.filter(c=>c.name==='submit_solution').length,1);
 },{uncertain:true}));
 test('legacy uncertain checkpoint requires explicit current-request retry authorization',async()=>fixture(async f=>{

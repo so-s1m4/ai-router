@@ -13,6 +13,10 @@ import { submissionRateLimit } from './ccc-client.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Event, Job } from './cli.js';
 
+export class CccUnresolvedSubmissionError extends Error {
+  readonly code = 'ccc_unresolved';
+}
+
 const maxBytes = 30 * 1024 * 1024;
 async function batch<T, R>(items: T[], action: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
@@ -323,7 +327,7 @@ export async function runCccAuto(job: Job, cwd: string, client: CccClient, solve
         state.submissions[`${level}:${id}`] = { status: 'not-sent' };
         await save();
         emit({ type: 'status', message: `CCC авто: retry authorized for level ${level}, ${id}; saved solver results will be reused when available` });
-      } else if (previous?.status === 'submitting' || previous?.status === 'accepted') throw new Error(`CCC level ${level}, ${id}: previous submission is unresolved. Check platform progress before continuing; it will not be sent twice. To explicitly allow retrying an unconfirmed submission, send the contest URL with CCC_RETRY_UNRESOLVED.`);
+      } else if (previous?.status === 'submitting' || previous?.status === 'accepted') throw new CccUnresolvedSubmissionError(`CCC level ${level}, ${id}: previous submission is unresolved. Check platform progress before continuing; it will not be sent twice. To explicitly allow retrying an unconfirmed submission, send the contest URL with CCC_RETRY_UNRESOLVED.`);
     }
     if (!pending.length) continue;
     emit({ type: 'status', message: `CCC авто: fetching level ${level} (${pending.length} inputs)` });
