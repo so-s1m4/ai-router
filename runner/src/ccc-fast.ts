@@ -17,15 +17,22 @@ export function fastLevelLimit(): number {
   return Number.isSafeInteger(value) && value >= 0 && value <= 100 ? value : Infinity;
 }
 
+export function parallelSolverInstructions(language: 'cpp' | 'python' = 'cpp'): string {
+  const implementation = language === 'cpp'
+    ? 'Use a bounded reusable std::thread worker pool for CPU-bound work; C++17 is compiled with -pthread.'
+    : 'For CPU-bound Python work use multiprocessing or ProcessPoolExecutor from the standard library, with an if __name__ == "__main__" guard and picklable top-level workers; Python threads do not bypass the GIL.';
+  return `Design the solver to exploit multiple CPU cores whenever independent test cases, searches or computation chunks can safely run in parallel. ${implementation} Determine the CPU capacity available at execution time, respecting CPU affinity and container quotas; std::thread::hardware_concurrency() or os.cpu_count() alone can overestimate it. Account for simultaneous input-file processes via CCC_CPP_WORKERS (default 1), dividing the CPU capacity between them and using at least one worker. Bound workers by useful work and the per-process memory limit (CCC_CPP_MEMORY_BYTES, default 512 MiB), including thread stacks or child-process memory. Parse stdin once in the main thread/process, assign coarse independent chunks to workers, use private mutable state and deterministic reductions, and emit results from the main thread/process in input order after workers finish. Avoid data races, nested parallelism, a new thread per item, and locks in hot loops. Keep a serial path for small workloads or inherently sequential algorithms. Prefer an efficient algorithm before adding parallelism; preserve exact semantics and output format.`;
+}
+
 export function codePrompt(level: number, context: unknown, language: 'cpp' | 'python' = 'cpp'): string {
-  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete ${language === 'python' ? 'Python 3' : 'C++17'} source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. Keep the source compact; omit commentary and boilerplate. A sameAs field refers to identical source already supplied in this context. Use only the standard library. The runner prepares and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${codeContext(context)}`;
+  return `Solve CCC level ${level} immediately using only the supplied statement and examples. Return JSON {"source":"complete ${language === 'python' ? 'Python 3' : 'C++17'} source","outputMode":"exact"}. Set outputMode to "constructive" only when the statement allows multiple valid answers, such as layouts, paths or schedules; otherwise use "exact". No tools, file operations, plan or explanation. Keep the source compact; omit commentary and boilerplate. A sameAs field refers to identical source already supplied in this context. Use only the standard library. The runner prepares and runs examples and executes the scored inputs. Exact outputs are compared with example text; constructive outputs are evaluated by the platform because a different valid solution can differ from the example. Write a standalone program reading one input from stdin and writing the answer to stdout. Use a compact algorithm suitable for the input sizes. ${parallelSolverInstructions(language)} Reuse the supplied previous level source when its algorithm remains relevant, adapting it to the new constraints. If the context is insufficient (including required diagrams), return an empty source so a full agent can inspect the files.\nTask context: ${codeContext(context)}`;
 }
 
 async function compileUncached(directory: string, signal: AbortSignal) {
   await withExecutionLimit(async compileSignal => {
     compileSignal.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
-      const child = spawn('g++', ['-std=c++17', '-O2', '-pipe', 'solution.cpp', '-o', 'solution'], {
+      const child = spawn('g++', ['-std=c++17', '-O2', '-pipe', '-pthread', 'solution.cpp', '-o', 'solution'], {
         cwd: directory, detached: true, stdio: ['ignore', 'ignore', 'pipe'],
         env: { PATH: process.env.PATH, LANG: 'C.UTF-8' },
       });
@@ -61,7 +68,7 @@ async function compile(directory: string, signal: AbortSignal, cache: string) {
   const identity = await compilerIdentity();
   signal.throwIfAborted();
   const source = await readFile(path.join(directory, 'solution.cpp'));
-  const key = createHash('sha256').update(source).update(identity).update(process.platform + process.arch + '-std=c++17 -O2 -pipe').digest('hex');
+  const key = createHash('sha256').update(source).update(identity).update(process.platform + process.arch + '-std=c++17 -O2 -pipe -pthread').digest('hex');
   await mkdir(cache, { recursive: true, mode: 0o700 });
   const binary = path.join(cache, key);
   try { await copyFile(binary, path.join(directory, 'solution')); return; }

@@ -76,9 +76,9 @@ test('CCC script solves levels, submits exact scored IDs and aggregates model us
   const result=await f.run();
   assert.match(result,/Accepted 4 new outputs/);
   assert.equal(f.solverJobs.length,2);
-  assert.match(f.solverJobs[0].prompt, /Target solver preparation: about 40 seconds/);
+  assert.match(f.solverJobs[0].prompt, /Target solver preparation: about 10 seconds/);
   assert.match(f.solverJobs[0].prompt, /Write all solver algorithms in C\+\+17 from the first attempt/);
-  assert.match(f.solverJobs[0].prompt, /g\+\+ -std=c\+\+17 -O2 -pipe solution.cpp -o solution/);
+  assert.match(f.solverJobs[0].prompt, /g\+\+ -std=c\+\+17 -O2 -pipe -pthread solution.cpp -o solution/);
   assert.match(f.solverJobs[0].prompt, /"script":"cpp.cjs"/);
   assert.match(f.solverJobs[0].prompt, /Task context:.*Full statement/);
   assert.match(f.solverJobs[0].prompt, /\\nexample/);
