@@ -68,7 +68,7 @@ export class CccGcpAuth {
         const append = (chunk: Buffer) => {
           output = (output + chunk.toString()).slice(-64_000);
           const match = output.match(/https:\/\/accounts\.google\.com\/[^\s\x1b]+/);
-          if (match && /Enter (?:verification|authorization) code/i.test(output)) { clearTimeout(timer); resolve(new URL(match[0]).toString()); }
+          if (match && /Enter (?:the )?(?:verification|authorization) code/i.test(output)) { clearTimeout(timer); resolve(new URL(match[0]).toString()); }
         };
         child.stdout.on('data', append); child.stderr.on('data', append);
         done.then(() => { clearTimeout(timer); reject(new Error('Google sign-in ended before requesting a code')); }, error => { clearTimeout(timer); reject(error); });

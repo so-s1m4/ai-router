@@ -16,7 +16,7 @@ if(action==='list') { if(fs.existsSync(state))console.log(fs.readFileSync(state,
 else if(action==='revoke') { fs.rmSync(state,{force:true}); }
 else if(action==='login') {
  process.stderr.write('Go to the following link in your browser:\\nhttps://accounts.google.com/o/oauth2/auth?state=example&code_challenge=pkce\\n');
- setTimeout(()=>process.stderr.write('Enter verification code: '),15);
+ setTimeout(()=>process.stderr.write('Once finished, enter the verification code provided in your browser: '),15);
  process.stdin.once('data',code=>{if(code.toString().trim()==='valid-code'){fs.writeFileSync(state,'user@example.com');process.exit(0);}else{console.error('SECRET_DO_NOT_EXPOSE');process.exit(1);}});
 }
 `,{mode:0o700});
