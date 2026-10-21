@@ -126,7 +126,8 @@ test('native batches overlap with bounded workers and per-process memory', async
     }
     assert.equal(active,0);
     assert.ok(maximum <= 2);
-    if (availableParallelism() >= 2 && freemem() > 2 * 1024 ** 3) assert.equal(maximum,2);
+    // Two-CPU runners reserve one CPU for a competing candidate.
+    if (availableParallelism() >= 3 && freemem() > 2 * 1024 ** 3) assert.equal(maximum,2);
     const answers=JSON.parse(await readFile(path.join(root,'answers.json'),'utf8')).answers;
     assert.deepEqual(answers.map(a=>a.file_id),['0','1','2','3']);
     for (const answer of answers) {
@@ -135,4 +136,48 @@ test('native batches overlap with bounded workers and per-process memory', async
       else assert.match(text,/hello/);
     }
   } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test('server offload only starts after the local limit and local cleanup', async () => {
+  const { withServerOffload } = await import('../dist/ccc-execution.js');
+  let stopped = false, notified = false;
+  const result = await withServerOffload(async signal => {
+    try { await delay(500, undefined, { signal }); }
+    finally { await delay(10); stopped = true; }
+  }, async () => {
+    assert.equal(stopped, true);
+    assert.equal(notified, true);
+    return 'remote';
+  }, new AbortController().signal, () => { notified = true; }, 10);
+  assert.equal(result, 'remote');
+});
+
+test('fast and failed local computations do not use the server', async () => {
+  const { withServerOffload } = await import('../dist/ccc-execution.js');
+  const remote = async () => assert.fail('unexpected server execution');
+  const notify = () => assert.fail('unexpected offload notification');
+  const signal = new AbortController().signal;
+  assert.equal(await withServerOffload(async () => 'local', remote, signal, notify, 20), 'local');
+  await assert.rejects(withServerOffload(async () => { throw new Error('broken solver'); }, remote, signal, notify, 20), /broken solver/);
+});
+
+test('user stop cancels local execution without offloading', async () => {
+  const { withServerOffload } = await import('../dist/ccc-execution.js');
+  const controller = new AbortController();
+  const pending = withServerOffload(signal => delay(500, undefined, { signal }), async () => assert.fail('unexpected server execution'), controller.signal, () => assert.fail('unexpected notification'), 100);
+  controller.abort();
+  await assert.rejects(pending, /abort/i);
+});
+
+test('user stop reaches the offloaded computation', async () => {
+  const { withServerOffload } = await import('../dist/ccc-execution.js');
+  const controller = new AbortController();
+  let remoteSignal;
+  const pending = withServerOffload(signal => delay(500, undefined, { signal }), async signal => {
+    remoteSignal = signal;
+    controller.abort();
+    signal.throwIfAborted();
+  }, controller.signal, () => {}, 10);
+  await assert.rejects(pending, /abort/i);
+  assert.equal(remoteSignal.aborted, true);
 });

@@ -6,9 +6,15 @@ import { readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runGcpRecipe } from './ccc-gcp.js';
 
-export async function runScoredRecipe(directory: string, taskFile: string, answersFile: string, signal: AbortSignal, settings?: CccGcpSettings): Promise<void> {
+export const serverOffloadDelayMs = 10_000;
+
+export async function runScoredRecipe(directory: string, taskFile: string, answersFile: string, signal: AbortSignal, settings?: CccGcpSettings, onOffload: () => void = () => {}): Promise<void> {
   const backend = settings ? (settings.enabled ? 'gcp' : 'local') : process.env.CCC_EXECUTION || 'local';
-  if (backend === 'gcp') return runGcpRecipe(directory, taskFile, answersFile, signal, settings);
+  if (backend === 'gcp') return withServerOffload(
+    localSignal => runRecipe(directory, taskFile, answersFile, localSignal),
+    remoteSignal => runGcpRecipe(directory, taskFile, answersFile, remoteSignal, settings),
+    signal, onOffload,
+  );
   if (backend !== 'local') throw new Error('CCC_EXECUTION must be local or gcp');
   return runRecipe(directory, taskFile, answersFile, signal);
 }
@@ -71,6 +77,25 @@ export async function withExecutionLimit<T>(
     if (controller.signal.aborted) throw timeout;
     throw error;
   } finally { clearTimeout(timer); }
+}
+
+// Drain the local process before the remote run can write outputs in the same
+// candidate directory. Only the elapsed local limit triggers offloading.
+export async function withServerOffload<T>(
+  local: (signal: AbortSignal) => Promise<T>,
+  remote: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
+  onOffload: () => void,
+  delayMs = serverOffloadDelayMs,
+): Promise<T> {
+  try { return await withExecutionLimit(local, signal, delayMs); }
+  catch (error) {
+    signal.throwIfAborted();
+    if (!(error instanceof ExecutionLimitError)) throw error;
+  }
+  onOffload();
+  signal.throwIfAborted();
+  return remote(signal);
 }
 
 export const optimizationDelayMs = 10_000;

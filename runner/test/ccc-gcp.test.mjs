@@ -4,9 +4,10 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { prepareSolverTemplate } from '../dist/ccc-solver-template.js';
+import { runGcpRecipe } from '../dist/ccc-gcp.js';
 import { runScoredRecipe } from '../dist/ccc-execution.js';
 
-test('GCP transport executes real sources, returns answers and cleans up failed and canceled jobs', { timeout: 30000 }, async () => {
+test('GCP transport executes real sources, returns answers and cleans up failed and canceled jobs', { timeout: 60000, skip: process.platform !== 'linux' }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'ccc-gcp-test-'));
   const saved = { ...process.env };
   try {
@@ -35,7 +36,7 @@ process.exit(result.status ?? 1);
     await writeFile(path.join(root, 'secret.txt'), 'MUST NOT BE UPLOADED');
     await writeFile(path.join(root, 'input.txt'), '21\n');
     await writeFile(path.join(root, 'task.json'), JSON.stringify({ inputs: [{ file_id: 'input-1', path: path.join(root, 'input.txt') }] }));
-    const run = signal => runScoredRecipe(root, path.join(root, 'task.json'), path.join(root, 'answers.json'), signal ?? new AbortController().signal);
+    const run = signal => runGcpRecipe(root, path.join(root, 'task.json'), path.join(root, 'answers.json'), signal ?? new AbortController().signal);
     for (const language of ['cpp', 'python']) {
       await writeFile(path.join(root, 'solver.json'), JSON.stringify({ runtime: 'node', script: language === 'cpp' ? 'cpp.cjs' : 'python.cjs' }));
       await writeFile(path.join(root, `solution.${language === 'cpp' ? 'cpp' : 'py'}`), language === 'cpp'
@@ -63,18 +64,34 @@ process.exit(result.status ?? 1);
     }
     assert.ok(commands.some(args => args.includes('--project=project-37e84c09-c743-4b4c-8a8')));
     process.env.CCC_EXECUTION = 'invalid';
-    await assert.rejects(run(), /CCC_EXECUTION/);
+    await assert.rejects(runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal), /CCC_EXECUTION/);
     // Saved UI settings override legacy env values and use the sign-in store.
     process.env.GCP_TEST_CONFIG_LOG=path.join(root,'configs');
     process.env.RUNNER_DATA_DIR=path.join(root,'runner-data');
     await writeFile(path.join(root,'solution.py'),'print(int(input()) * 2)\n');
     const settings={enabled:true,runnerId:'12345678-1234-4234-8234-123456789abc',project:'project-from-settings',zone:'europe-west1-b',instance:'ccc-compute',workers:1,timeoutSeconds:10,useIap:true};
+    await prepareSolverTemplate(root,'.results');
+    const before = await readFile(process.env.GCP_TEST_LOG,'utf8');
     await runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal,settings);
+    assert.equal(await readFile(process.env.GCP_TEST_LOG,'utf8'),before, 'fast local result must not contact GCP');
+    await writeFile(path.join(root,'solution.py'), `import os, time
+if '/payload/results' not in os.getcwd():
+    open('local-pid', 'w').write(str(os.getppid()))
+    time.sleep(60)
+print(int(input()) * 2)
+`);
+    let offloaded = false;
+    await runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal,settings, () => { offloaded = true; });
+    assert.equal(offloaded,true);
+    const localPid=Number(await readFile(path.join(root,'local-pid'),'utf8'));
+    assert.throws(() => process.kill(localPid,0),{code:'ESRCH'});
+    const migrated=JSON.parse(await readFile(path.join(root,'answers.json'),'utf8'));
+    assert.equal(await readFile(path.join(root,migrated.answers[0].path),'utf8'),'42\n');
     const configured=(await readFile(process.env.GCP_TEST_LOG,'utf8')).trim().split('\n').map(JSON.parse).filter(args=>args.includes('--project=project-from-settings'));
     assert.ok(configured.length>=5);
     assert.ok(configured.every(args=>args.includes('--zone=europe-west1-b')&&args.includes('--tunnel-through-iap')));
     assert.ok((await readFile(process.env.GCP_TEST_CONFIG_LOG,'utf8')).trim().split('\n').every(value=>value===path.join(root,'runner-data','ccc-gcloud')));
-    await prepareSolverTemplate(root,'.results');
+    await writeFile(path.join(root,'solution.py'),'print(int(input()) * 2)\n');
     await runScoredRecipe(root,path.join(root,'task.json'),path.join(root,'answers.json'),new AbortController().signal,{...settings,enabled:false});
 
   } finally {

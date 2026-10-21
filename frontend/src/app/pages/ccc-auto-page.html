@@ -59,11 +59,11 @@
     </section>
     <details class="card settings-card cloud-settings">
       <summary>Google Cloud <span class="summary-value">{{ settings.gcp?.enabled ? 'Enabled' : 'Optional' }}</span></summary>
-      <p class="muted">Run computations on a Google Cloud VM instead of the runner.</p>
+      <p class="muted">Start computations locally. If they take longer than 10 seconds, restart them on the Google Cloud VM.</p>
       @if (!settings.gcp) {
         <button class="btn" (click)="addGcp()">Set up Google Cloud</button>
       } @else {
-        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.gcp.enabled" />Run computations on Google Cloud</label>
+        <label class="toggle"><input type="checkbox" [(ngModel)]="settings.gcp.enabled" />Move computations to Google Cloud after 10 seconds</label>
         <div class="field-grid">
           <label>Runner<select class="custom-select" [ngModel]="settings.gcp.runnerId" (ngModelChange)="gcpRunnerChanged($event)" [disabled]="gcpVmBusy || gcpBusy"><option value="" disabled>Choose a runner</option>@for (runner of runners; track runner.id) {<option [value]="runner.id">{{ runner.name }}{{ runner.online ? '' : ' (offline)' }}</option>}</select></label>
         </div>
