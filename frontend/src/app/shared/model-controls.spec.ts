@@ -6,6 +6,7 @@ import { WorkspaceStore } from '../core/workspace.store';
 describe('CCC execution mode', () => {
   it('shows fixed solver settings and preserves ordinary choices when returning', () => {
     const fixture = TestBed.createComponent(ChatComposerComponent);
+    fixture.componentRef.setInput('hero', true);
     const vm = TestBed.inject(WorkspaceStore);
     vm.modelService.selectedService.set('gemini');
     vm.modelService.selectedModel.set('custom-model');
@@ -23,6 +24,17 @@ describe('CCC execution mode', () => {
     expect(mode.textContent).toContain('Normal');
     expect(mode.querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
   });
+  it('hides the execution mode switch in an existing chat for both workflows', () => {
+    const fixture = TestBed.createComponent(ChatComposerComponent);
+    const vm = TestBed.inject(WorkspaceStore);
+    for (const workflow of ['standard', 'ccc-auto'] as const) {
+      vm.modelService.workflow.set(workflow);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[aria-label="Execution mode"]')).toBeNull();
+      expect(vm.modelService.workflow()).toBe(workflow);
+    }
+  });
+
   it('offers all providers after choosing a model, without Auto or Standard controls', () => {
     const fixture = TestBed.createComponent(ChatComposerComponent);
     const vm = TestBed.inject(WorkspaceStore);
