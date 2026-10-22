@@ -1,6 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cccServer, recoveringCcc, toolData, CccToolError, CccConnectionError, cccConnectionFailure } from '../dist/ccc-client.js';
+import { cccServer, recoveringCcc, toolData, CccToolError, CccConnectionError, cccConnectionFailure, cccOperationFailure } from '../dist/ccc-client.js';
+
+test('inactive contest reports an actionable error and stops without retrying or switching accounts', async () => {
+  const response = {ok:false,error:{status:403,detail:{message:'Forbidden',
+    _links:{self:[{href:'https://secret.example/?token=private'}]},
+    _embedded:{errors:[{message:'contest is not running'}]}}}};
+  let connects=0;
+  const client=recoveringCcc(async()=>{connects++;return {close:async()=>{},call:async()=>{
+    try { return toolData({structuredContent:response,isError:true}); }
+    catch(error) { throw cccOperationFailure('prepare_level',error); }
+  }};},new AbortController().signal,()=>assert.fail('must not retry'),[0]);
+  await assert.rejects(client.call('prepare_level',{contest:'expired',level:5}),error=>{
+    assert.equal(error.code,'ccc_mcp');
+    assert.equal(error.status,403);
+    assert.match(error.message,/contest is not running.*URL of an active contest/);
+    assert.doesNotMatch(error.message,/secret|private/);
+    return true;
+  });
+  assert.equal(connects,1);
+  await client.close();
+});
+
+test('unrelated access errors retain generic diagnostics without leaking server messages', () => {
+  for (const detail of ['denied https://secret.example', {message:'contest is not running https://secret.example'}, {_embedded:{errors:'private'}}]) {
+    let failure;
+    try { toolData({structuredContent:{ok:false,error:{status:403,detail}}}); }
+    catch(error) { failure=cccOperationFailure('prepare_level',error); }
+    assert.equal(failure.code,'ccc_mcp');
+    assert.match(failure.message,/prepare_level failed \(HTTP 403\)/);
+    assert.doesNotMatch(failure.message,/secret|private|active contest/);
+  }
+});
 
 test('connection errors identify MCP scope and status without exposing credentials', () => {
   const cause = Object.assign(new Error('https://secret.example/?token=private'), {code:401});

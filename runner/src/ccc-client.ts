@@ -23,9 +23,15 @@ export function cccConnectionFailure(error: unknown, personal: boolean): CccConn
 }
 
 export class CccToolError extends CccConnectionError {
-  constructor(public status?: number, public retryAfterMs?: number, public downloadSizeLimit = false) {
-    super(`CCC MCP operation failed${status ? ` (HTTP ${status})` : ''}; check access or server status`);
+  constructor(public status?: number, public retryAfterMs?: number, public downloadSizeLimit = false, public contestNotRunning = false) {
+    super(contestNotRunning ? 'CCC contest is not running. Send the URL of an active contest or training session.'
+      : `CCC MCP operation failed${status ? ` (HTTP ${status})` : ''}; check access or server status`);
   }
+}
+
+export function cccOperationFailure(name: string, error: unknown): CccConnectionError {
+  if (error instanceof CccToolError && error.contestNotRunning) return error;
+  return new CccConnectionError(`CCC MCP ${name} failed (${retryReason(error)}); check access or server status`, { cause: error });
 }
 
 export function submissionRateLimit(error: unknown): CccToolError | undefined {
@@ -47,9 +53,15 @@ export function toolData(result: any): any {
     // Do not include server messages: they may contain authenticated URLs.
     const status = Number(value.error?.status);
     const retry = Number(value.error?.retry_after);
+    const detail = value.error?.detail;
+    // Match only the known platform error; never echo server-provided text or URLs.
+    const messages = typeof detail === 'string' ? [detail]
+      : [detail?.message, ...(Array.isArray(detail?._embedded?.errors) ? detail._embedded.errors.map((item: any) => item?.message) : [])];
+    const contestNotRunning = status === 403 && messages.some((message: unknown) =>
+      typeof message === 'string' && /^contest is not running[.!]?$/i.test(message.trim()));
     throw new CccToolError(Number.isInteger(status) && status >= 400 && status <= 599 ? status : undefined,
       value.error?.retry_after != null && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry * 1000) : undefined,
-      /Direct downloads are limited to /i.test(String(value.error?.detail || '')));
+      /Direct downloads are limited to /i.test(String(detail || '')), contestNotRunning);
   }
   return value.data ?? value;
 }
@@ -98,7 +110,7 @@ async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[], pers
         try { return toolData(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 120_000 })); }
         catch (error) {
           if (signal.aborted) throw error;
-          throw new CccConnectionError(`CCC MCP ${name} failed (${retryReason(error)}); check access or server status`, { cause: error });
+          throw cccOperationFailure(name, error);
         }
       },
       async close() { signal.removeEventListener('abort', stop); await client.close(); },
