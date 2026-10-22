@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, copyFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, copyFile, stat, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { prepareSolverTemplate } from '../dist/ccc-solver-template.js';
@@ -1252,3 +1252,62 @@ for (const corrupt of [false, true]) test(`resuming reuses verified artifacts an
   const after=f.calls.filter(c=>c.name==='get_artifact_download_url').length;
   assert.equal(after-before,3 + Number(corrupt));
 }));
+
+for (const knownSize of [false, true]) test(`artifacts above 30 MiB download and reuse verified cache (known size=${knownSize})`, async () => fixture(async f => {
+  const chunk = Buffer.alloc(1024 * 1024, '1');
+  const size = 31 * chunk.length;
+  const hash = createHash('sha256');
+  for (let i = 0; i < 31; i++) hash.update(chunk);
+  const digest = hash.digest('hex');
+  const call = f.client.call.bind(f.client);
+  f.client.call = async (name, args) => {
+    if (name === 'get_artifact_download_url') return {url:`https://example.com/${args.artifact_id}`};
+    const result = await call(name, args);
+    if (name === 'prepare_level') {
+      const entry = result.files.entries[0];
+      entry.sha256 = digest;
+      if (knownSize) entry.bytes = size;
+      else delete entry.bytes;
+    }
+    return result;
+  };
+  let downloads = 0;
+  globalThis.fetch = async url => {
+    if (!url.endsWith('/statement')) return new Response('1\nexample\n');
+    downloads++;
+    let sent = 0;
+    return new Response(new ReadableStream({pull(controller) {
+      if (sent++ < 31) controller.enqueue(chunk);
+      else controller.close();
+    }}));
+  };
+  await assert.rejects(runAuto(job, f.cwd, f.client, async () => {throw new Error('preparation interrupted');}, f.controller.signal, () => {}), /preparation interrupted/);
+  const root = path.join(f.cwd, '.ai-router/ccc-auto');
+  const [contestDir] = await readdir(root);
+  const directory = path.join(root, contestDir, 'level-1');
+  assert.equal((await stat(path.join(directory, '0-level.pdf'))).size, size);
+  assert.equal((await readdir(directory)).some(name => name.endsWith('.download')), false);
+  const solve = async solverJob => {
+    const output = solverJob.prompt.match(/directly write (.*?) with JSON/)[1];
+    const ids = JSON.parse(solverJob.prompt.match(/pending ID: (\[[^\n]+\])/)[1]);
+    await writeFile(output, JSON.stringify({answers:ids.map(file_id => ({file_id,solution:'42\n'}))}));
+    return 'ready';
+  };
+  assert.match(await runCccAuto(job, f.cwd, f.client, solve, f.controller.signal, () => {}), /Accepted 2 new outputs/);
+  assert.equal(downloads, 1);
+}, {levels:[1]}));
+
+test('answers above 30 MiB are accepted while empty and binary outputs remain invalid', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'ccc-large-answer-'));
+  try {
+    const output = path.join(directory, 'answer.txt');
+    const manifest = path.join(directory, 'answers.json');
+    await writeFile(manifest, JSON.stringify({answers:[{file_id:'1-small',path:'answer.txt'}]}));
+    await writeFile(output, Buffer.alloc(31 * 1024 * 1024, '1'));
+    assert.equal((await readAnswers(manifest, directory, ['1-small'])).get('1-small').length, 31 * 1024 * 1024);
+    for (const content of ['', 'a\0b']) {
+      await writeFile(output, content);
+      await assert.rejects(readAnswers(manifest, directory, ['1-small']), /empty or binary/);
+    }
+  } finally {await rm(directory, {recursive:true,force:true});}
+});

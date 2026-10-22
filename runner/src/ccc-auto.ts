@@ -5,7 +5,8 @@ import { steerCodexJob } from './app-server.js';
 import { raceLight, raceScheduled } from './ccc-race.js';
 import { prepareSolverTemplate } from './ccc-solver-template.js';
 import { runScoredRecipe as runRecipe, withOptimization, optimizationDelayMs } from './ccc-execution.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { appendFile, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CccClient } from './ccc-client.js';
@@ -17,7 +18,6 @@ export class CccUnresolvedSubmissionError extends Error {
   readonly code = 'ccc_unresolved';
 }
 
-const maxBytes = 30 * 1024 * 1024;
 async function batch<T, R>(items: T[], action: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0, failed = false;
@@ -108,7 +108,6 @@ function filename(value: unknown): string {
 }
 async function artifact(client: CccClient, item: any, target: string, signal: AbortSignal) {
   if (!item?.artifact_id) throw new Error('CCC returned no artifact ID');
-  if (item.bytes > maxBytes) throw new Error('CCC file exceeds the 30 MiB limit');
   // Reuse only content authenticated by this freshly fetched artifact digest.
   // Resuming a level should not download the same statement and inputs again.
   if (typeof item.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(item.sha256)) {
@@ -116,26 +115,35 @@ async function artifact(client: CccClient, item: any, target: string, signal: Ab
       if (error.code === 'ENOENT') return undefined;
       throw error;
     });
-    if (existing && existing.size <= maxBytes && (typeof item.bytes !== 'number' || existing.size === item.bytes)) {
-      const digest = createHash('sha256').update(await readFile(target)).digest('hex');
-      if (digest === item.sha256.toLowerCase()) return;
+    if (existing && (typeof item.bytes !== 'number' || existing.size === item.bytes)) {
+      const hash = createHash('sha256');
+      for await (const chunk of createReadStream(target, { signal })) hash.update(chunk);
+      if (hash.digest('hex') === item.sha256.toLowerCase()) return;
     }
   }
   const link = await client.call('get_artifact_download_url', { artifact_id: item.artifact_id, filename: filename(item.filename || path.basename(target)) });
   if (typeof link.url !== 'string' || !link.url.startsWith('https://')) throw new Error('CCC returned an invalid download URL');
   const response = await fetch(link.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
   if (!response.ok || !response.body) throw new Error('CCC artifact download failed');
-  const chunks: Uint8Array[] = []; let size = 0;
+  // Stream large inputs to disk; publish only a complete, verified download.
+  const temporary = target + '.' + randomUUID() + '.download';
   try {
-    for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
-      size += chunk.length;
-      if (size > maxBytes) throw new Error('CCC file exceeds the 30 MiB limit');
-      chunks.push(chunk);
-    }
-  } catch (error) { await response.body.cancel().catch(() => {}); throw error; }
-  const data = Buffer.concat(chunks);
-  if (typeof item.bytes === 'number' && data.length !== item.bytes || item.sha256 && createHash('sha256').update(data).digest('hex') !== item.sha256) throw new Error('CCC artifact integrity check failed');
-  await writeFile(target, data, { mode: 0o600 });
+    const handle = await open(temporary, 'wx', 0o600);
+    const hash = createHash('sha256');
+    let size = 0;
+    try {
+      for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
+        size += chunk.length;
+        hash.update(chunk);
+        await handle.writeFile(chunk);
+      }
+      if (typeof item.bytes === 'number' && size !== item.bytes || item.sha256 && hash.digest('hex') !== item.sha256.toLowerCase()) throw new Error('CCC artifact integrity check failed');
+    } finally { await handle.close(); }
+    await rename(temporary, target);
+  } catch (error) {
+    await response.body.cancel().catch(() => {});
+    throw error;
+  } finally { await rm(temporary, { force: true }); }
 }
 
 export async function readAnswers(file: string, directory: string, ids: string[]): Promise<Map<string, Buffer>> {
@@ -153,7 +161,7 @@ export async function readAnswers(file: string, directory: string, ids: string[]
       if (!resolved.startsWith(root + path.sep)) throw new Error('CCC output must stay inside its level folder');
       content = await readFile(resolved);
     } else content = Buffer.from(answer.solution, 'utf8');
-    if (!content.length || content.length > maxBytes || content.includes(0)) throw new Error('CCC output is empty, binary or exceeds 30 MiB');
+    if (!content.length || content.includes(0)) throw new Error('CCC output is empty or binary');
     try { new TextDecoder('utf-8', { fatal: true }).decode(content); }
     catch { throw new Error('CCC output must be valid UTF-8 text'); }
     answers.set(answer.file_id, content);
