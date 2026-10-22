@@ -22,8 +22,8 @@ export function cccConnectionFailure(error: unknown, personal: boolean): CccConn
   return new CccConnectionError(`Unable to connect to CCC MCP (${personal ? 'personal' : 'runner default'}): ${retryReason(error)}; check ${source}`, { cause: error });
 }
 
-export class CccToolError extends Error {
-  constructor(public status?: number, public retryAfterMs?: number) {
+export class CccToolError extends CccConnectionError {
+  constructor(public status?: number, public retryAfterMs?: number, public downloadSizeLimit = false) {
     super(`CCC MCP operation failed${status ? ` (HTTP ${status})` : ''}; check access or server status`);
   }
 }
@@ -48,7 +48,8 @@ export function toolData(result: any): any {
     const status = Number(value.error?.status);
     const retry = Number(value.error?.retry_after);
     throw new CccToolError(Number.isInteger(status) && status >= 400 && status <= 599 ? status : undefined,
-      value.error?.retry_after != null && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry * 1000) : undefined);
+      value.error?.retry_after != null && Number.isFinite(retry) && retry >= 0 ? Math.ceil(retry * 1000) : undefined,
+      /Direct downloads are limited to /i.test(String(value.error?.detail || '')));
   }
   return value.data ?? value;
 }
@@ -97,7 +98,7 @@ async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[], pers
         try { return toolData(await client.callTool({ name, arguments: args }, undefined, { signal, timeout: 120_000 })); }
         catch (error) {
           if (signal.aborted) throw error;
-          throw new Error(`CCC MCP ${name} failed; check access or server status`, { cause: error });
+          throw new CccConnectionError(`CCC MCP ${name} failed (${retryReason(error)}); check access or server status`, { cause: error });
         }
       },
       async close() { signal.removeEventListener('abort', stop); await client.close(); },
@@ -111,7 +112,7 @@ async function connectOnce(signal: AbortSignal, personalMcp: PersonalMcp[], pers
 }
 
 // Recover the exact failed read rather than replaying solver work or submissions.
-const recoverableTools = new Set(['game_info', 'prepare_level', 'get_level_input', 'get_artifact_download_url', 'list_archive', 'archive_member']);
+const recoverableTools = new Set(['game_info', 'prepare_level', 'get_level_input', 'get_artifact_download_url', 'read_artifact', 'list_archive', 'archive_member']);
 function permanentFailure(error: unknown): boolean {
   const value = error as any;
   // A tool rejection is not a broken connection. Reconnecting cannot fix
@@ -163,6 +164,7 @@ function retryReason(error: unknown): string {
   const value = error as any;
   const status = Number(value?.status ?? value?.statusCode ?? value?.code);
   if (status >= 400 && status <= 599) return `HTTP ${status}`;
+  if (error instanceof CccToolError) return error.downloadSizeLimit ? 'direct download size limit' : 'tool rejected the request';
   if (value?.cause) return retryReason(value.cause);
   if (['ENOTFOUND', 'EAI_AGAIN'].includes(value?.code)) return 'server DNS lookup failed';
   if (value?.code === 'ECONNREFUSED') return 'server refused the connection';
@@ -172,4 +174,9 @@ function retryReason(error: unknown): string {
 }
 export async function connectCcc(signal: AbortSignal, onRetry?: (attempt: number, operation: string, reason: string) => void, personalMcp: PersonalMcp[] = [], personalOnly = false): Promise<CccClient> {
   return recoveringCcc(() => connectOnce(signal, personalMcp, personalOnly), signal, onRetry);
+}
+
+export function artifactDownloadSizeLimit(error: unknown): boolean {
+  if (error instanceof CccToolError) return error.downloadSizeLimit || error.status === 413;
+  return error instanceof Error && error.cause ? artifactDownloadSizeLimit(error.cause) : false;
 }

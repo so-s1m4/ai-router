@@ -10,7 +10,7 @@ import { createReadStream } from 'node:fs';
 import { appendFile, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CccClient } from './ccc-client.js';
-import { submissionRateLimit } from './ccc-client.js';
+import { artifactDownloadSizeLimit, submissionRateLimit } from './ccc-client.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Event, Job } from './cli.js';
 
@@ -106,7 +106,7 @@ function filename(value: unknown): string {
   if (typeof value !== 'string' || !value || value.includes('\\') || value.includes('\0') || value.split('/').some(part => part === '..')) throw new Error('CCC returned an unsafe filename');
   return path.basename(value);
 }
-async function artifact(client: CccClient, item: any, target: string, signal: AbortSignal) {
+export async function artifact(client: CccClient, item: any, target: string, signal: AbortSignal) {
   if (!item?.artifact_id) throw new Error('CCC returned no artifact ID');
   // Reuse only content authenticated by this freshly fetched artifact digest.
   // Resuming a level should not download the same statement and inputs again.
@@ -121,10 +121,18 @@ async function artifact(client: CccClient, item: any, target: string, signal: Ab
       if (hash.digest('hex') === item.sha256.toLowerCase()) return;
     }
   }
-  const link = await client.call('get_artifact_download_url', { artifact_id: item.artifact_id, filename: filename(item.filename || path.basename(target)) });
-  if (typeof link.url !== 'string' || !link.url.startsWith('https://')) throw new Error('CCC returned an invalid download URL');
-  const response = await fetch(link.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
-  if (!response.ok || !response.body) throw new Error('CCC artifact download failed');
+  let body: AsyncIterable<Uint8Array>;
+  let response: Response | undefined;
+  try {
+    const link = await client.call('get_artifact_download_url', { artifact_id: item.artifact_id, filename: filename(item.filename || path.basename(target)) });
+    if (typeof link.url !== 'string' || !link.url.startsWith('https://')) throw new Error('CCC returned an invalid download URL');
+    response = await fetch(link.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
+    if (!response.ok || !response.body) throw new Error('CCC artifact download failed');
+    body = response.body as any as AsyncIterable<Uint8Array>;
+  } catch (error) {
+    if (signal.aborted || !artifactDownloadSizeLimit(error)) throw error;
+    body = artifactChunks(client, item.artifact_id, signal);
+  }
   // Stream large inputs to disk; publish only a complete, verified download.
   const temporary = target + '.' + randomUUID() + '.download';
   try {
@@ -132,18 +140,38 @@ async function artifact(client: CccClient, item: any, target: string, signal: Ab
     const hash = createHash('sha256');
     let size = 0;
     try {
-      for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
+      for await (const chunk of body) {
         size += chunk.length;
         hash.update(chunk);
         await handle.writeFile(chunk);
       }
       if (typeof item.bytes === 'number' && size !== item.bytes || item.sha256 && hash.digest('hex') !== item.sha256.toLowerCase()) throw new Error('CCC artifact integrity check failed');
     } finally { await handle.close(); }
+    signal.throwIfAborted();
     await rename(temporary, target);
   } catch (error) {
-    await response.body.cancel().catch(() => {});
+    await response?.body?.cancel().catch(() => {});
     throw error;
   } finally { await rm(temporary, { force: true }); }
+}
+
+async function* artifactChunks(client: CccClient, artifactId: string, signal: AbortSignal): AsyncGenerator<Buffer> {
+  let offset = 0;
+  let total: number | undefined;
+  while (true) {
+    signal.throwIfAborted();
+    const part = await client.call('read_artifact', { artifact_id: artifactId, encoding: 'base64', offset, length: 256 * 1024 });
+    signal.throwIfAborted();
+    if (typeof part.data !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(part.data)) throw new Error('CCC returned invalid artifact bytes');
+    const chunk = Buffer.from(part.data, 'base64');
+    if (!Number.isSafeInteger(part.total_bytes) || part.total_bytes < 0 || (total !== undefined && part.total_bytes !== total)
+      || part.offset !== offset || part.bytes !== chunk.length || chunk.length > 256 * 1024) throw new Error('CCC returned an invalid artifact range');
+    total = part.total_bytes;
+    offset += chunk.length;
+    if (offset > total! || (part.next_offset === null ? offset !== total : part.next_offset !== offset || !chunk.length || offset >= total!)) throw new Error('CCC returned an invalid artifact continuation');
+    yield chunk;
+    if (part.next_offset === null) return;
+  }
 }
 
 export async function readAnswers(file: string, directory: string, ids: string[]): Promise<Map<string, Buffer>> {
