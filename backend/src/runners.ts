@@ -30,3 +30,18 @@ export function managerSocket(id:string){const s=managers.get(id);return s?.conn
 export function revokeRunner(userId:string,id:string):Promise<boolean>{const task=queue.then(async()=>{const records=await read();const record=records.find(r=>r.id===id&&r.userId===userId&&!r.revokedAt);if(!record)return false;record.revokedAt=new Date().toISOString();await write(records);connected.get(id)?.disconnect(true);managers.get(id)?.disconnect(true);macs.get(id)?.disconnect(true);return true;});queue=task.then(()=>undefined,()=>undefined);return task;}
 
 export function setMacConnected(id:string,socket:Socket):Promise<void>{const task=queue.then(async()=>{const records=await read();const record=records.find(r=>r.id===id&&!r.revokedAt);if(!record){socket.disconnect(true);return;}record.kind='mac';await write(records);macs.get(id)?.disconnect(true);macs.set(id,socket);socket.on('disconnect',()=>{if(macs.get(id)===socket)macs.delete(id);});});queue=task.then(()=>undefined,()=>undefined);return task;}
+
+export function deleteRunner(userId: string, id: string): Promise<boolean> {
+  const task = queue.then(async () => {
+    const records = await read();
+    if (!records.some(r => r.id === id && r.userId === userId)) return false;
+    await write(records.filter(r => r.id !== id));
+    await writeManagerPairings((await readManagerPairings()).filter(p => p.runnerId !== id));
+    connected.get(id)?.disconnect(true);
+    managers.get(id)?.disconnect(true);
+    macs.get(id)?.disconnect(true);
+    return true;
+  });
+  queue = task.then(() => undefined, () => undefined);
+  return task;
+}

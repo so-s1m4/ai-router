@@ -25,7 +25,7 @@ import { z } from 'zod';
 import { addAccount, addImportedCodexAccount, assignAccount, createProject, createSession, dataRoot, deleteAccount, deleteSession, getProject, getSession, getUserModelBlacklist, listAccounts, listProjects, listSessions, prepareUser, saveSession, setAccountPriority, setUserModelBlacklist, updateSharedProject } from './store.js';
 import { orderAccountsByPriority } from './account-priority.js';
 import { changeUserPassword, deleteUser, ensureAdmin, findUserById, findUserByName, listUsers, registerUser, verifyPassword } from './auth.js';
-import { createPairing, enroll, listRunners, ownsRunner, revokeRunner, runnerSocket, setConnected, verifyRunner, managerSocket, setManagerConnected, createManagerPairing, enrollManager, verifyManager } from './runners.js';
+import { createPairing, enroll, listRunners, ownsRunner, revokeRunner, deleteRunner, runnerSocket, setConnected, verifyRunner, managerSocket, setManagerConnected, createManagerPairing, enrollManager, verifyManager } from './runners.js';
 import { attachJobHandlers, dispatch, steerJob, JobError } from './jobs.js';
 import { uploadProjectFile } from './files.js';
 import { createFileShare, deleteWorkspaceFile, downloadSharedFile, getWorkspaceGitSummary, listWorkspaceFiles, readWorkspacePreview } from './shared-files.js';
@@ -241,6 +241,13 @@ app.post('/api/runner/enroll',async(req,res)=>{const p=z.object({code:z.string()
 app.post('/api/runners/:id/management/pairing',requireAuth,async(req,res)=>{try{res.status(201).json(await createManagerPairing(req.session.userId!,req.params.id));}catch{res.status(404).json({error:'runner not found'});}});
 app.post('/api/runner/manager/enroll',async(req,res)=>{const p=z.object({code:z.string().min(20).max(100)}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Invalid code'});try{res.status(201).json(await enrollManager(p.data.code));}catch{res.status(401).json({error:'The code is invalid or has expired'});}});
 app.post('/api/runner/accounts/import',async(req,res)=>{const id=req.get('X-Runner-ID'),secret=req.get('X-Runner-Secret');if(!id||!secret)return res.status(401).json({error:'The runner is not authorized'});const runner=await verifyRunner(id,secret);if(!runner)return res.status(401).json({error:'The runner is not authorized'});const p=z.object({name:z.string().trim().min(1).max(60),importKey:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Invalid profile information'});const account=await addImportedCodexAccount(runner.userId,p.data.name,runner.id,p.data.importKey);await pushRunnerAccounts(runner.userId,runner.id);res.status(201).json({id:account.id,name:account.name});});
+app.delete('/api/runners/:id/permanent',requireAuth,async(req,res)=>{
+ try {
+  if(!await deleteRunner(req.session.userId!,req.params.id))return res.status(404).json({error:'Runner not found'});
+  await emitAccountsToUser(req.session.userId!);
+  res.json({ok:true});
+ }catch(error){res.status(500).json({error:error instanceof Error?error.message:'Unable to delete runner'});}
+});
 app.delete('/api/runners/:id',requireAuth,async(req,res)=>res.status(await revokeRunner(req.session.userId!,req.params.id)?200:404).json({ok:true}));
 app.get('/api/runners/:id/previews',requireAuth,async(req,res)=>{if(!await ownsRunner(req.session.userId!,req.params.id))return res.status(404).json({error:'runner not found'});res.json(listPreviews(req.session.userId!,req.params.id));});
 app.patch('/api/runners/:id/previews/:subdomain',requireAuth,async(req,res)=>{if(!await ownsRunner(req.session.userId!,req.params.id))return res.status(404).json({error:'runner not found'});const parsed=z.object({visible:z.boolean()}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Specify visibility'});const record=await setPreviewVisibility(req.session.userId!,req.params.id,req.params.subdomain,parsed.data.visible);res.status(record?200:404).json(record||{error:'Site not found'});});

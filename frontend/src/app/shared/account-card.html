@@ -1,3 +1,4 @@
+<div class="account-list-entry">
 <button type="button" class="account-inline-row" [class]="vm.accountService.accountCardTheme(a)"
   (click)="details.emit(a)" aria-haspopup="dialog" [attr.aria-label]="'Details and settings for ' + a.name">
     <div class="account-identity">
@@ -47,3 +48,11 @@
   </span>
   <svg lucideChevronRight [size]="16" class="account-row-chevron"></svg>
 </button>
+
+  @if (!a.shared) {
+    <button type="button" class="btn-icon btn-icon-danger" (click)="vm.accountService.removeAccount(a)"
+      [disabled]="!!vm.accountService.deletingAccount()" [attr.aria-label]="'Delete connection: ' + a.name" title="Delete connection">
+      <svg lucideTrash2 [size]="16"></svg>
+    </button>
+  }
+</div>

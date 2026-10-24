@@ -60,3 +60,8 @@ button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -
 .tree-sub-list { border-left-color: var(--border-medium); }
 @keyframes chat-menu-in { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .project-collapse { transition: none; } .chat-actions-panel { animation: none; } }
+
+.chat-selection-toolbar { padding: 4px 16px 10px; display: flex; flex-direction: column; gap: 8px; }
+.chat-selection-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.chat-selection-actions .btn { padding: 6px 8px; font-size: 11px; }
+.chat-selection-checkbox { flex: none; width: 16px; height: 16px; margin: 0 4px 0 8px; accent-color: var(--primary); cursor: pointer; }

@@ -33,7 +33,7 @@ export class RunnersService {
     const managed = this.managedRunner();
     if (managed) this.managedRunner.set(rows.find((row) => row.id === managed.id) || null);
     await this.refreshAccounts();
-    if (!this.selectedRunner)
+    if (!rows.some(r => r.id === this.selectedRunner && !r.revokedAt && r.kind !== 'mac'))
       this.selectedRunner = this.runners().find((r) => !r.revokedAt && r.kind !== 'mac')?.id || '';
   }
   projectRunner(project: Project) {
@@ -98,6 +98,26 @@ export class RunnersService {
       );
     } catch (e) {
       this.error.set((e as Error).message);
+    }
+  }
+  deletingRunner = signal('');
+  async deleteRunner(r: Runner) {
+    if (this.deletingRunner() || !window.confirm(
+      `Delete runner “${r.name}”? Its connection will be revoked and tasks will stop. Accounts and project history will remain, but this device must be paired again to reconnect. Files on the device will remain.`,
+    )) return;
+    this.deletingRunner.set(r.id);
+    this.error.set('');
+    try {
+      await this.http.request('/runners/' + encodeURIComponent(r.id) + '/permanent', { method: 'DELETE' });
+      this.runners.update(rows => rows.filter(row => row.id !== r.id));
+      this.previews.update(rows => rows.filter(row => row.runnerId !== r.id));
+      if (this.managedRunner()?.id === r.id) this.managedRunner.set(null);
+      await this.refreshRunners();
+      this.notice.set('Runner deleted');
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.deletingRunner.set('');
     }
   }
   async revokeRunner(r: Runner) {

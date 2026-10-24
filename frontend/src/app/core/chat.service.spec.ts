@@ -93,6 +93,39 @@ describe('Chat task controls', () => {
     expect(chat.draft).toBe('');
   });
 
+  it('deletes multiple chats with one confirmation and retains failures for retry', async () => {
+    const confirm = spyOn(window, 'confirm').and.returnValue(true);
+    spyOn(TestBed.inject(NavigationService), 'navigateChat');
+    const request = spyOn(TestBed.inject(ApiService), 'request').and.callFake((url: string) =>
+      url === '/sessions/other' ? Promise.reject(new Error('Server unavailable')) : Promise.resolve({ ok: true }) as any);
+    spyOn(usage, 'refreshTasks').and.resolveTo();
+    sessions.sessions.set([sessions.current()!, { ...sessions.current()!, id: 'other' }]);
+    const deleted = await chat.deleteSessions(['chat', 'other', 'chat']);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(deleted).toEqual(['chat']);
+    expect(sessions.sessions().map(s => s.id)).toEqual(['other']);
+    expect(sessions.current()).toBeNull();
+    expect(chat.error()).toContain('1 chats could not be deleted');
+    expect(chat.deletingSessions().size).toBe(0);
+  });
+
+  it('cancels bulk deletion before making requests and prevents overlapping deletes', async () => {
+    const confirm = spyOn(window, 'confirm').and.returnValue(false);
+    let finish!: (value: unknown) => void;
+    const request = spyOn(TestBed.inject(ApiService), 'request').and.returnValue(new Promise(resolve => finish = resolve));
+    spyOn(usage, 'refreshTasks').and.resolveTo();
+    expect(await chat.deleteSessions(['other'])).toEqual([]);
+    expect(request).not.toHaveBeenCalled();
+    confirm.and.returnValue(true);
+    const pending = chat.deleteSessions(['other']);
+    expect(await chat.deleteSessions(['other'])).toEqual([]);
+    expect(request).toHaveBeenCalledTimes(1);
+    finish({ ok: true });
+    expect(await pending).toEqual(['other']);
+    expect(chat.deletingSessions().size).toBe(0);
+  });
+
   it('ignores a failed reload after the current chat is removed', async () => {
     let reject!: (reason: Error) => void;
     spyOn(TestBed.inject(ApiService), 'request').and.returnValue(new Promise((_, fail) => reject = fail));

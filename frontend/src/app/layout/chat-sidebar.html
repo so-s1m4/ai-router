@@ -60,11 +60,29 @@
     </button>
   </div>
 
+  <div class="chat-selection-toolbar">
+    @if (selectingChats()) {
+      <div class="chat-selection-actions">
+        <span aria-live="polite">{{ selectedChatIds().length }} selected</span>
+        <button type="button" class="btn btn-outline btn-sm" (click)="cancelSelection()" [disabled]="deletingSelected()">Cancel</button>
+      </div>
+      <div class="chat-selection-actions">
+        <button type="button" class="btn btn-outline btn-sm" (click)="selectAllChats()" [disabled]="deletingSelected()">{{ vm.layoutService.sidebarSearch() ? 'Select matching' : 'Select all' }}</button>
+        <button type="button" class="btn btn-danger-outline btn-sm" (click)="deleteSelectedChats()" [disabled]="!selectedChatIds().length || deletingSelected()">
+          <svg lucideTrash2 [size]="14"></svg>{{ deletingSelected() ? 'Deleting…' : 'Delete selected' }}
+        </button>
+      </div>
+    } @else {
+      <button type="button" class="btn btn-outline btn-sm" (click)="selectingChats.set(true); openActions.set(null)" [disabled]="!vm.sessionService.sessions().length">Select chats</button>
+    }
+  </div>
+
   <div class="mobile-drawer-content">
 
 
     <div class="sidebar-scroll">
       <ng-template #chatActions let-chat>
+        @if (!selectingChats()) {
         <div class="sidebar-chat-actions">
           <button
             class="chat-actions-trigger"
@@ -83,6 +101,14 @@
             </div>
           }
         </div>
+        }
+      </ng-template>
+      <ng-template #chatSelection let-chat>
+        @if (selectingChats()) {
+          <input type="checkbox" class="chat-selection-checkbox" [checked]="selectedChats().has(chat.id)"
+            (change)="toggleChatSelection(chat.id)" [disabled]="deletingSelected()"
+            [attr.aria-label]="'Select chat: ' + (chat.title || 'New chat')" />
+        }
       </ng-template>
 
       <section class="sidebar-section" aria-label="Recent chats">
@@ -90,11 +116,12 @@
         <div class="section-list">
           @for (s of vm.filteredRecentSessions(); track s.id) {
             <div class="chat-list-row" (contextmenu)="showChatActions($event, s.id)" [class.selected]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'">
+              <ng-container *ngTemplateOutlet="chatSelection; context: { $implicit: s }"></ng-container>
               <button
                 class="sidebar-item"
                 [class.active]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat'"
                 [attr.aria-current]="vm.sessionService.current()?.id === s.id && vm.page() === 'chat' ? 'page' : null"
-                (click)="vm.chatService.openSession(s.id)"
+                (click)="selectingChats() ? toggleChatSelection(s.id) : vm.chatService.openSession(s.id)"
                 [title]="s.title || 'New chat'"
               >
                 <span class="chat-title">{{ s.title || 'New chat' }}</span>
@@ -146,11 +173,12 @@
                 <div class="project-collapse-inner"><div class="tree-sub-list" [id]="'project-chats-' + p.id">
                   @for (c of (fullProjects().has(p.id) ? chats : chats.slice(0, 4)); track c.id) {
                     <div class="chat-list-row" (contextmenu)="showChatActions($event, c.id)" [class.selected]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'">
+              <ng-container *ngTemplateOutlet="chatSelection; context: { $implicit: c }"></ng-container>
                       <button
                         class="tree-sub-item"
                         [class.active]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat'"
                         [attr.aria-current]="vm.sessionService.current()?.id === c.id && vm.page() === 'chat' ? 'page' : null"
-                        (click)="vm.chatService.openSession(c.id)"
+                        (click)="selectingChats() ? toggleChatSelection(c.id) : vm.chatService.openSession(c.id)"
                         [title]="c.title || 'New chat'"
                       ><span class="chat-title">{{ c.title || 'New chat' }}</span></button>
                       <ng-container *ngTemplateOutlet="chatActions; context: { $implicit: c }"></ng-container>

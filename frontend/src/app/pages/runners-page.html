@@ -79,6 +79,12 @@
               </button>
             </div>
           }
+          <div class="card-actions">
+            <button type="button" class="btn btn-danger-outline btn-sm"
+              (click)="vm.runnerService.deleteRunner(r)" [disabled]="!!vm.runnerService.deletingRunner()">
+              <svg lucideTrash2 [size]="15"></svg><span>Delete runner</span>
+            </button>
+          </div>
         </div>
       }
     </div>

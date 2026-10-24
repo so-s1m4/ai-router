@@ -166,6 +166,32 @@ export class ChatService {
       this.deletingSessions.update(ids => { const next = new Set(ids); next.delete(id); return next; });
     }
   }
+  async deleteSessions(ids: string[]): Promise<string[]> {
+    const targets = [...new Set(ids)].filter(id => !this.deletingSessions().has(id));
+    if (!targets.length || !window.confirm(
+      `Delete ${targets.length} chats? Active and queued tasks will stop. This cannot be undone.`,
+    )) return [];
+    this.deletingSessions.update(current => new Set([...current, ...targets]));
+    this.error.set('');
+    const results = await Promise.allSettled(targets.map(async id => {
+      await this.http.request('/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
+      this.removeSession(id);
+      return id;
+    }));
+    const deleted: string[] = [];
+    const failures: string[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') deleted.push(result.value);
+      else failures.push(result.reason instanceof Error ? result.reason.message : 'Unable to delete chat');
+    }
+    this.deletingSessions.update(current => new Set([...current].filter(id => !targets.includes(id))));
+    if (deleted.length) {
+      this.notice.set(`${deleted.length} chats deleted`);
+      void this.usageService.refreshTasks();
+    }
+    if (failures.length) this.error.set(`${failures.length} chats could not be deleted: ${failures[0]}`);
+    return deleted;
+  }
   async openSession(id: string) {
     this.layoutService.mobileMenu.set(false);
     try {

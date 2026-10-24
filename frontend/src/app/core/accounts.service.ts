@@ -111,7 +111,7 @@ export class AccountsService {
   }
   async removeAccount(a: Account) {
     if (
-      this.deletingAccount() ||
+      a.shared || this.deletingAccount() ||
       !window.confirm(
         `Delete connection “${a.name}”? Login data and the API key on the runner will be deleted.`,
       )

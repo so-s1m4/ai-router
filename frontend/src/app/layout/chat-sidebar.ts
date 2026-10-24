@@ -1,6 +1,6 @@
 import { InstallAppComponent } from '../shared/install-app';
 import { CommonModule } from '@angular/common';
-import { Component, effect, HostListener, inject, signal } from '@angular/core';
+import { Component, computed, effect, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   LucideChevronRight,
@@ -64,6 +64,51 @@ export class ChatSidebarComponent {
   readonly vm = inject(WorkspaceStore);
   readonly openActions = signal<string | null>(null);
   readonly fullProjects = signal(new Set<string>());
+
+  readonly selectingChats = signal(false);
+  readonly deletingSelected = signal(false);
+  readonly selectedChats = signal(new Set<string>());
+  readonly selectedChatIds = computed(() =>
+    this.vm.sessionService.sessions().filter(chat => this.selectedChats().has(chat.id)).map(chat => chat.id),
+  );
+
+  toggleChatSelection(id: string) {
+    if (this.deletingSelected()) return;
+    this.selectedChats.update(ids => {
+      const next = new Set(ids);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  selectAllChats() {
+    this.selectedChats.set(new Set([
+      ...this.vm.filteredRecentSessions(),
+      ...this.vm.filteredProjects().flatMap(project => this.vm.chatsForProject(project)),
+    ].map(chat => chat.id)));
+  }
+
+  cancelSelection() {
+    if (this.deletingSelected()) return;
+    this.selectingChats.set(false);
+    this.selectedChats.set(new Set());
+  }
+
+  async deleteSelectedChats() {
+    if (this.deletingSelected()) return;
+    this.deletingSelected.set(true);
+    try {
+      const deleted = await this.vm.chatService.deleteSessions(this.selectedChatIds());
+      this.selectedChats.update(ids => new Set([...ids].filter(id => !deleted.includes(id))));
+      if (!this.selectedChatIds().length) {
+        this.selectingChats.set(false);
+        this.selectedChats.set(new Set());
+      }
+    } finally {
+      this.deletingSelected.set(false);
+    }
+  }
 
   constructor() {
     effect(() => {
